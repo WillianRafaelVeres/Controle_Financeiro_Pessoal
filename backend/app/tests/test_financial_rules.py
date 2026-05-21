@@ -35,7 +35,17 @@ from app.schemas.exterior_dolar_schema import MovimentoDolarCreate
 from app.api.routes.contas import criar as criar_conta_route, atualizar_saldo as atualizar_saldo_conta_route
 from app.services.cartao_service import pagar_fatura, separar_compromisso
 from app.services.conta_futura_service import criar_conta_futura, pagar_conta_futura
-from app.services.investimento_service import ativos_para_dividendos, comprar, listar_posicoes, registrar_cotacao, vender
+from app.services.investimento_service import (
+    TIPOS_COTACAO_AUTOMATICA,
+    TIPOS_COTACAO_AUTOMATICA_BR,
+    ativos_para_dividendos,
+    atualizar_cotacao_automatica,
+    calcular_desempenho,
+    comprar,
+    listar_posicoes,
+    registrar_cotacao,
+    vender,
+)
 from app.services.lancamento_service import atualizar_lancamento, criar_lancamento
 from app.services.financeiro_service import resumo_painel, resumo_planejamento
 from app.services.orcamento_service import (
@@ -57,7 +67,7 @@ from app.services.saldo_service import (
     calcular_saldo_livre,
     conciliacao,
 )
-from app.services.exterior_dolar_service import listar_extrato, registrar_manual, saldo_teorico_usd
+from app.services.exterior_dolar_service import buscar_cotacao_dolar_atual, listar_extrato, registrar_manual, resumo_dolar, saldo_teorico_usd
 
 
 @pytest.fixture()
@@ -489,6 +499,170 @@ def test_cotacao_manual_altera_valor_atual_posicao(session: Session):
     assert posicao["preco_atual"] == Decimal("30.00")
     assert posicao["valor_atual"] == Decimal("300.0000")
     assert posicao["lucro_prejuizo"] == Decimal("100.0000")
+
+
+def test_cotacao_automatica_inclui_etf_br(session: Session, monkeypatch):
+    assert {TipoAtivo.ACAO_BR, TipoAtivo.FII, TipoAtivo.ETF_BR}.issubset(TIPOS_COTACAO_AUTOMATICA_BR)
+    ativo = Ativo(ticker="BOVA11", nome="iShares Bovespa", tipo_ativo=TipoAtivo.ETF_BR)
+    session.add(ativo)
+    session.commit()
+    session.refresh(ativo)
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=ativo.id,
+            quantidade=Decimal("2.00"),
+            preco_unitario=Decimal("100.00"),
+        ),
+    )
+    urls = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"chart": {"result": [{"meta": {"regularMarketPrice": 123.45}}]}}
+
+    def fake_get(url, *args, **kwargs):
+        urls.append(url)
+        return FakeResponse()
+
+    monkeypatch.setattr("app.services.investimento_service.httpx.get", fake_get)
+
+    cotacao = atualizar_cotacao_automatica(session, ativo.id)
+
+    assert cotacao.fonte == "YAHOO"
+    assert cotacao.preco == Decimal("123.45")
+    assert any("BOVA11.SA" in url for url in urls)
+
+
+def test_tipos_manuais_nao_usam_cotacao_automatica(session: Session):
+    ativo = Ativo(ticker="PREVIDENCIA_XP", nome="Previdencia XP", tipo_ativo=TipoAtivo.PREVIDENCIA)
+    session.add(ativo)
+    session.commit()
+    session.refresh(ativo)
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=ativo.id,
+            quantidade=Decimal("1.00"),
+            preco_unitario=Decimal("100.00"),
+        ),
+    )
+    cotacao = registrar_cotacao(session, ativo.id, Decimal("120.00"))
+
+    with pytest.raises(HTTPException) as exc:
+        atualizar_cotacao_automatica(session, ativo.id)
+
+    assert cotacao.preco == Decimal("120.00")
+    assert exc.value.status_code == 422
+
+
+def test_cotacao_automatica_de_cripto_usa_preco_brl(session: Session, monkeypatch):
+    assert TipoAtivo.CRIPTO in TIPOS_COTACAO_AUTOMATICA
+    ativo = Ativo(ticker="BTC", nome="Bitcoin", tipo_ativo=TipoAtivo.CRIPTO)
+    session.add(ativo)
+    session.commit()
+    session.refresh(ativo)
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=ativo.id,
+            quantidade=Decimal("0.01"),
+            preco_unitario=Decimal("100000.00"),
+        ),
+    )
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"bitcoin": {"brl": 388416}}
+
+    monkeypatch.setattr("app.services.investimento_service.httpx.get", lambda *args, **kwargs: FakeResponse())
+
+    cotacao = atualizar_cotacao_automatica(session, ativo.id)
+
+    assert cotacao.fonte == "COINGECKO"
+    assert cotacao.preco == Decimal("388416")
+
+
+def test_desempenho_converte_posicao_usd_por_dolar_atual(session: Session, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.investimento_service.buscar_cotacao_dolar_atual",
+        lambda session: {
+            "cotacao_brl": Decimal("5.00"),
+            "percentual_variacao": Decimal("0.50"),
+            "data_cotacao": "2026-05-21 10:00:00",
+            "fonte": "AwesomeAPI",
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.investimento_service._buscar_indice_yahoo",
+        lambda simbolo: {
+            "valor": Decimal("120000.00"),
+            "variacao_percentual": Decimal("1.00"),
+            "fonte": "Yahoo Finance",
+            "data": "2026-05-21",
+            "erro": None,
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.investimento_service._buscar_cdi_diario",
+        lambda: {
+            "valor": Decimal("0.04"),
+            "variacao_percentual": Decimal("0.04"),
+            "fonte": "Banco Central SGS",
+            "data": "21/05/2026",
+            "erro": None,
+        },
+    )
+
+    acao = Ativo(ticker="BBAS3", nome="Banco do Brasil", tipo_ativo=TipoAtivo.ACAO_BR)
+    exterior = Ativo(ticker="AAPL", nome="Apple", tipo_ativo=TipoAtivo.EXTERIOR)
+    session.add(acao)
+    session.add(exterior)
+    session.commit()
+    session.refresh(acao)
+    session.refresh(exterior)
+
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=acao.id,
+            quantidade=Decimal("10.00"),
+            preco_unitario=Decimal("10.00"),
+        ),
+    )
+    registrar_cotacao(session, acao.id, Decimal("15.00"))
+    registrar_manual(
+        session,
+        MovimentoDolarCreate(
+            tipo="ENVIO",
+            valor_brl=Decimal("500.00"),
+            valor_usd=Decimal("100.00"),
+        ),
+    )
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=exterior.id,
+            quantidade=Decimal("2.00"),
+            preco_unitario=Decimal("20.00"),
+        ),
+    )
+    registrar_cotacao(session, exterior.id, Decimal("30.00"))
+
+    desempenho = calcular_desempenho(session)
+
+    assert desempenho["patrimonio_atual_brl"] == Decimal("450.000000")
+    assert desempenho["total_aportado_brl"] == Decimal("300.000000")
+    assert desempenho["lucro_prejuizo_brl"] == Decimal("150.000000")
+    assert desempenho["exterior_brl"] == Decimal("300.000000")
+    assert desempenho["rentabilidade_percentual"] == Decimal("50.0")
+    assert desempenho["benchmarks"]["dolar"]["valor"] == Decimal("5.00")
 
 
 def test_compra_sem_ticker_agrupa_por_tipo_e_corretora(session: Session):
@@ -1149,3 +1323,30 @@ def test_envio_dolar_reduz_saldo_livre_e_compra_exterior_nao_reduz_brl_de_novo(s
 
     assert calcular_saldo_livre(session) == Decimal("5000.00")
     assert saldo_teorico_usd(session) == Decimal("500.00")
+
+
+def test_busca_cotacao_dolar_atual_salva_configuracao(session: Session, monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "USDBRL": {
+                    "bid": "5.10",
+                    "ask": "5.20",
+                    "varBid": "0.02",
+                    "pctChange": "0.4",
+                    "create_date": "2026-05-21 10:00:00",
+                }
+            }
+
+    monkeypatch.setattr("app.services.exterior_dolar_service.httpx.get", lambda *args, **kwargs: FakeResponse())
+
+    cotacao = buscar_cotacao_dolar_atual(session)
+    resumo = resumo_dolar(session)
+
+    assert cotacao["cotacao_brl"] == Decimal("5.20")
+    assert cotacao["compra_brl"] == Decimal("5.10")
+    assert resumo["cotacao_brl"] == Decimal("5.20")
+    assert resumo["cotacao_brl_fonte"] == "AwesomeAPI"

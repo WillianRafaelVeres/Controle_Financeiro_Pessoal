@@ -1,5 +1,10 @@
 export function toNumber(value: number | string | null | undefined) {
   if (value === null || value === undefined || value === "") return 0;
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (normalized.includes(",")) return Number(normalized.replace(/\./g, "").replace(",", "."));
+    return Number(normalized);
+  }
   return Number(value);
 }
 
@@ -19,4 +24,3 @@ export function formatDate(value: string | null | undefined) {
   if (!value) return "-";
   return new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(new Date(value));
 }
-

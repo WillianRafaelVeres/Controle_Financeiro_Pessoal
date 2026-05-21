@@ -9,6 +9,7 @@ import { ConfiguracoesPage } from "./pages/ConfiguracoesPage";
 import { ContasFuturasPage } from "./pages/ContasFuturasPage";
 import { ContasPage } from "./pages/ContasPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { DesempenhoPage } from "./pages/DesempenhoPage";
 import { DividendosPage } from "./pages/DividendosPage";
 import { ExteriorDolarPage } from "./pages/ExteriorDolarPage";
 import { IntegracoesPage } from "./pages/IntegracoesPage";
@@ -35,6 +36,7 @@ const pageTitles: Record<PageKey, string> = {
   orcamento: "Orçamento",
   cartoes: "Cartões",
   investimentos: "Investimentos",
+  desempenho: "Desempenho",
   dividendos: "Dividendos",
   exterior: "Exterior/Dólar",
   relatorios: "Relatórios",
@@ -56,6 +58,8 @@ function CurrentPage({ page }: { page: PageKey }) {
       return <CartoesPage />;
     case "investimentos":
       return <InvestimentosPage />;
+    case "desempenho":
+      return <DesempenhoPage />;
     case "dividendos":
       return <DividendosPage />;
     case "exterior":

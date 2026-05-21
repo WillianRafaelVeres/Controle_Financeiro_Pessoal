@@ -3,7 +3,13 @@ from sqlmodel import Session
 
 from app.core.database import get_session
 from app.schemas.exterior_dolar_schema import MovimentoDolarCreate, SaldoDolarInformado
-from app.services.exterior_dolar_service import informar_saldo_real, listar_extrato, registrar_manual, resumo_dolar
+from app.services.exterior_dolar_service import (
+    buscar_cotacao_dolar_atual,
+    informar_saldo_real,
+    listar_extrato,
+    registrar_manual,
+    resumo_dolar,
+)
 
 router = APIRouter(prefix="/exterior-dolar", tags=["exterior-dolar"])
 
@@ -27,3 +33,7 @@ def movimento(payload: MovimentoDolarCreate, session: Session = Depends(get_sess
 def informar_saldo(payload: SaldoDolarInformado, session: Session = Depends(get_session)) -> dict:
     return informar_saldo_real(session, payload)
 
+
+@router.get("/cotacao-atual")
+def cotacao_atual(session: Session = Depends(get_session)) -> dict:
+    return buscar_cotacao_dolar_atual(session)

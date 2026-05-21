@@ -22,7 +22,6 @@ export const INVESTMENT_TYPE_OPTIONS: Array<{ value: TipoAtivo; label: string }>
   { value: "CRIPTO", label: "Cripto" },
   { value: "RENDA_FIXA", label: "Renda fixa" },
   { value: "PREVIDENCIA", label: "Previdencia" },
-  { value: "OUTRO", label: "Outro" },
 ];
 
 const TICKER_TYPES = new Set<TipoAtivo>(["ACAO_BR", "FII", "ETF_BR", "EXTERIOR", "ACAO_EXTERIOR", "ETF_EXTERIOR", "CRIPTO"]);

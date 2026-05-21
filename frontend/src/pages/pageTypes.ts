@@ -6,6 +6,7 @@ export type PageKey =
   | "orcamento"
   | "cartoes"
   | "investimentos"
+  | "desempenho"
   | "dividendos"
   | "exterior"
   | "relatorios"

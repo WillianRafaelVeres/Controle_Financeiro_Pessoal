@@ -228,6 +228,59 @@ export interface Posicao {
   fonte_cotacao?: string | null;
 }
 
+export interface DesempenhoBenchmark {
+  valor?: string | number | null;
+  variacao_percentual?: string | number | null;
+  fonte?: string | null;
+  data?: string | null;
+  erro?: string | null;
+}
+
+export interface DesempenhoAlocacaoTipo {
+  tipo_ativo: TipoAtivo;
+  tipo_label: string;
+  valor_atual_brl: string | number;
+  percentual: string | number;
+  quantidade_posicoes: number;
+}
+
+export interface DesempenhoAtivo {
+  ativo_id: string;
+  ticker: string;
+  nome: string;
+  tipo_ativo: TipoAtivo;
+  tipo_label: string;
+  moeda: string;
+  corretora?: string | null;
+  valor_atual_brl: string | number;
+  valor_atual_original: string | number;
+  total_aportado_brl: string | number;
+  resultado_brl: string | number;
+  rentabilidade_percentual: string | number;
+  percentual: string | number;
+  cotacao_automatica: boolean;
+  fonte_cotacao?: string | null;
+  data_cotacao?: string | null;
+}
+
+export interface DesempenhoInvestimentos {
+  patrimonio_atual_brl: string | number;
+  total_aportado_brl: string | number;
+  lucro_prejuizo_brl: string | number;
+  rentabilidade_percentual: string | number;
+  exterior_brl: string | number;
+  alocacao_por_tipo: DesempenhoAlocacaoTipo[];
+  alocacao_por_ativo: DesempenhoAtivo[];
+  top_ativos: DesempenhoAtivo[];
+  maiores_ganhos: DesempenhoAtivo[];
+  maiores_perdas: DesempenhoAtivo[];
+  benchmarks: {
+    dolar: DesempenhoBenchmark;
+    ibovespa: DesempenhoBenchmark;
+    cdi: DesempenhoBenchmark;
+  };
+}
+
 export interface ExtratoDolar {
   id: string;
   data_movimento: string;
@@ -246,11 +299,24 @@ export interface ResumoDolar {
   saldo_informado_usd: string | number;
   diferenca_conciliacao_usd: string | number;
   cotacao_brl: string | number;
+  cotacao_brl_data?: string | null;
+  cotacao_brl_fonte?: string | null;
   valor_estimado_brl: string | number;
   total_brl_enviado?: string | number;
   total_usd_recebido?: string | number;
   dolar_medio?: string | number;
   status: string;
+}
+
+export interface CotacaoDolarAtual {
+  cotacao_brl: string | number;
+  compra_brl: string | number;
+  venda_brl: string | number;
+  variacao_brl?: string | number;
+  percentual_variacao?: string | number;
+  data_cotacao?: string | null;
+  fonte: string;
+  erro?: string | null;
 }
 
 export interface Diagnostico {

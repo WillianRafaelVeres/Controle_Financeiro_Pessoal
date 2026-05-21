@@ -12,6 +12,7 @@ import { GraficosResumo } from "../features/dashboard/GraficosResumo";
 import { DividendosForm } from "../features/investimentos/DividendosForm";
 import { LancamentoForm } from "../features/lancamentos/LancamentoForm";
 import { api } from "../lib/api";
+import { toNumber } from "../lib/formatters";
 import type { TipoLancamento } from "../lib/types";
 import { currentMonth } from "../lib/utils";
 import { DolarActionDialog, type ActionType } from "./ExteriorDolarPage";
@@ -29,6 +30,7 @@ export function DashboardPage() {
   const metodos = useQuery({ queryKey: ["metodos", "dashboard"], queryFn: api.metodos });
   const cartoes = useQuery({ queryKey: ["cartoes", "dashboard"], queryFn: api.cartoes });
   const ativosDividendos = useQuery({ queryKey: ["ativos-dividendos", "dashboard"], queryFn: api.ativosDividendos });
+  const cotacaoDolar = useQuery({ queryKey: ["dolar-cotacao-atual"], queryFn: api.dolarCotacaoAtual, retry: false });
 
   const criarLancamento = useMutation({ mutationFn: api.criarLancamento, onSuccess: () => queryClient.invalidateQueries() });
   const criarCategoria = useMutation({ mutationFn: api.criarCategoria, onSuccess: () => queryClient.invalidateQueries() });
@@ -132,7 +134,7 @@ export function DashboardPage() {
         action={dolarAction}
         onClose={() => setDolarAction(null)}
         onMovimento={(payload) => movimentoDolar.mutateAsync(payload).then(() => undefined)}
-        onSaldo={async () => undefined}
+        cotacaoAtual={toNumber(cotacaoDolar.data?.cotacao_brl)}
       />
     </div>
   );

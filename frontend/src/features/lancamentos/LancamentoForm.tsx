@@ -16,6 +16,7 @@ import {
   saveInvestmentBrokerPref,
   tickerPlaceholder,
 } from "../../lib/investmentProfiles";
+import { toNumber } from "../../lib/formatters";
 import type {
   CartaoResumo,
   Categoria,
@@ -72,7 +73,7 @@ export function LancamentoForm({
   const [modalCartao, setModalCartao] = useState(false);
   const [separarContaFutura, setSepararContaFutura] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [destinoInvestimento, setDestinoInvestimento] = useState("OUTRO");
+  const [destinoInvestimento, setDestinoInvestimento] = useState("RESERVA");
   const [tipoAtivo, setTipoAtivo] = useState<TipoAtivo>("ACAO_BR");
   const [ticker, setTicker] = useState("");
   const [corretoraInvestimento, setCorretoraInvestimento] = useState("");
@@ -108,7 +109,7 @@ export function LancamentoForm({
   const metodoSelecionado = metodos.find((item) => item.id === metodoId);
   const selectedCartaoId = metodoId?.startsWith("cartao:") ? metodoId.replace("cartao:", "") : null;
   const isCartao = !isContaFutura && (Boolean(selectedCartaoId) || metodoSelecionado?.tipo_metodo === "CARTAO_CREDITO");
-  const valorNumber = Number(valor || 0);
+  const valorNumber = toNumber(valor);
   const tickerInvestimentoObrigatorio = needsTicker(tipoAtivo);
   const moedaInvestimento = defaultCurrencyForInvestment(tipoAtivo);
 
@@ -139,7 +140,7 @@ export function LancamentoForm({
     setSepararContaFutura(false);
     setDataLancamento("");
     setShowDate(false);
-    setDestinoInvestimento("OUTRO");
+    setDestinoInvestimento("RESERVA");
     setTicker("");
     setCorretoraInvestimento(readInvestmentBrokerPrefs()[tipoAtivo] ?? "");
     setQuantidade("");
@@ -158,8 +159,8 @@ export function LancamentoForm({
         ? {
             ticker: tickerInvestimentoObrigatorio ? ticker.trim() : null,
             tipo_ativo: tipoAtivo,
-            quantidade: Number(quantidade || 1),
-            preco_unitario: Number(precoUnitario || valorNumber),
+            quantidade: toNumber(quantidade || 1),
+            preco_unitario: toNumber(precoUnitario || valorNumber),
             corretora: corretoraInvestimento.trim() || null,
             observacao: obs || null,
           }
@@ -387,7 +388,6 @@ export function LancamentoForm({
             <label className="space-y-1">
               <span className="text-xs font-medium text-slate-500">Destino</span>
               <Select value={destinoInvestimento} onChange={(event) => setDestinoInvestimento(event.target.value)}>
-                <option value="OUTRO">Outro sem ativo</option>
                 <option value="COMPRA_ATIVO">Compra de ativo</option>
                 <option value="RESERVA">Reserva/caixa</option>
                 <option value="PREVIDENCIA">Previdencia</option>

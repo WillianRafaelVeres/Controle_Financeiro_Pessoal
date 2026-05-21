@@ -14,6 +14,7 @@ import {
   saveInvestmentBrokerPref,
   tickerPlaceholder,
 } from "../../lib/investmentProfiles";
+import { toNumber } from "../../lib/formatters";
 import type { TipoAtivo } from "../../lib/types";
 
 export function CompraAtivoModal({
@@ -60,8 +61,8 @@ export function CompraAtivoModal({
     await onSubmit({
       tipo_ativo: tipoAtivo,
       ticker: tickerObrigatorio ? form.ticker.trim().toUpperCase() : null,
-      quantidade: Number(form.quantidade),
-      preco_unitario: Number(form.preco_unitario),
+      quantidade: toNumber(form.quantidade),
+      preco_unitario: toNumber(form.preco_unitario),
       corretora: corretora || null,
       observacao: form.observacao.trim() || null,
     });

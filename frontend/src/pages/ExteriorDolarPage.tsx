@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DollarSign, Minus, Plus, SlidersHorizontal } from "lucide-react";
+import { DollarSign, Minus, Plus, RefreshCw } from "lucide-react";
 import type React from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { EmptyState } from "../components/finance/EmptyState";
 import { MoneyInput } from "../components/finance/MoneyInput";
@@ -10,54 +10,93 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
-import { Select } from "../components/ui/select";
 import { Td, Th, Table } from "../components/ui/table";
 import { api } from "../lib/api";
 import { formatDate, formatMoney, toNumber } from "../lib/formatters";
 
-export type ActionType = "ENVIO" | "RETIRADA" | "AJUSTE_POSITIVO" | "AJUSTE_NEGATIVO" | "SALDO";
+export type ActionType = "ENVIO" | "RETIRADA";
 
 export function ExteriorDolarPage() {
   const queryClient = useQueryClient();
   const resumo = useQuery({ queryKey: ["dolar-resumo"], queryFn: api.dolarResumo });
   const extrato = useQuery({ queryKey: ["dolar-extrato"], queryFn: api.dolarExtrato });
+  const cotacaoAtual = useQuery({
+    queryKey: ["dolar-cotacao-atual"],
+    queryFn: api.dolarCotacaoAtual,
+    refetchInterval: 60_000,
+    retry: false,
+  });
   const movimento = useMutation({ mutationFn: api.dolarMovimento, onSuccess: () => queryClient.invalidateQueries() });
   const informarSaldo = useMutation({ mutationFn: api.dolarInformarSaldo, onSuccess: () => queryClient.invalidateQueries() });
   const [action, setAction] = useState<ActionType | null>(null);
+  const [saldoRealUsd, setSaldoRealUsd] = useState("");
 
   const data = resumo.data;
   const diferenca = toNumber(data?.diferenca_conciliacao_usd);
   const conciliado = Math.abs(diferenca) < 0.01;
+  const cotacaoReferencia = toNumber(cotacaoAtual.data?.cotacao_brl ?? data?.cotacao_brl);
+  const valorAtualBrl = toNumber(data?.saldo_teorico_usd) * cotacaoReferencia;
+
+  useEffect(() => {
+    setSaldoRealUsd(data?.saldo_informado_usd ? String(toNumber(data.saldo_informado_usd)) : "");
+  }, [data?.saldo_informado_usd]);
+
+  useEffect(() => {
+    if (!cotacaoAtual.data?.cotacao_brl) return;
+    queryClient.invalidateQueries({ queryKey: ["dolar-resumo"] });
+  }, [cotacaoAtual.data?.cotacao_brl, queryClient]);
+
+  async function salvarSaldoReal(event: React.FormEvent) {
+    event.preventDefault();
+    await informarSaldo.mutateAsync({
+      saldo_usd: toNumber(saldoRealUsd),
+    });
+  }
 
   return (
     <div className="space-y-2">
       <PageHeader
-        title="Exterior/Dólar"
-        description="Conta dólar teórica com entradas, saídas, dividendos, compras e vendas no exterior."
+        title="Exterior/Dolar"
+        description="Conta dolar teorica com entradas, saidas, dividendos, compras e vendas no exterior."
         actions={
           <>
             <Button onClick={() => setAction("ENVIO")}>
               <Plus className="h-4 w-4" />
-              Enviar dólar
+              Enviar dolar
             </Button>
             <Button variant="secondary" onClick={() => setAction("RETIRADA")}>
               <Minus className="h-4 w-4" />
-              Retirar dólar
+              Retirar dolar
             </Button>
-            <Button variant="secondary" onClick={() => setAction("AJUSTE_POSITIVO")}>
-              <SlidersHorizontal className="h-4 w-4" />
-              Ajuste manual
-            </Button>
-            <Button variant="secondary" onClick={() => setAction("SALDO")}>
-              Informar saldo real
+            <Button variant="secondary" disabled={cotacaoAtual.isFetching} onClick={() => cotacaoAtual.refetch()}>
+              <RefreshCw className="h-4 w-4" />
+              Atualizar cotacao
             </Button>
           </>
         }
       />
+
+      <section className="rounded-md border border-brand-500/40 bg-brand-500/10 p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.08)]">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase text-brand-400">Cotacao USD/BRL atual</p>
+            <p className="mt-1 text-3xl font-semibold text-slate-50">{formatMoney(cotacaoReferencia)}</p>
+            <p className="mt-1 text-xs text-slate-400">
+              {cotacaoAtual.data?.fonte ?? data?.cotacao_brl_fonte ?? "Atual"} {cotacaoAtual.data?.data_cotacao ?? data?.cotacao_brl_data ?? ""}
+            </p>
+          </div>
+          <div className="text-left md:text-right">
+            <p className="text-xs font-semibold uppercase text-slate-500">Exterior hoje em BRL</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-50">{formatMoney(valorAtualBrl)}</p>
+            <p className="mt-1 text-xs text-slate-400">{formatMoney(data?.saldo_teorico_usd, "USD")} convertidos pela cotacao atual</p>
+          </div>
+        </div>
+      </section>
+
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <UsdCard title="Saldo teórico em USD" value={data?.saldo_teorico_usd} subtitle="Calculado pelo extrato dólar" />
+        <UsdCard title="Saldo teorico em USD" value={data?.saldo_teorico_usd} subtitle="Calculado pelo extrato dolar" />
         <UsdCard title="Saldo informado" value={data?.saldo_informado_usd} subtitle="Valor da conta real" />
-        <UsdCard title="Diferença" value={data?.diferenca_conciliacao_usd} subtitle={conciliado ? "Conta dólar conciliada" : "Verifique movimentos"} danger={!conciliado} />
+        <UsdCard title="Diferenca" value={data?.diferenca_conciliacao_usd} subtitle={conciliado ? "Conta dolar conciliada" : "Verifique movimentos"} danger={!conciliado} />
         <section className="rounded-md border border-slate-800 bg-[#111821] p-3">
           <p className="text-xs font-medium uppercase text-slate-500">Dolar medio</p>
           <p className="mt-1 text-xl font-semibold text-slate-100">{formatMoney(data?.dolar_medio)}</p>
@@ -66,19 +105,32 @@ export function ExteriorDolarPage() {
           </p>
         </section>
       </div>
-      <SectionCard title="Conferência">
+
+      <SectionCard title="Conferencia">
+        <form className="mb-2 grid gap-2 md:grid-cols-[minmax(160px,240px)_auto]" onSubmit={salvarSaldoReal}>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-slate-500">Saldo real na conta USD</span>
+            <MoneyInput value={saldoRealUsd} onChange={(event) => setSaldoRealUsd(event.target.value)} required />
+          </label>
+          <div className="flex items-end">
+            <Button className="w-full md:w-auto" type="submit" disabled={informarSaldo.isPending}>
+              Salvar saldo real
+            </Button>
+          </div>
+        </form>
         <div className={conciliado ? "rounded-md bg-brand-500/15 p-2 text-[13px] font-medium text-brand-500" : "rounded-md bg-amber-500/15 p-2 text-[13px] font-medium text-amber-400"}>
           {conciliado
-            ? "Conta dólar conciliada."
-            : "Existe diferença entre o saldo teórico e o saldo informado. Verifique envios, retiradas, dividendos, compras ou vendas."}
+            ? "Conta dolar conciliada."
+            : "Existe diferenca entre o saldo teorico e o saldo informado. Verifique envios, retiradas, dividendos, compras ou vendas."}
         </div>
       </SectionCard>
-      <SectionCard title="Extrato dólar">
+
+      <SectionCard title="Extrato dolar">
         {(extrato.data?.length ?? 0) === 0 ? (
           <EmptyState
             icon={<DollarSign className="h-6 w-6" />}
-            title="Sem movimentos em dólar"
-            description="Envios, retiradas, compras, vendas e dividendos em USD aparecerão aqui."
+            title="Sem movimentos em dolar"
+            description="Envios, retiradas, compras, vendas e dividendos em USD aparecerao aqui."
           />
         ) : (
           <Table>
@@ -86,11 +138,11 @@ export function ExteriorDolarPage() {
               <tr>
                 <Th>Data</Th>
                 <Th>Tipo</Th>
-                <Th>Descrição</Th>
+                <Th>Descricao</Th>
                 <Th>Entrada USD</Th>
-                <Th>Saída USD</Th>
+                <Th>Saida USD</Th>
                 <Th>BRL</Th>
-                <Th>Cotação</Th>
+                <Th>Cotacao</Th>
                 <Th>Saldo acumulado</Th>
                 <Th>Origem</Th>
               </tr>
@@ -105,7 +157,7 @@ export function ExteriorDolarPage() {
                   <Td>{formatMoney(item.saida_usd, "USD")}</Td>
                   <Td>{formatMoney(item.valor_brl)}</Td>
                   <Td>{formatMoney(item.cotacao_efetiva)}</Td>
-                  <Td className="font-medium text-slate-950">{formatMoney(item.saldo_acumulado_usd, "USD")}</Td>
+                  <Td className="font-medium text-slate-100">{formatMoney(item.saldo_acumulado_usd, "USD")}</Td>
                   <Td>{item.origem}</Td>
                 </tr>
               ))}
@@ -113,11 +165,12 @@ export function ExteriorDolarPage() {
           </Table>
         )}
       </SectionCard>
+
       <DolarActionDialog
         action={action}
         onClose={() => setAction(null)}
         onMovimento={(payload) => movimento.mutateAsync(payload).then(() => undefined)}
-        onSaldo={(payload) => informarSaldo.mutateAsync(payload).then(() => undefined)}
+        cotacaoAtual={cotacaoReferencia}
       />
     </div>
   );
@@ -139,82 +192,79 @@ export function DolarActionDialog({
   action,
   onClose,
   onMovimento,
-  onSaldo,
+  cotacaoAtual = 0,
 }: {
   action: ActionType | null;
   onClose: () => void;
   onMovimento: (payload: Record<string, unknown>) => Promise<void>;
-  onSaldo: (payload: Record<string, unknown>) => Promise<void>;
+  cotacaoAtual?: number;
 }) {
-  const [tipo, setTipo] = useState<ActionType>("AJUSTE_POSITIVO");
   const [valorUsd, setValorUsd] = useState("");
   const [valorBrl, setValorBrl] = useState("");
+  const [valorUsdManual, setValorUsdManual] = useState(false);
   const [descricao, setDescricao] = useState("");
   const [data, setData] = useState("");
-  const [cotacao, setCotacao] = useState("");
-  const isSaldo = action === "SALDO";
   const isEnvio = action === "ENVIO";
+
+  useEffect(() => {
+    setValorUsd("");
+    setValorBrl("");
+    setValorUsdManual(false);
+    setDescricao("");
+    setData("");
+  }, [action]);
+
+  useEffect(() => {
+    if (!isEnvio || valorUsdManual || cotacaoAtual <= 0 || toNumber(valorBrl) <= 0) return;
+    setValorUsd((toNumber(valorBrl) / cotacaoAtual).toFixed(2));
+  }, [cotacaoAtual, isEnvio, valorBrl, valorUsdManual]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (isSaldo) {
-      await onSaldo({ saldo_usd: Number(valorUsd), cotacao_brl: cotacao ? Number(cotacao) : null });
-    } else {
-      await onMovimento({
-        tipo: action === "AJUSTE_POSITIVO" || action === "AJUSTE_NEGATIVO" ? tipo : action,
-        valor_usd: Number(valorUsd),
-        valor_brl: isEnvio ? Number(valorBrl || 0) : null,
-        descricao: descricao || null,
-        data_movimento: data || null,
-      });
-    }
-    setValorUsd("");
-    setValorBrl("");
-    setDescricao("");
-    setData("");
-    setCotacao("");
+    if (!action) return;
+    await onMovimento({
+      tipo: action,
+      valor_usd: toNumber(valorUsd),
+      valor_brl: isEnvio ? toNumber(valorBrl) : null,
+      descricao: descricao || null,
+      data_movimento: data || null,
+    });
     onClose();
   }
 
   return (
-    <Dialog open={action !== null} title={isSaldo ? "Informar saldo real" : action === "ENVIO" ? "Enviar dolar" : "Movimento em dolar"} onClose={onClose}>
+    <Dialog open={action !== null} title={isEnvio ? "Enviar dolar" : "Retirar dolar"} onClose={onClose}>
       <form className="grid gap-3" onSubmit={submit}>
-        {!isSaldo && (action === "AJUSTE_POSITIVO" || action === "AJUSTE_NEGATIVO") && (
-          <label className="space-y-1">
-            <span className="text-xs font-medium text-slate-500">Tipo de ajuste</span>
-            <Select value={tipo} onChange={(event) => setTipo(event.target.value as ActionType)}>
-              <option value="AJUSTE_POSITIVO">Ajuste positivo</option>
-              <option value="AJUSTE_NEGATIVO">Ajuste negativo</option>
-            </Select>
-          </label>
-        )}
         {isEnvio && (
           <label className="space-y-1">
             <span className="text-xs font-medium text-slate-500">Valor enviado em BRL</span>
             <MoneyInput value={valorBrl} onChange={(event) => setValorBrl(event.target.value)} required />
           </label>
         )}
-        <label className="space-y-1">
-          <span className="text-xs font-medium text-slate-500">{isSaldo ? "Saldo USD" : isEnvio ? "Valor recebido em USD" : "Valor USD"}</span>
-          <MoneyInput value={valorUsd} onChange={(event) => setValorUsd(event.target.value)} required />
-        </label>
-        {isSaldo ? (
-          <label className="space-y-1">
-            <span className="text-xs font-medium text-slate-500">Cotação BRL opcional</span>
-            <MoneyInput value={cotacao} onChange={(event) => setCotacao(event.target.value)} />
-          </label>
-        ) : (
-          <>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-slate-500">Data</span>
-              <Input type="date" value={data} onChange={(event) => setData(event.target.value)} />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-slate-500">Descrição</span>
-              <Input value={descricao} onChange={(event) => setDescricao(event.target.value)} />
-            </label>
-          </>
+        {isEnvio && cotacaoAtual > 0 && (
+          <div className="rounded-md border border-slate-800 bg-slate-950/60 p-2 text-xs text-slate-400">
+            Cotacao atual de referencia: {formatMoney(cotacaoAtual)} por USD.
+          </div>
         )}
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-500">{isEnvio ? "Valor recebido em USD" : "Valor USD"}</span>
+          <MoneyInput
+            value={valorUsd}
+            onChange={(event) => {
+              setValorUsdManual(true);
+              setValorUsd(event.target.value);
+            }}
+            required
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-500">Data</span>
+          <Input type="date" value={data} onChange={(event) => setData(event.target.value)} />
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-500">Descricao</span>
+          <Input value={descricao} onChange={(event) => setDescricao(event.target.value)} />
+        </label>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
             Cancelar

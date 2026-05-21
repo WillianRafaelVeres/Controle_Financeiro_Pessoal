@@ -8,6 +8,7 @@ from app.schemas.investimento_schema import AtivoCreate, AtivoUpdate, CotacaoAti
 from app.services.investimento_service import (
     atualizar_cotacao_automatica,
     atualizar_cotacoes_automaticas,
+    calcular_desempenho,
     comprar,
     listar_posicoes,
     registrar_cotacao,
@@ -77,6 +78,11 @@ def buscar_cotacoes(session: Session = Depends(get_session)):
 @router.get("/posicoes")
 def posicoes(session: Session = Depends(get_session)) -> list[dict]:
     return listar_posicoes(session)
+
+
+@router.get("/desempenho")
+def desempenho(session: Session = Depends(get_session)) -> dict:
+    return calcular_desempenho(session)
 
 
 @router.post("/comprar")

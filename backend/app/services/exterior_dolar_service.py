@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
+import httpx
 from fastapi import HTTPException
 from sqlalchemy import func
 from sqlmodel import Session, select
@@ -25,6 +26,8 @@ SAIDAS = {
     TipoMovimentoDolar.AJUSTE_NEGATIVO,
 }
 
+COTACAO_USD_BRL_URL = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
+
 
 def registrar_movimento_dolar(
     session: Session,
@@ -40,6 +43,8 @@ def registrar_movimento_dolar(
         raise HTTPException(status_code=422, detail="Valor em USD nao pode ser negativo.")
     if valor_brl is not None and valor_brl < 0:
         raise HTTPException(status_code=422, detail="Valor em BRL nao pode ser negativo.")
+    if tipo in SAIDAS and saldo_teorico_usd(session) < valor_usd:
+        raise HTTPException(status_code=422, detail="Saldo USD insuficiente para esta saida.")
     brl = valor_brl or Decimal("0.00")
     cotacao = Decimal("0.00") if valor_usd == 0 or brl == 0 else brl / valor_usd
     movimento = ExtratoDolar(
@@ -102,6 +107,11 @@ def _get_config_decimal(session: Session, chave: str) -> Decimal:
     return Decimal(str(config.valor))
 
 
+def _get_config_text(session: Session, chave: str) -> str | None:
+    config = session.exec(select(Configuracao).where(Configuracao.chave == chave)).first()
+    return config.valor if config and config.valor else None
+
+
 def _set_config_decimal(session: Session, chave: str, value: Decimal) -> None:
     config = session.exec(select(Configuracao).where(Configuracao.chave == chave)).first()
     if not config:
@@ -109,6 +119,56 @@ def _set_config_decimal(session: Session, chave: str, value: Decimal) -> None:
     else:
         config.valor = str(value)
     session.add(config)
+
+
+def _set_config_text(session: Session, chave: str, value: str) -> None:
+    config = session.exec(select(Configuracao).where(Configuracao.chave == chave)).first()
+    if not config:
+        config = Configuracao(chave=chave, valor=value)
+    else:
+        config.valor = value
+    session.add(config)
+
+
+def buscar_cotacao_dolar_atual(session: Session) -> dict:
+    try:
+        response = httpx.get(COTACAO_USD_BRL_URL, timeout=8)
+        response.raise_for_status()
+        item = response.json().get("USDBRL") or {}
+        compra = Decimal(str(item.get("bid") or "0"))
+        venda = Decimal(str(item.get("ask") or "0"))
+        cotacao = venda if venda > 0 else compra
+        if cotacao <= 0:
+            raise ValueError("cotacao invalida")
+    except Exception as exc:
+        salva = _get_config_decimal(session, "dolar_cotacao_brl")
+        if salva > 0:
+            return {
+                "cotacao_brl": salva,
+                "compra_brl": salva,
+                "venda_brl": salva,
+                "variacao_brl": Decimal("0.00"),
+                "percentual_variacao": Decimal("0.00"),
+                "data_cotacao": _get_config_text(session, "dolar_cotacao_brl_data"),
+                "fonte": "CONFIG",
+                "erro": "Nao foi possivel atualizar a cotacao agora.",
+            }
+        raise HTTPException(status_code=502, detail="Nao foi possivel buscar cotacao do dolar agora.") from exc
+
+    data_cotacao = str(item.get("create_date") or item.get("timestamp") or "")
+    _set_config_decimal(session, "dolar_cotacao_brl", cotacao)
+    _set_config_text(session, "dolar_cotacao_brl_data", data_cotacao)
+    _set_config_text(session, "dolar_cotacao_brl_fonte", "AwesomeAPI")
+    session.commit()
+    return {
+        "cotacao_brl": cotacao,
+        "compra_brl": compra,
+        "venda_brl": venda,
+        "variacao_brl": Decimal(str(item.get("varBid") or "0")),
+        "percentual_variacao": Decimal(str(item.get("pctChange") or "0")),
+        "data_cotacao": data_cotacao,
+        "fonte": "AwesomeAPI",
+    }
 
 
 def informar_saldo_real(session: Session, payload: SaldoDolarInformado) -> dict:
@@ -170,6 +230,8 @@ def resumo_dolar(session: Session) -> dict:
         "saldo_informado_usd": informado,
         "diferenca_conciliacao_usd": diferenca,
         "cotacao_brl": cotacao,
+        "cotacao_brl_data": _get_config_text(session, "dolar_cotacao_brl_data"),
+        "cotacao_brl_fonte": _get_config_text(session, "dolar_cotacao_brl_fonte"),
         "valor_estimado_brl": teorico * cotacao,
         "total_brl_enviado": total_brl_enviado,
         "total_usd_recebido": total_usd_recebido,

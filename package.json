@@ -1,0 +1,13 @@
+{
+  "name": "central-financeira-pessoal",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "powershell -ExecutionPolicy Bypass -File scripts/dev.ps1",
+    "backend:build": "powershell -ExecutionPolicy Bypass -File scripts/build-backend.ps1",
+    "desktop:dev": "cd frontend && npm run desktop:dev",
+    "desktop:build": "powershell -ExecutionPolicy Bypass -File scripts/build-desktop.ps1",
+    "package:windows": "powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1"
+  }
+}
+

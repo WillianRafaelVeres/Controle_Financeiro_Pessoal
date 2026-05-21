@@ -1,0 +1,2 @@
+"""Central Financeira Pessoal backend."""
+

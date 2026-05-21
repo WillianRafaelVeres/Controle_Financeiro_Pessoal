@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #d8dee9;
+  background: #090d12;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color-scheme: dark;
+  font-size: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #090d12;
+  line-height: 1.4;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(34, 197, 94, 0.28);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0b1118;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #273343;
+  border: 2px solid #0b1118;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3b4758;
+}
+
+/* Tema escuro para telas existentes que ainda usam utilitários claros do Tailwind. */
+.bg-white,
+.bg-white\/95 {
+  background-color: #111821;
+}
+
+.bg-\[\#f4f6f8\] {
+  background-color: #090d12;
+}
+
+.bg-slate-50,
+.bg-slate-100 {
+  background-color: #151e29;
+}
+
+.bg-slate-200,
+.bg-slate-300 {
+  background-color: #273343;
+}
+
+.bg-brand-50 {
+  background-color: rgba(34, 197, 94, 0.13);
+}
+
+.bg-info-50 {
+  background-color: rgba(59, 130, 246, 0.14);
+}
+
+.bg-danger-50 {
+  background-color: rgba(239, 68, 68, 0.13);
+}
+
+.bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.14);
+}
+
+.text-slate-950,
+.text-slate-900,
+.text-slate-800 {
+  color: #eef2f7;
+}
+
+.text-slate-700,
+.text-slate-600 {
+  color: #c3cad5;
+}
+
+.text-slate-500 {
+  color: #8f9bad;
+}
+
+.text-slate-400 {
+  color: #6f7b8d;
+}
+
+.border-slate-100,
+.border-slate-200,
+.border-slate-200\/80,
+.border-slate-300,
+.border-amber-100 {
+  border-color: #273343;
+}
+
+.border-brand-50 {
+  border-color: rgba(34, 197, 94, 0.22);
+}
+
+.border-danger-50 {
+  border-color: rgba(239, 68, 68, 0.22);
+}
+
+.border-info-50 {
+  border-color: rgba(59, 130, 246, 0.22);
+}
+
+.shadow-sm,
+.shadow-lg,
+.shadow-xl {
+  box-shadow: none;
+}

@@ -21,9 +21,9 @@ export function Button({
     <button
       type={type}
       className={cn(
-        "inline-flex items-center justify-center gap-1.5 rounded-md border text-[13px] font-medium transition focus:outline-none focus:ring-2 focus:ring-brand-500/25 disabled:cursor-not-allowed disabled:opacity-50",
-        variant === "primary" && "border-brand-600 bg-brand-500 text-white hover:bg-brand-600",
-        variant === "secondary" && "border-slate-700 bg-slate-900 text-slate-200 hover:border-slate-600 hover:bg-slate-800",
+        "inline-flex items-center justify-center gap-1.5 rounded-md border text-[13px] font-medium transition duration-150 focus:outline-none focus:ring-2 focus:ring-brand-500/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
+        variant === "primary" && "border-brand-600 bg-brand-500 text-white shadow-[0_8px_22px_rgba(34,197,94,0.18)] hover:bg-brand-600 hover:shadow-[0_10px_26px_rgba(34,197,94,0.22)]",
+        variant === "secondary" && "border-slate-700 bg-slate-900/95 text-slate-200 hover:border-slate-600 hover:bg-slate-800",
         variant === "ghost" && "border-transparent bg-transparent text-slate-300 hover:bg-slate-800 hover:text-slate-50",
         variant === "quiet" && "border-transparent bg-slate-800 text-slate-200 hover:bg-slate-700",
         variant === "danger" && "border-danger-600 bg-danger-600 text-white hover:bg-red-700",

@@ -1,7 +1,7 @@
 export function toNumber(value: number | string | null | undefined) {
   if (value === null || value === undefined || value === "") return 0;
   if (typeof value === "string") {
-    const normalized = value.trim();
+    const normalized = value.trim().replace(/[^\d,.-]/g, "");
     if (normalized.includes(",")) return Number(normalized.replace(/\./g, "").replace(",", "."));
     return Number(normalized);
   }

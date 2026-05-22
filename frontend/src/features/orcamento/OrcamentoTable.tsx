@@ -26,12 +26,12 @@ export function OrcamentoTable({ data, natureza }: OrcamentoTableProps) {
   const atualizarItem = useMutation({
     mutationFn: (payload: { itemId: string; valor: number; escopo: string }) =>
       api.atualizarItemOrcamento(payload.itemId, { valor_orcado: payload.valor, escopo: payload.escopo }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["orcamentos"] }),
+    onSuccess: () => queryClient.invalidateQueries(),
   });
 
   const removerItem = useMutation({
     mutationFn: (payload: { itemId: string; escopo: string }) => api.removerItemOrcamento(payload.itemId, payload.escopo),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["orcamentos"] }),
+    onSuccess: () => queryClient.invalidateQueries(),
   });
 
   const grouped = useMemo(() => {
@@ -68,16 +68,32 @@ export function OrcamentoTable({ data, natureza }: OrcamentoTableProps) {
   }
 
   function statusLabel(status: string) {
-    return status.replaceAll("_", " ");
+    const labels: Record<string, string> = {
+      ABAIXO_DO_PLANEJADO: "Falta realizar",
+      ATENCAO: "Atencao",
+      CONCLUIDO: "Meta atingida",
+      DENTRO: "Dentro",
+      DENTRO_DO_PLANEJADO: "No plano",
+      ESTOURADO: "Acima",
+      NAO_INICIADO: "Nao iniciado",
+      SEM_PLANEJAMENTO: "Sem plano",
+    };
+    return labels[status] ?? status.replaceAll("_", " ");
   }
 
   function label(item: OrcamentoLinha) {
     return item.tipo_item === "SUBCATEGORIA" && item.subcategoria ? item.subcategoria : item.categoria;
   }
 
+  function diferencaClass(item: OrcamentoLinha) {
+    const diff = toNumber(item.diferenca);
+    if (item.natureza === "GASTO") return diff < 0 ? "text-right font-semibold text-danger-600" : "text-right font-semibold text-brand-400";
+    return diff <= 0 ? "text-right font-semibold text-brand-400" : "text-right font-semibold text-amber-300";
+  }
+
   return (
     <>
-      <Table className="min-w-[680px] table-fixed text-[13px]">
+      <Table className="min-w-[760px] table-fixed text-[13px]">
         <thead>
           <tr>
             <Th className="w-[34%]">Item</Th>
@@ -90,7 +106,7 @@ export function OrcamentoTable({ data, natureza }: OrcamentoTableProps) {
         </thead>
         <tbody>
           {Object.entries(grouped).flatMap(([categoriaId, group]) => [
-            <tr key={`${categoriaId}-header`} className="bg-slate-900">
+            <tr key={`${categoriaId}-header`} className="bg-slate-900/80">
               <Td colSpan={6} className="py-1.5 font-semibold text-slate-100">
                 {group.categoria}
               </Td>
@@ -98,15 +114,26 @@ export function OrcamentoTable({ data, natureza }: OrcamentoTableProps) {
             ...group.itens.map((item) => (
               <tr key={item.item_orcamento_id}>
                 <Td>
-                  <div className="font-medium text-slate-950">{label(item)}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="font-semibold text-slate-100">{label(item)}</div>
+                    <Badge tone={item.tipo_item === "SUBCATEGORIA" ? "blue" : "neutral"}>{item.tipo_item === "SUBCATEGORIA" ? "Subitem" : "Categoria"}</Badge>
+                  </div>
                   <div className="mt-0.5 flex flex-wrap gap-1 text-[11px] text-slate-500">
                     <span>{item.tipo_item === "SUBCATEGORIA" ? `${item.categoria} > ${item.subcategoria}` : item.categoria}</span>
                     {item.inativo_hoje && <Badge tone="neutral">inativo hoje</Badge>}
                   </div>
                 </Td>
-                <Td className="text-right font-medium text-slate-950">{formatMoney(item.valor_orcado)}</Td>
-                <Td className="text-right">{formatMoney(item.gasto_real)}</Td>
-                <Td className={toNumber(item.diferenca) < 0 && item.natureza === "GASTO" ? "text-right text-danger-600" : "text-right"}>
+                <Td className="text-right font-semibold text-slate-100">{formatMoney(item.valor_orcado)}</Td>
+                <Td className="text-right">
+                  <div className="font-medium text-slate-200">{formatMoney(item.gasto_real)}</div>
+                  <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-800">
+                    <div
+                      className={tone(item.situacao, item.natureza) === "red" ? "h-full rounded-full bg-danger-600" : tone(item.situacao, item.natureza) === "yellow" ? "h-full rounded-full bg-amber-500" : "h-full rounded-full bg-brand-500"}
+                      style={{ width: `${Math.min(toNumber(item.percentual_usado), 100)}%` }}
+                    />
+                  </div>
+                </Td>
+                <Td className={diferencaClass(item)}>
                   {formatMoney(item.diferenca)}
                 </Td>
                 <Td>

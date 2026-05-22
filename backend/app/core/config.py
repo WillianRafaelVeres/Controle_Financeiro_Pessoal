@@ -17,6 +17,7 @@ class Settings(BaseModel):
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
+    cors_origin_regex: str = r"^https?://(localhost|127\.0\.0\.1):\d+$"
 
     @property
     def database_url(self) -> str:

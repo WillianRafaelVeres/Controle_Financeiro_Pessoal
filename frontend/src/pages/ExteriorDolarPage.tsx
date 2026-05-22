@@ -110,7 +110,7 @@ export function ExteriorDolarPage() {
         <form className="mb-2 grid gap-2 md:grid-cols-[minmax(160px,240px)_auto]" onSubmit={salvarSaldoReal}>
           <label className="space-y-1">
             <span className="text-xs font-medium text-slate-500">Saldo real na conta USD</span>
-            <MoneyInput value={saldoRealUsd} onChange={(event) => setSaldoRealUsd(event.target.value)} required />
+            <MoneyInput currency="USD" value={saldoRealUsd} onChange={(event) => setSaldoRealUsd(event.target.value)} required />
           </label>
           <div className="flex items-end">
             <Button className="w-full md:w-auto" type="submit" disabled={informarSaldo.isPending}>
@@ -205,6 +205,7 @@ export function DolarActionDialog({
   const [descricao, setDescricao] = useState("");
   const [data, setData] = useState("");
   const isEnvio = action === "ENVIO";
+  const cotacaoEfetiva = toNumber(valorUsd) > 0 && toNumber(valorBrl) > 0 ? toNumber(valorBrl) / toNumber(valorUsd) : 0;
 
   useEffect(() => {
     setValorUsd("");
@@ -246,9 +247,15 @@ export function DolarActionDialog({
             Cotacao atual de referencia: {formatMoney(cotacaoAtual)} por USD.
           </div>
         )}
+        {isEnvio && cotacaoEfetiva > 0 && (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-200">
+            Cotacao efetiva deste envio: {formatMoney(cotacaoEfetiva)} por USD, considerando taxas e diferenca entre BRL enviado e USD recebido.
+          </div>
+        )}
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-500">{isEnvio ? "Valor recebido em USD" : "Valor USD"}</span>
           <MoneyInput
+            currency="USD"
             value={valorUsd}
             onChange={(event) => {
               setValorUsdManual(true);

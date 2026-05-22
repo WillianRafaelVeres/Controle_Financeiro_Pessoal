@@ -9,6 +9,7 @@ import { Dialog } from "../components/ui/dialog";
 import { ConciliacaoBox } from "../features/dashboard/ConciliacaoBox";
 import { DashboardCards } from "../features/dashboard/DashboardCards";
 import { GraficosResumo } from "../features/dashboard/GraficosResumo";
+import { CompraAtivoModal } from "../features/investimentos/CompraAtivoModal";
 import { DividendosForm } from "../features/investimentos/DividendosForm";
 import { LancamentoForm } from "../features/lancamentos/LancamentoForm";
 import { api } from "../lib/api";
@@ -17,7 +18,7 @@ import type { TipoLancamento } from "../lib/types";
 import { currentMonth } from "../lib/utils";
 import { DolarActionDialog, type ActionType } from "./ExteriorDolarPage";
 
-type QuickLaunch = "novo" | "investimento";
+type QuickLaunch = "novo";
 
 export function DashboardPage() {
   const queryClient = useQueryClient();
@@ -39,13 +40,14 @@ export function DashboardPage() {
   const criarContaFutura = useMutation({ mutationFn: api.criarContaFutura, onSuccess: () => queryClient.invalidateQueries() });
   const criarDividendo = useMutation({ mutationFn: api.criarDividendo, onSuccess: () => queryClient.invalidateQueries() });
   const movimentoDolar = useMutation({ mutationFn: api.dolarMovimento, onSuccess: () => queryClient.invalidateQueries() });
+  const comprarAtivo = useMutation({ mutationFn: api.comprar, onSuccess: () => queryClient.invalidateQueries() });
 
   const [quickLaunch, setQuickLaunch] = useState<QuickLaunch | null>(null);
+  const [compraAtivoOpen, setCompraAtivoOpen] = useState(false);
   const [dividendoOpen, setDividendoOpen] = useState(false);
   const [dolarAction, setDolarAction] = useState<ActionType | null>(null);
 
-  const initialType: TipoLancamento = quickLaunch === "investimento" ? "INVESTIMENTO" : "GASTO";
-  const launchTitle = quickLaunch === "investimento" ? "Registrar investimento" : "Novo lancamento";
+  const initialType: TipoLancamento = "GASTO";
 
   return (
     <div className="space-y-2">
@@ -58,7 +60,7 @@ export function DashboardPage() {
               <Plus className="h-4 w-4" />
               Lancamento
             </Button>
-            <Button className="h-8 whitespace-nowrap px-2.5" variant="secondary" aria-label="Registrar investimento" onClick={() => setQuickLaunch("investimento")}>
+            <Button className="h-8 whitespace-nowrap px-2.5" variant="secondary" aria-label="Registrar investimento" onClick={() => setCompraAtivoOpen(true)}>
               <TrendingUp className="h-4 w-4" />
               Investimento
             </Button>
@@ -77,7 +79,7 @@ export function DashboardPage() {
         <GraficosResumo data={graficos.data} />
       </SectionCard>
 
-      <Dialog open={quickLaunch !== null} title={launchTitle} onClose={() => setQuickLaunch(null)} className="max-w-6xl">
+      <Dialog open={quickLaunch !== null} title="Novo lancamento" onClose={() => setQuickLaunch(null)} className="max-w-6xl">
         {quickLaunch && (
           <LancamentoForm
             key={quickLaunch}
@@ -86,8 +88,6 @@ export function DashboardPage() {
             metodos={metodos.data ?? []}
             cartoes={cartoes.data ?? []}
             initialType={initialType}
-            allowInvestment={quickLaunch === "investimento"}
-            lockType={quickLaunch === "investimento"}
             onSubmit={async (payload) => {
               await criarLancamento.mutateAsync(payload);
               setQuickLaunch(null);
@@ -112,7 +112,9 @@ export function DashboardPage() {
         )}
       </Dialog>
 
-      <Dialog open={dividendoOpen} title="Registrar dividendo" onClose={() => setDividendoOpen(false)} className="max-w-3xl">
+      <CompraAtivoModal open={compraAtivoOpen} onClose={() => setCompraAtivoOpen(false)} onSubmit={(payload) => comprarAtivo.mutateAsync(payload).then(() => undefined)} />
+
+      <Dialog open={dividendoOpen} title="Registrar dividendo" onClose={() => setDividendoOpen(false)} className="max-w-6xl">
         {(ativosDividendos.data?.length ?? 0) === 0 ? (
           <EmptyState
             icon={<Banknote className="h-6 w-6" />}

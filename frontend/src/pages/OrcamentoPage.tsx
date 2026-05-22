@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Plus, Target } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Copy, Plus, Target, TrendingDown, TrendingUp } from "lucide-react";
 import { useState } from "react";
 
 import { EmptyState } from "../components/finance/EmptyState";
@@ -11,7 +11,7 @@ import { Td, Th, Table } from "../components/ui/table";
 import { AdicionarItemOrcamentoModal } from "../features/orcamento/AdicionarItemOrcamentoModal";
 import { OrcamentoTable } from "../features/orcamento/OrcamentoTable";
 import { api } from "../lib/api";
-import { formatMoney, formatPercent, toNumber } from "../lib/formatters";
+import { formatMoney, toNumber } from "../lib/formatters";
 import type { NaturezaCategoria, PlanejamentoNaoPlanejado } from "../lib/types";
 import { currentMonth } from "../lib/utils";
 
@@ -58,10 +58,6 @@ export function OrcamentoPage() {
   const investimentosPlanejadosRealizados = toNumber(resumo?.investimentos_executados);
   const investimentosNaoPlanejadosTotal = toNumber(resumo?.investimentos_nao_planejados_total);
   const investimentosRealizados = investimentosPlanejadosRealizados + investimentosNaoPlanejadosTotal;
-  const totalPlanejado = toNumber(resumo?.planejado_total);
-  const totalExecutado = toNumber(resumo?.executado_total_com_nao_planejado) || gastosRealizados + investimentosRealizados;
-  const totalExecutadoPlanejado = gastosPlanejadosRealizados + investimentosPlanejadosRealizados;
-  const totalExecutadoFora = gastosNaoPlanejadosTotal + investimentosNaoPlanejadosTotal;
 
   function openAdd(item?: PlanejamentoNaoPlanejado) {
     setInitialItem(
@@ -123,10 +119,6 @@ export function OrcamentoPage() {
           />
         ) : (
           <ResumoMes
-            totalPlanejado={totalPlanejado}
-            totalExecutado={totalExecutado}
-            totalExecutadoPlanejado={totalExecutadoPlanejado}
-            totalExecutadoFora={totalExecutadoFora}
             receitasPlanejadas={receitasPlanejadas}
             receitasPlanejadasRealizadas={receitasPlanejadasRealizadas}
             receitasNaoPlanejadasTotal={receitasNaoPlanejadasTotal}
@@ -208,10 +200,6 @@ export function OrcamentoPage() {
 }
 
 function ResumoMes({
-  totalPlanejado,
-  totalExecutado,
-  totalExecutadoPlanejado,
-  totalExecutadoFora,
   receitasPlanejadas,
   receitasPlanejadasRealizadas,
   receitasNaoPlanejadasTotal,
@@ -225,10 +213,6 @@ function ResumoMes({
   investimentosNaoPlanejadosTotal,
   investimentosRealizados,
 }: {
-  totalPlanejado: number;
-  totalExecutado: number;
-  totalExecutadoPlanejado: number;
-  totalExecutadoFora: number;
   receitasPlanejadas: number;
   receitasPlanejadasRealizadas: number;
   receitasNaoPlanejadasTotal: number;
@@ -242,39 +226,28 @@ function ResumoMes({
   investimentosNaoPlanejadosTotal: number;
   investimentosRealizados: number;
 }) {
-  const disponivel = totalPlanejado - totalExecutado;
-  const percentual = totalPlanejado > 0 ? (totalExecutado / totalPlanejado) * 100 : 0;
-  const progress = Math.min(percentual, 100);
-  const tone = percentual > 100 ? "bg-danger-600" : percentual >= 85 ? "bg-amber-500" : "bg-brand-500";
   const saldoPrevisto = receitasPlanejadas - gastosPlanejados;
   const saldoAtual = receitasRealizadas - gastosRealizados;
 
   return (
-    <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_420px]">
-      <div className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase text-slate-500">Resumo do mes</p>
-        <div className="mt-1.5 grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
-          <SummaryMetric label="Receber plan." value={formatMoney(receitasPlanejadas)} />
-          <SummaryMetric label="Recebido" value={formatMoney(receitasRealizadas)} />
-          <SummaryMetric label="Gastar plan." value={formatMoney(gastosPlanejados)} />
-          <SummaryMetric label="Gasto" value={formatMoney(gastosRealizados)} danger={gastosRealizados > gastosPlanejados && gastosPlanejados > 0} />
-          <SummaryMetric label="Saldo previsto" value={formatMoney(saldoPrevisto)} danger={saldoPrevisto < 0} />
-          <SummaryMetric label="Saldo atual" value={formatMoney(saldoAtual)} danger={saldoAtual < 0} />
-        </div>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
-          <div className={`h-full rounded-full ${tone}`} style={{ width: `${progress}%` }} />
-        </div>
+    <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_460px]">
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        <PlanningCard kind="receita" title="Recebimentos" planned={receitasPlanejadas} actual={receitasRealizadas} />
+        <PlanningCard kind="gasto" title="Gastos" planned={gastosPlanejados} actual={gastosRealizados} />
+        <PlanningCard kind="investimento" title="Investimentos" planned={investimentosPlanejados} actual={investimentosRealizados} />
+        <PlanningCard kind="saldo" title="Saldo operacional" planned={saldoPrevisto} actual={saldoAtual} />
       </div>
       <div className="overflow-hidden rounded-md border border-slate-800 text-[12px]">
         <div className="grid grid-cols-[1fr_repeat(4,minmax(72px,auto))] gap-2 bg-slate-900 px-2 py-1.5 text-[11px] font-semibold uppercase text-slate-500">
           <span>Tipo</span>
           <span className="text-right">Planejado</span>
-          <span className="text-right">Dentro</span>
-          <span className="text-right">Fora</span>
+          <span className="text-right">Planejado exec.</span>
+          <span className="text-right">Nao planejado</span>
           <span className="text-right">Total</span>
         </div>
         <ExecutionBreakdown
           label="Recebimentos"
+          natureza="RECEITA"
           planned={receitasPlanejadas}
           inside={receitasPlanejadasRealizadas}
           outside={receitasNaoPlanejadasTotal}
@@ -282,6 +255,7 @@ function ResumoMes({
         />
         <ExecutionBreakdown
           label="Gastos"
+          natureza="GASTO"
           planned={gastosPlanejados}
           inside={gastosPlanejadosRealizados}
           outside={gastosNaoPlanejadosTotal}
@@ -289,6 +263,7 @@ function ResumoMes({
         />
         <ExecutionBreakdown
           label="Investimentos"
+          natureza="INVESTIMENTO"
           planned={investimentosPlanejados}
           inside={investimentosPlanejadosRealizados}
           outside={investimentosNaoPlanejadosTotal}
@@ -299,8 +274,68 @@ function ResumoMes({
   );
 }
 
-function ExecutionBreakdown({ label, planned, inside, outside, total }: {
+type PlanningKind = "receita" | "gasto" | "investimento" | "saldo";
+
+function PlanningCard({ kind, title, planned, actual }: { kind: PlanningKind; title: string; planned: number; actual: number }) {
+  const status = planningStatus(kind, planned, actual);
+  const progressBase = Math.abs(planned);
+  const progress = progressBase > 0 ? Math.min(Math.abs(actual) / progressBase * 100, 100) : actual !== 0 ? 100 : 0;
+  const Icon = status.good ? CheckCircle2 : status.bad ? AlertTriangle : kind === "gasto" ? TrendingDown : TrendingUp;
+  const toneClass = status.bad
+    ? "border-danger-600/35 bg-danger-600/10 text-danger-600"
+    : status.good
+      ? "border-brand-500/25 bg-brand-500/10 text-brand-400"
+      : "border-amber-500/25 bg-amber-500/10 text-amber-300";
+  const barClass = status.bad ? "bg-danger-600" : status.good ? "bg-brand-500" : "bg-amber-500";
+
+  return (
+    <section className={`rounded-md border p-3 ${toneClass}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase text-slate-500">{title}</p>
+          <p className="mt-1 text-xl font-semibold text-slate-100">{formatMoney(actual)}</p>
+          <p className="mt-0.5 text-xs text-slate-500">Planejado: {formatMoney(planned)}</p>
+        </div>
+        <Icon className="h-5 w-5 shrink-0" />
+      </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
+        <div className={`h-full rounded-full ${barClass}`} style={{ width: `${progress}%` }} />
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+        <span className="font-medium">{status.label}</span>
+        <span className="text-slate-400">{status.deltaLabel}</span>
+      </div>
+    </section>
+  );
+}
+
+function planningStatus(kind: PlanningKind, planned: number, actual: number) {
+  if (kind === "receita") {
+    const delta = actual - planned;
+    if (planned <= 0 && actual > 0) return { good: true, bad: false, label: "Receita extra", deltaLabel: `+${formatMoney(delta)}` };
+    if (actual >= planned) return { good: true, bad: false, label: "Acima do planejado", deltaLabel: `+${formatMoney(delta)}` };
+    return { good: false, bad: true, label: "Abaixo do planejado", deltaLabel: formatMoney(delta) };
+  }
+  if (kind === "gasto") {
+    const sobra = planned - actual;
+    if (planned <= 0 && actual > 0) return { good: false, bad: true, label: "Gasto sem planejamento", deltaLabel: formatMoney(-actual) };
+    if (actual <= planned) return { good: true, bad: false, label: "Dentro do limite", deltaLabel: `Sobra ${formatMoney(sobra)}` };
+    return { good: false, bad: true, label: "Acima do limite", deltaLabel: formatMoney(sobra) };
+  }
+  if (kind === "investimento") {
+    const delta = actual - planned;
+    if (planned <= 0 && actual > 0) return { good: true, bad: false, label: "Investimento extra", deltaLabel: `+${formatMoney(delta)}` };
+    if (actual >= planned) return { good: true, bad: false, label: "Meta atingida", deltaLabel: `+${formatMoney(delta)}` };
+    return { good: false, bad: false, label: "Falta investir", deltaLabel: formatMoney(delta) };
+  }
+  const delta = actual - planned;
+  if (actual >= planned) return { good: true, bad: false, label: "Melhor que o previsto", deltaLabel: `+${formatMoney(delta)}` };
+  return { good: false, bad: true, label: "Abaixo do previsto", deltaLabel: formatMoney(delta) };
+}
+
+function ExecutionBreakdown({ label, natureza, planned, inside, outside, total }: {
   label: string;
+  natureza: NaturezaCategoria;
   planned: number;
   inside: number;
   outside: number;
@@ -311,24 +346,30 @@ function ExecutionBreakdown({ label, planned, inside, outside, total }: {
       <span className="font-medium text-slate-300">{label}</span>
       <Value value={planned} />
       <Value value={inside} />
-      <Value value={outside} danger={outside > 0} />
+      <Value value={outside} tone={outsideTone(natureza, outside)} />
       <Value value={total} strong />
     </div>
   );
 }
 
-function Value({ value, danger, strong }: { value: number; danger?: boolean; strong?: boolean }) {
-  const className = danger ? "text-right font-semibold text-amber-300" : strong ? "text-right font-semibold text-slate-100" : "text-right text-slate-300";
-  return <span className={className}>{formatMoney(value)}</span>;
+function outsideTone(natureza: NaturezaCategoria, value: number): "green" | "red" | "yellow" | undefined {
+  if (value <= 0) return undefined;
+  if (natureza === "RECEITA" || natureza === "INVESTIMENTO") return "green";
+  return "red";
 }
 
-function SummaryMetric({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
-  return (
-    <div className="min-w-0 border-l border-slate-800 pl-2 first:border-l-0 first:pl-0">
-      <p className="truncate text-[11px] font-medium text-slate-500">{label}</p>
-      <p className={danger ? "mt-0.5 truncate text-base font-semibold text-danger-600" : "mt-0.5 truncate text-base font-semibold text-slate-100"}>{value}</p>
-    </div>
-  );
+function Value({ value, tone, strong }: { value: number; tone?: "green" | "red" | "yellow"; strong?: boolean }) {
+  const className =
+    tone === "red"
+      ? "text-right font-semibold text-danger-600"
+      : tone === "green"
+        ? "text-right font-semibold text-brand-400"
+        : tone === "yellow"
+          ? "text-right font-semibold text-amber-300"
+          : strong
+            ? "text-right font-semibold text-slate-100"
+            : "text-right text-slate-300";
+  return <span className={className}>{formatMoney(value)}</span>;
 }
 
 function NaoPlanejadosSection({
@@ -356,7 +397,7 @@ function NaoPlanejadosSection({
         <tbody>
           {itens.map((item) => (
             <tr key={`${item.natureza}-${item.categoria_id}-${item.subcategoria_id ?? "categoria"}`}>
-              <Td className="font-medium text-slate-950">{item.subcategoria ? `${item.categoria} > ${item.subcategoria}` : item.categoria}</Td>
+              <Td className="font-medium text-slate-100">{item.subcategoria ? `${item.categoria} > ${item.subcategoria}` : item.categoria}</Td>
               <Td className="text-right">{formatMoney(item.valor_realizado)}</Td>
               <Td className="text-right">{item.quantidade_lancamentos}</Td>
               <Td>

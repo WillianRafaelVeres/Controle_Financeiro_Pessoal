@@ -10,6 +10,8 @@ import type {
   DashboardResumo,
   DesempenhoInvestimentos,
   Dividendo,
+  HistoricoDesempenhoInvestimento,
+  HistoricoProventosInvestimentos,
   Lancamento,
   MetodoPagamento,
   OrcamentoLinha,
@@ -21,7 +23,9 @@ import type {
   Diagnostico,
   NaturezaCategoria,
   Subcategoria,
+  TipoAtivo,
   TipoMetodo,
+  TipoProvento,
 } from "./types";
 import { getApiBaseUrl } from "./apiBase";
 
@@ -145,12 +149,20 @@ export const api = {
   criarAtivo: (payload: Record<string, unknown>) => apiFetch<Ativo>("/investimentos/ativos", { method: "POST", body: JSON.stringify(payload) }),
   posicoes: () => apiFetch<Posicao[]>("/investimentos/posicoes"),
   desempenhoInvestimentos: () => apiFetch<DesempenhoInvestimentos>("/investimentos/desempenho"),
+  historicoDesempenhoInvestimentos: (modo: "mensal" | "anual") =>
+    apiFetch<HistoricoDesempenhoInvestimento[]>("/investimentos/desempenho/historico", {}, { modo }),
+  historicoProventosInvestimentos: (
+    modo: "mensal" | "anual",
+    filtros: { tipo_ativo?: TipoAtivo | ""; ativo_id?: string; tipo_provento?: TipoProvento | "" } = {},
+  ) => apiFetch<HistoricoProventosInvestimentos>("/investimentos/desempenho/proventos", {}, { modo, ...filtros }),
   comprar: (payload: Record<string, unknown>) => apiFetch("/investimentos/comprar", { method: "POST", body: JSON.stringify(payload) }),
   vender: (payload: Record<string, unknown>) => apiFetch("/investimentos/vender", { method: "POST", body: JSON.stringify(payload) }),
   atualizarCotacaoAtivo: (ativoId: string, preco: number) =>
     apiFetch(`/investimentos/ativos/${ativoId}/cotacao`, { method: "POST", body: JSON.stringify({ preco }) }),
   buscarCotacaoAtivo: (ativoId: string) => apiFetch(`/investimentos/ativos/${ativoId}/cotacao/auto`, { method: "POST" }),
   atualizarCotacoesInvestimentos: () => apiFetch<{ atualizados: unknown[]; falhas: unknown[] }>("/investimentos/cotacoes/atualizar", { method: "POST" }),
+  projecaoPatrimonioInvestimentos: (aporteMensal: number, taxaAnual: number, meses: number) =>
+    apiFetch<Array<{ mes: number; valor_projetado: number; aporte_acumulado: number; resultado_acumulado: number }>>("/investimentos/projecao", {}, { aporte_mensal: aporteMensal, taxa_anual: taxaAnual, meses }),
 
   dividendos: () => apiFetch<Dividendo[]>("/dividendos"),
   ativosDividendos: () => apiFetch<Ativo[]>("/dividendos/ativos-disponiveis"),
@@ -158,6 +170,11 @@ export const api = {
 
   relGastosCategoria: (ano: number, mes: number) => apiFetch<Array<Record<string, string | number>>>("/relatorios/gastos-por-categoria", {}, { ano, mes }),
   relOrcadoRealizado: (ano: number, mes: number) => apiFetch<OrcamentoLinha[]>("/relatorios/orcado-vs-realizado", {}, { ano, mes }),
+  relGastosMetodo: (ano: number, mes: number) => apiFetch<Array<{ metodo: string; valor: number; percentual: number }>>("/relatorios/gastos-por-metodo", {}, { ano, mes }),
+  relEvolucaoMensal: (anoInicio: number, mesInicio: number, anoFim: number, mesFim: number) =>
+    apiFetch<Array<{ ano: number; mes: number; receita: number; gasto: number; investimento: number; saldo: number }>>("/relatorios/evolucao-mensal", {}, { ano_inicio: anoInicio, mes_inicio: mesInicio, ano_fim: anoFim, mes_fim: mesFim }),
+  relInsights: (ano: number, mes: number) =>
+    apiFetch<Array<{ tipo: "CRITICO" | "ATENCAO" | "BOM" | "INSIGHT"; prioridade: number; mensagem: string; acao?: string }>>("/relatorios/insights", {}, { ano, mes }),
 
   exportarBackup: () => apiFetch<{ arquivo: string }>("/configuracoes/backup/exportar", { method: "POST" }),
   diagnostico: () => apiFetch<Diagnostico>("/configuracoes/diagnostico"),

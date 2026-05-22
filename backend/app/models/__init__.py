@@ -22,6 +22,7 @@ from app.models.conta_futura import ContaFutura
 from app.models.cotacao import CompraDolar, Cotacao
 from app.models.dividendo import Dividendo
 from app.models.extrato_dolar import ExtratoDolar
+from app.models.historico_investimento import HistoricoInvestimentoMensal
 from app.models.investimento import Ativo, MovimentoInvestimento
 from app.models.lancamento import Lancamento
 from app.models.meta import Meta
@@ -44,6 +45,7 @@ __all__ = [
     "Dividendo",
     "EscopoOrcamento",
     "ExtratoDolar",
+    "HistoricoInvestimentoMensal",
     "Lancamento",
     "Meta",
     "MetodoPagamento",

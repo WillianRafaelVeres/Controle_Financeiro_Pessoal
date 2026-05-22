@@ -8,17 +8,22 @@ from sqlmodel import Session, select
 
 from app.models.base import Moeda, TipoAtivo, TipoLancamento, TipoMovimentoDolar, TipoMovimentoInvestimento
 from app.models.cotacao import Cotacao
+from app.models.dividendo import Dividendo
+from app.models.historico_investimento import HistoricoInvestimentoMensal
 from app.models.investimento import Ativo, MovimentoInvestimento
 from app.models.lancamento import Lancamento
 from app.schemas.investimento_schema import MovimentoInvestimentoCreate
+from app.services.dividendo_service import dividendos_recebidos_brl
 from app.services.exterior_dolar_service import buscar_cotacao_dolar_atual, registrar_movimento_dolar, resumo_dolar, saldo_teorico_usd
 
 
 TIPOS_EXTERIOR = {TipoAtivo.EXTERIOR, TipoAtivo.ACAO_EXTERIOR, TipoAtivo.ETF_EXTERIOR}
-TIPOS_SEM_TICKER = {TipoAtivo.RENDA_FIXA, TipoAtivo.PREVIDENCIA, TipoAtivo.OUTRO}
-TIPOS_OCULTOS_POSICAO = {TipoAtivo.DOLAR_CAIXA}
+TIPOS_CONTA_INVESTIMENTO = {TipoAtivo.CAIXINHA_CDB, TipoAtivo.RESERVA_EMERGENCIA, TipoAtivo.PREVIDENCIA}
+TIPOS_SEM_TICKER = TIPOS_CONTA_INVESTIMENTO | {TipoAtivo.OUTRO}
+TIPOS_OCULTOS_POSICAO = {TipoAtivo.DOLAR_CAIXA, TipoAtivo.OUTRO}
 TIPOS_COTACAO_AUTOMATICA_BR = {TipoAtivo.ACAO_BR, TipoAtivo.FII, TipoAtivo.ETF_BR}
-TIPOS_COTACAO_AUTOMATICA = TIPOS_COTACAO_AUTOMATICA_BR | {TipoAtivo.CRIPTO}
+TIPOS_COTACAO_AUTOMATICA = TIPOS_COTACAO_AUTOMATICA_BR | TIPOS_EXTERIOR | {TipoAtivo.CRIPTO}
+TIPOS_COM_DIVIDENDOS = {TipoAtivo.ACAO_BR, TipoAtivo.FII, TipoAtivo.ETF_BR} | TIPOS_EXTERIOR
 
 COINGECKO_IDS = {
     "BTC": "bitcoin",
@@ -38,6 +43,8 @@ COINGECKO_IDS = {
 }
 
 TIPO_ATIVO_LABELS = {
+    TipoAtivo.CAIXINHA_CDB: "Caixinhas CDB",
+    TipoAtivo.RESERVA_EMERGENCIA: "Reserva de emergencia",
     TipoAtivo.ACAO_BR: "Acao BR",
     TipoAtivo.FII: "FII",
     TipoAtivo.ETF_BR: "ETF BR",
@@ -45,7 +52,7 @@ TIPO_ATIVO_LABELS = {
     TipoAtivo.ACAO_EXTERIOR: "Exterior",
     TipoAtivo.ETF_EXTERIOR: "Exterior",
     TipoAtivo.CRIPTO: "Cripto",
-    TipoAtivo.RENDA_FIXA: "Renda fixa",
+    TipoAtivo.RENDA_FIXA: "Renda fixa/Tesouro",
     TipoAtivo.PREVIDENCIA: "Previdencia",
     TipoAtivo.OUTRO: "Outro",
 }
@@ -83,6 +90,11 @@ def _ultima_cotacao(session: Session, ativo_id: str) -> Cotacao | None:
     ).first()
 
 
+def _dividendos_recebidos(session: Session, ativo_id: str) -> Decimal:
+    dividendos = session.exec(select(Dividendo).where(Dividendo.ativo_id == ativo_id)).all()
+    return sum((dividendo.valor for dividendo in dividendos), Decimal("0.00"))
+
+
 def _candidatos_yahoo(ativo: Ativo) -> list[str]:
     ticker = ativo.ticker.upper().strip()
     if ativo.tipo_ativo in TIPOS_COTACAO_AUTOMATICA_BR:
@@ -90,6 +102,8 @@ def _candidatos_yahoo(ativo: Ativo) -> list[str]:
     if ativo.tipo_ativo == TipoAtivo.CRIPTO:
         ticker_base = ticker.removesuffix("-USD").removesuffix("-BRL")
         return [f"{ticker_base}-USD", ticker]
+    if ativo.tipo_ativo in TIPOS_EXTERIOR:
+        return [ticker]
     return [ticker]
 
 
@@ -248,6 +262,43 @@ def _tipo_grupo(tipo_ativo: TipoAtivo) -> TipoAtivo:
     return tipo_ativo
 
 
+def _registrar_snapshot_mensal(session: Session, desempenho: dict, data_referencia: date | None = None) -> HistoricoInvestimentoMensal:
+    referencia = data_referencia or date.today()
+    snapshot = session.exec(
+        select(HistoricoInvestimentoMensal).where(
+            HistoricoInvestimentoMensal.ano == referencia.year,
+            HistoricoInvestimentoMensal.mes == referencia.month,
+        )
+    ).first()
+    if not snapshot:
+        snapshot = HistoricoInvestimentoMensal(ano=referencia.year, mes=referencia.month)
+    snapshot.patrimonio_atual_brl = Decimal(str(desempenho.get("patrimonio_atual_brl") or "0"))
+    snapshot.total_aportado_brl = Decimal(str(desempenho.get("total_aportado_brl") or "0"))
+    snapshot.lucro_prejuizo_brl = Decimal(str(desempenho.get("lucro_prejuizo_brl") or "0"))
+    snapshot.dividendos_brl = Decimal(str(desempenho.get("dividendos_brl") or "0"))
+    snapshot.rentabilidade_percentual = Decimal(str(desempenho.get("rentabilidade_percentual") or "0"))
+    snapshot.atualizado_em = datetime.now(timezone.utc)
+    session.add(snapshot)
+    session.commit()
+    session.refresh(snapshot)
+    return snapshot
+
+
+def _snapshot_to_dict(snapshot: HistoricoInvestimentoMensal, periodo: str | None = None) -> dict:
+    periodo_label = periodo or f"{snapshot.mes:02d}/{snapshot.ano}"
+    return {
+        "id": snapshot.id,
+        "ano": snapshot.ano,
+        "mes": snapshot.mes,
+        "periodo": periodo_label,
+        "patrimonio_atual_brl": snapshot.patrimonio_atual_brl,
+        "total_aportado_brl": snapshot.total_aportado_brl,
+        "lucro_prejuizo_brl": snapshot.lucro_prejuizo_brl,
+        "dividendos_brl": snapshot.dividendos_brl,
+        "rentabilidade_percentual": snapshot.rentabilidade_percentual,
+    }
+
+
 def _obter_ou_criar_ativo(session: Session, payload: MovimentoInvestimentoCreate) -> Ativo:
     if payload.ativo_id:
         ativo = session.get(Ativo, payload.ativo_id)
@@ -292,6 +343,7 @@ def calcular_posicao(session: Session, ativo_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Ativo nao encontrado.")
     movimentos = session.exec(
         select(MovimentoInvestimento).where(MovimentoInvestimento.ativo_id == ativo_id)
+        .order_by(MovimentoInvestimento.data_movimento, MovimentoInvestimento.criado_em)
     ).all()
     quantidade = Decimal("0.00")
     custo = Decimal("0.00")
@@ -308,8 +360,12 @@ def calcular_posicao(session: Session, ativo_id: str) -> dict:
     custo_atual = max(custo, Decimal("0.00"))
     preco_medio = Decimal("0.00") if quantidade_atual <= 0 else custo_atual / quantidade_atual
     cotacao = _ultima_cotacao(session, ativo_id)
-    preco_atual = cotacao.preco if cotacao else preco_medio
-    valor_atual = quantidade_atual * preco_atual
+    if ativo.tipo_ativo in TIPOS_CONTA_INVESTIMENTO:
+        valor_atual = cotacao.preco if cotacao else custo_atual
+        preco_atual = valor_atual
+    else:
+        preco_atual = cotacao.preco if cotacao else preco_medio
+        valor_atual = quantidade_atual * preco_atual
     return {
         "ativo_id": ativo_id,
         "quantidade_atual": quantidade_atual,
@@ -331,6 +387,15 @@ def listar_posicoes(session: Session) -> list[dict]:
             continue
         posicao = calcular_posicao(session, ativo.id)
         if posicao["quantidade_atual"] > 0:
+            tem_dividendos = _tipo_grupo(ativo.tipo_ativo) in TIPOS_COM_DIVIDENDOS
+            dividendos_recebidos = _dividendos_recebidos(session, ativo.id) if tem_dividendos else Decimal("0.00")
+            valor_aportado = Decimal(str(posicao["valor_total_aportado"]))
+            resultado = Decimal(str(posicao["lucro_prejuizo"]))
+            resultado_com_dividendos = resultado + dividendos_recebidos
+            rentabilidade = Decimal("0.00") if valor_aportado <= 0 else (resultado / valor_aportado) * Decimal("100")
+            rentabilidade_com_dividendos = (
+                Decimal("0.00") if valor_aportado <= 0 else (resultado_com_dividendos / valor_aportado) * Decimal("100")
+            )
             result.append(
                 {
                     **posicao,
@@ -339,17 +404,24 @@ def listar_posicoes(session: Session) -> list[dict]:
                     "tipo_ativo": ativo.tipo_ativo,
                     "moeda": ativo.moeda,
                     "corretora": ativo.corretora,
+                    "rentabilidade_percentual": rentabilidade,
+                    "tem_dividendos": tem_dividendos,
+                    "dividendos_recebidos": dividendos_recebidos,
+                    "lucro_prejuizo_com_dividendos": resultado_com_dividendos,
+                    "rentabilidade_com_dividendos_percentual": rentabilidade_com_dividendos,
                 }
             )
     return result
 
 
-def calcular_desempenho(session: Session) -> dict:
+def calcular_desempenho(session: Session, registrar_historico: bool = True) -> dict:
     posicoes = listar_posicoes(session)
     cotacao_dolar, benchmark_dolar = _cotacao_dolar_desempenho(session)
     patrimonio_atual = Decimal("0.00")
     total_aportado = Decimal("0.00")
     lucro_prejuizo = Decimal("0.00")
+    dividendos_total = Decimal("0.00")
+    lucro_prejuizo_com_dividendos = Decimal("0.00")
     exterior_brl = Decimal("0.00")
     alocacao_tipo: dict[TipoAtivo, dict] = {}
     ativos: list[dict] = []
@@ -363,16 +435,24 @@ def calcular_desempenho(session: Session) -> dict:
         valor_atual_original = Decimal(str(posicao["valor_atual"]))
         valor_aportado_original = Decimal(str(posicao["valor_total_aportado"]))
         resultado_original = Decimal(str(posicao["lucro_prejuizo"]))
+        dividendos_original = Decimal(str(posicao.get("dividendos_recebidos") or "0"))
         valor_atual_brl = valor_atual_original * fator
         valor_aportado_brl = valor_aportado_original * fator
         resultado_brl = resultado_original * fator
+        dividendos_brl = dividendos_recebidos_brl(session, posicao["ativo_id"]) if posicao.get("tem_dividendos") else Decimal("0.00")
+        resultado_com_dividendos_brl = resultado_brl + dividendos_brl
         rentabilidade = Decimal("0.00")
         if valor_aportado_brl > 0:
             rentabilidade = (resultado_brl / valor_aportado_brl) * Decimal("100")
+        rentabilidade_com_dividendos = Decimal("0.00")
+        if valor_aportado_brl > 0:
+            rentabilidade_com_dividendos = (resultado_com_dividendos_brl / valor_aportado_brl) * Decimal("100")
 
         patrimonio_atual += valor_atual_brl
         total_aportado += valor_aportado_brl
         lucro_prejuizo += resultado_brl
+        dividendos_total += dividendos_brl
+        lucro_prejuizo_com_dividendos += resultado_com_dividendos_brl
         if moeda_valor == Moeda.USD.value:
             exterior_brl += valor_atual_brl
 
@@ -402,6 +482,11 @@ def calcular_desempenho(session: Session) -> dict:
                 "total_aportado_brl": valor_aportado_brl,
                 "resultado_brl": resultado_brl,
                 "rentabilidade_percentual": rentabilidade,
+                "dividendos_brl": dividendos_brl,
+                "dividendos_original": dividendos_original,
+                "resultado_com_dividendos_brl": resultado_com_dividendos_brl,
+                "rentabilidade_com_dividendos_percentual": rentabilidade_com_dividendos,
+                "tem_dividendos": bool(posicao.get("tem_dividendos")),
                 "percentual": Decimal("0.00"),
                 "cotacao_automatica": tipo_original in TIPOS_COTACAO_AUTOMATICA,
                 "fonte_cotacao": posicao.get("fonte_cotacao"),
@@ -416,15 +501,21 @@ def calcular_desempenho(session: Session) -> dict:
         ativo["percentual"] = Decimal("0.00") if patrimonio_atual <= 0 else (ativo["valor_atual_brl"] / patrimonio_atual) * Decimal("100")
 
     rentabilidade_carteira = Decimal("0.00") if total_aportado <= 0 else (lucro_prejuizo / total_aportado) * Decimal("100")
+    rentabilidade_carteira_com_dividendos = (
+        Decimal("0.00") if total_aportado <= 0 else (lucro_prejuizo_com_dividendos / total_aportado) * Decimal("100")
+    )
     ativos_ordenados = sorted(ativos, key=lambda item: item["valor_atual_brl"], reverse=True)
     maiores_ganhos = sorted([item for item in ativos if item["resultado_brl"] > 0], key=lambda item: item["resultado_brl"], reverse=True)[:5]
     maiores_perdas = sorted([item for item in ativos if item["resultado_brl"] < 0], key=lambda item: item["resultado_brl"])[:5]
 
-    return {
+    resultado = {
         "patrimonio_atual_brl": patrimonio_atual,
         "total_aportado_brl": total_aportado,
         "lucro_prejuizo_brl": lucro_prejuizo,
         "rentabilidade_percentual": rentabilidade_carteira,
+        "dividendos_brl": dividendos_total,
+        "lucro_prejuizo_com_dividendos_brl": lucro_prejuizo_com_dividendos,
+        "rentabilidade_com_dividendos_percentual": rentabilidade_carteira_com_dividendos,
         "exterior_brl": exterior_brl,
         "alocacao_por_tipo": sorted(alocacao_tipo.values(), key=lambda item: item["valor_atual_brl"], reverse=True),
         "alocacao_por_ativo": ativos_ordenados,
@@ -437,6 +528,29 @@ def calcular_desempenho(session: Session) -> dict:
             "cdi": _buscar_cdi_diario(),
         },
     }
+    if registrar_historico:
+        _registrar_snapshot_mensal(session, resultado)
+    return resultado
+
+
+def listar_historico_desempenho(session: Session, modo: str = "mensal") -> list[dict]:
+    modo_normalizado = (modo or "mensal").lower()
+    if modo_normalizado not in {"mensal", "anual"}:
+        raise HTTPException(status_code=422, detail="Modo deve ser mensal ou anual.")
+
+    calcular_desempenho(session, registrar_historico=True)
+    snapshots = session.exec(
+        select(HistoricoInvestimentoMensal).order_by(HistoricoInvestimentoMensal.ano, HistoricoInvestimentoMensal.mes)
+    ).all()
+    if modo_normalizado == "mensal":
+        return [_snapshot_to_dict(snapshot) for snapshot in snapshots]
+
+    por_ano: dict[int, HistoricoInvestimentoMensal] = {}
+    for snapshot in snapshots:
+        atual = por_ano.get(snapshot.ano)
+        if atual is None or snapshot.mes >= atual.mes:
+            por_ano[snapshot.ano] = snapshot
+    return [_snapshot_to_dict(snapshot, periodo=str(ano)) for ano, snapshot in sorted(por_ano.items())]
 
 
 def comprar(session: Session, payload: MovimentoInvestimentoCreate, commit: bool = True) -> MovimentoInvestimento:
@@ -571,7 +685,7 @@ def atualizar_cotacao_automatica(session: Session, ativo_id: str) -> Cotacao:
     if not ativo or not ativo.ativo or ativo.tipo_ativo in TIPOS_OCULTOS_POSICAO:
         raise HTTPException(status_code=404, detail="Ativo nao encontrado.")
     if ativo.tipo_ativo not in TIPOS_COTACAO_AUTOMATICA:
-        raise HTTPException(status_code=422, detail="Cotacao automatica disponivel apenas para acoes BR, FIIs, ETFs BR e criptos.")
+        raise HTTPException(status_code=422, detail="Cotacao automatica disponivel apenas para acoes BR, FIIs, ETFs BR, exterior e criptos.")
     preco = _buscar_preco_cripto_brl(session, ativo) if ativo.tipo_ativo == TipoAtivo.CRIPTO else _buscar_preco_yahoo(ativo)
     if not preco:
         raise HTTPException(status_code=422, detail="Nao foi possivel encontrar cotacao automatica para este ticker.")

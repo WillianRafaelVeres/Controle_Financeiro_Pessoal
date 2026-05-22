@@ -5,6 +5,7 @@ export type PageKey =
   | "contas_futuras"
   | "orcamento"
   | "cartoes"
+  | "patrimonio"
   | "investimentos"
   | "desempenho"
   | "dividendos"

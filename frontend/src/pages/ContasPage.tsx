@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Landmark, Plus, RefreshCw } from "lucide-react";
+import { Building2, CalendarDays, History, Landmark, Pencil, Plus, Power, RefreshCw, WalletCards } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -7,6 +7,7 @@ import { EmptyState } from "../components/finance/EmptyState";
 import { MoneyInput } from "../components/finance/MoneyInput";
 import { SectionCard } from "../components/finance/SectionCard";
 import { PageHeader } from "../components/layout/PageHeader";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
@@ -67,7 +68,7 @@ export function ContasPage() {
     <div className="space-y-2">
       <PageHeader
         title="Contas"
-        description="Saldos informados manualmente para alimentar Painel e Conciliação."
+        description="Saldos informados manualmente para alimentar Painel e Conciliacao."
         actions={
           <Button
             onClick={() => {
@@ -81,14 +82,14 @@ export function ContasPage() {
         }
       />
 
-      <div className="grid gap-2 md:grid-cols-4">
-        <Summary label="Total em contas" value={formatMoney(total)} />
-        <Summary label="Contas ativas" value={String(ativas.length)} />
-        <Summary label="Entram no saldo" value={String(ativas.filter((conta) => conta.entra_no_saldo_em_contas).length)} />
-        <Summary label="Ultima atualização" value={ultimaAtualizacao ? formatDate(ultimaAtualizacao) : "-"} />
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <Summary label="Saldo em contas" value={formatMoney(total)} subtitle="Contas que entram na conciliacao" tone="green" icon={<WalletCards className="h-4 w-4" />} />
+        <Summary label="Contas ativas" value={String(ativas.length)} subtitle={`${lista.length} cadastrada${lista.length === 1 ? "" : "s"}`} tone="blue" icon={<Landmark className="h-4 w-4" />} />
+        <Summary label="Entram no saldo" value={String(ativas.filter((conta) => conta.entra_no_saldo_em_contas).length)} subtitle="Usadas no saldo em contas" tone="yellow" icon={<RefreshCw className="h-4 w-4" />} />
+        <Summary label="Ultima atualizacao" value={ultimaAtualizacao ? formatDate(ultimaAtualizacao) : "-"} subtitle="Base do saldo informado" tone="neutral" icon={<CalendarDays className="h-4 w-4" />} />
       </div>
 
-      <SectionCard title="Contas cadastradas">
+      <SectionCard title="Contas cadastradas" description="Atualize saldos olhando o app do banco. O sistema nao altera estes valores automaticamente.">
         {lista.length === 0 ? (
           <EmptyState
             icon={<Landmark className="h-6 w-6" />}
@@ -96,57 +97,21 @@ export function ContasPage() {
             description="Cadastre suas contas e informe os saldos olhando seus bancos."
           />
         ) : (
-          <Table>
-            <thead>
-              <tr>
-                <Th>Conta</Th>
-                <Th>Instituição</Th>
-                <Th>Tipo</Th>
-                <Th>Saldo informado</Th>
-                <Th>Moeda</Th>
-                <Th>Conciliação</Th>
-                <Th>Ações</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {lista.map((conta) => (
-                <tr key={conta.id} className={conta.ativa === false ? "opacity-60" : undefined}>
-                  <Td className="font-medium text-slate-950">{conta.nome}</Td>
-                  <Td>{conta.instituicao ?? conta.banco ?? "-"}</Td>
-                  <Td>{tiposConta.find(([key]) => key === conta.tipo_conta)?.[1] ?? conta.tipo_conta ?? "-"}</Td>
-                  <Td>{formatMoney(conta.saldo_atual_informado)}</Td>
-                  <Td>{conta.moeda ?? "BRL"}</Td>
-                  <Td>{conta.entra_no_saldo_em_contas ? "Entra" : "Não entra"}</Td>
-                  <Td>
-                    <div className="flex flex-wrap gap-2">
-                      <Button size="sm" variant="secondary" onClick={() => setSaldoConta(conta)}>
-                        <RefreshCw className="h-4 w-4" />
-                        Atualizar
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          setEditing(conta);
-                          setFormOpen(true);
-                        }}
-                      >
-                        Editar
-                      </Button>
-                      <Button size="sm" variant="secondary" onClick={() => setHistoryConta(conta)}>
-                        Histórico
-                      </Button>
-                      {conta.ativa !== false && (
-                        <Button size="sm" variant="danger" onClick={() => inativar.mutate(conta.id)}>
-                          Inativar
-                        </Button>
-                      )}
-                    </div>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {lista.map((conta) => (
+              <ContaCard
+                key={conta.id}
+                conta={conta}
+                onAtualizar={() => setSaldoConta(conta)}
+                onEditar={() => {
+                  setEditing(conta);
+                  setFormOpen(true);
+                }}
+                onHistorico={() => setHistoryConta(conta)}
+                onInativar={() => inativar.mutate(conta.id)}
+              />
+            ))}
+          </div>
         )}
       </SectionCard>
 
@@ -171,13 +136,13 @@ export function ContasPage() {
         }}
       />
 
-      <Dialog open={Boolean(historyConta)} title="Histórico de saldos" onClose={() => setHistoryConta(null)} className="max-w-3xl">
+      <Dialog open={Boolean(historyConta)} title="Historico de saldos" onClose={() => setHistoryConta(null)} className="max-w-3xl">
         <Table>
           <thead>
             <tr>
               <Th>Data</Th>
               <Th>Saldo</Th>
-              <Th>Observação</Th>
+              <Th>Observacao</Th>
             </tr>
           </thead>
           <tbody>
@@ -195,12 +160,108 @@ export function ContasPage() {
   );
 }
 
-function Summary({ label, value }: { label: string; value: string }) {
+function Summary({
+  label,
+  value,
+  subtitle,
+  tone,
+  icon,
+}: {
+  label: string;
+  value: string;
+  subtitle: string;
+  tone: "green" | "blue" | "yellow" | "neutral";
+  icon: React.ReactNode;
+}) {
+  const toneClass = {
+    green: "bg-brand-500/15 text-brand-400",
+    blue: "bg-blue-500/15 text-blue-300",
+    yellow: "bg-amber-500/15 text-amber-300",
+    neutral: "bg-slate-800 text-slate-300",
+  }[tone];
   return (
-    <section className="rounded-md border border-slate-800 bg-[#111821] p-2.5">
-      <p className="text-[11px] font-medium uppercase text-slate-500">{label}</p>
-      <p className="mt-0.5 text-lg font-semibold text-slate-100">{value}</p>
+    <section className="rounded-md border border-slate-800 bg-[#111821] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium uppercase text-slate-500">{label}</p>
+          <p className="mt-1 text-xl font-semibold text-slate-100">{value}</p>
+          <p className="mt-0.5 truncate text-xs text-slate-500">{subtitle}</p>
+        </div>
+        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${toneClass}`}>{icon}</div>
+      </div>
     </section>
+  );
+}
+
+function ContaCard({
+  conta,
+  onAtualizar,
+  onEditar,
+  onHistorico,
+  onInativar,
+}: {
+  conta: Conta;
+  onAtualizar: () => void;
+  onEditar: () => void;
+  onHistorico: () => void;
+  onInativar: () => void;
+}) {
+  const ativa = conta.ativa !== false;
+  const tipo = tiposConta.find(([key]) => key === conta.tipo_conta)?.[1] ?? conta.tipo_conta ?? "-";
+  const moedaFormatada = conta.moeda === "USD" ? "USD" : conta.moeda === "EUR" ? "EUR" : "BRL";
+  return (
+    <article className={`rounded-md border bg-slate-950/25 p-3 transition hover:border-slate-600 hover:bg-slate-950/40 ${ativa ? "border-slate-800" : "border-slate-800 opacity-60"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-base font-semibold text-slate-100">{conta.nome}</h3>
+            <Badge tone={ativa ? "green" : "neutral"}>{ativa ? "Ativa" : "Inativa"}</Badge>
+          </div>
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+            <Building2 className="h-3.5 w-3.5" />
+            {conta.instituicao ?? conta.banco ?? "Sem instituicao"}
+          </p>
+        </div>
+        <Badge tone={conta.entra_no_saldo_em_contas ? "blue" : "yellow"}>{conta.entra_no_saldo_em_contas ? "Entra no saldo" : "Fora do saldo"}</Badge>
+      </div>
+
+      <div className="mt-4 rounded-md bg-slate-950/50 px-3 py-2">
+        <p className="text-[11px] font-medium uppercase text-slate-500">Saldo informado</p>
+        <p className="mt-0.5 text-2xl font-semibold text-slate-100">{formatMoney(conta.saldo_atual_informado, moedaFormatada)}</p>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-md border border-slate-800 px-2.5 py-2">
+          <p className="text-slate-500">Tipo</p>
+          <p className="mt-0.5 font-medium text-slate-200">{tipo}</p>
+        </div>
+        <div className="rounded-md border border-slate-800 px-2.5 py-2">
+          <p className="text-slate-500">Moeda</p>
+          <p className="mt-0.5 font-medium text-slate-200">{conta.moeda ?? "BRL"}</p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button size="sm" onClick={onAtualizar}>
+          <RefreshCw className="h-4 w-4" />
+          Atualizar saldo
+        </Button>
+        <Button size="sm" variant="secondary" onClick={onEditar}>
+          <Pencil className="h-4 w-4" />
+          Editar
+        </Button>
+        <Button size="sm" variant="secondary" onClick={onHistorico}>
+          <History className="h-4 w-4" />
+          Historico
+        </Button>
+        {ativa && (
+          <Button size="sm" variant="danger" onClick={onInativar}>
+            <Power className="h-4 w-4" />
+            Inativar
+          </Button>
+        )}
+      </div>
+    </article>
   );
 }
 
@@ -257,7 +318,7 @@ function ContaFormDialog({
           <Input value={nome} onChange={(event) => setNome(event.target.value)} required />
         </label>
         <label className="space-y-1">
-          <span className="text-xs font-medium text-slate-500">Instituição</span>
+          <span className="text-xs font-medium text-slate-500">Instituicao</span>
           <Input value={instituicao} onChange={(event) => setInstituicao(event.target.value)} />
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -291,7 +352,7 @@ function ContaFormDialog({
             <MoneyInput value={saldoAtual} onChange={(event) => setSaldoAtual(event.target.value)} />
           </label>
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-700">
+        <label className="flex items-center gap-2 text-sm text-slate-300">
           <input type="checkbox" checked={entra} onChange={(event) => setEntra(event.target.checked)} />
           Entra no saldo em contas
         </label>
@@ -339,7 +400,7 @@ function AtualizarSaldoDialog({
     <Dialog open={Boolean(conta)} title="Atualizar saldo da conta" onClose={onClose}>
       <form className="grid gap-3" onSubmit={submit}>
         <div className="rounded-md bg-slate-950/60 p-2.5 text-[13px] text-slate-400">
-          Saldo atual anterior: <strong className="text-slate-950">{formatMoney(conta?.saldo_atual_informado)}</strong>
+          Saldo atual anterior: <strong className="text-slate-100">{formatMoney(conta?.saldo_atual_informado)}</strong>
         </div>
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-500">Novo saldo informado</span>
@@ -350,7 +411,7 @@ function AtualizarSaldoDialog({
           <Input type="date" value={data} onChange={(event) => setData(event.target.value)} />
         </label>
         <label className="space-y-1">
-          <span className="text-xs font-medium text-slate-500">Observação</span>
+          <span className="text-xs font-medium text-slate-500">Observacao</span>
           <Input value={observacao} onChange={(event) => setObservacao(event.target.value)} />
         </label>
         <div className="flex justify-end gap-2">

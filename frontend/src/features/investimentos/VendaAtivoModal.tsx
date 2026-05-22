@@ -24,7 +24,7 @@ export function VendaAtivoModal({
 }) {
   const [form, setForm] = useState({ ativo_id: "", quantidade: "", preco_unitario: "", taxas: "0", data_movimento: "" });
   const posicao = posicoes.find((item) => item.ativo_id === form.ativo_id);
-  const quantidade = Number(form.quantidade || 0);
+  const quantidade = toNumber(form.quantidade);
   const excede = Boolean(posicao && quantidade > toNumber(posicao.quantidade_atual));
 
   useEffect(() => {
@@ -37,8 +37,8 @@ export function VendaAtivoModal({
     await onSubmit({
       ...form,
       quantidade,
-      preco_unitario: Number(form.preco_unitario),
-      taxas: Number(form.taxas || 0),
+      preco_unitario: toNumber(form.preco_unitario),
+      taxas: toNumber(form.taxas),
       data_movimento: form.data_movimento || null,
     });
     setForm({ ativo_id: "", quantidade: "", preco_unitario: "", taxas: "0", data_movimento: "" });
@@ -62,7 +62,7 @@ export function VendaAtivoModal({
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1">
             <span className="text-xs font-medium text-slate-500">Quantidade a vender</span>
-            <MoneyInput value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} required />
+            <MoneyInput currency={false} decimals={6} preview={false} value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} required />
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium text-slate-500">Preço unitário</span>

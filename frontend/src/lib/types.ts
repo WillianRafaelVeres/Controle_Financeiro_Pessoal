@@ -3,6 +3,8 @@ export type NaturezaCategoria = "GASTO" | "RECEITA" | "INVESTIMENTO";
 export type TipoItemOrcamento = "CATEGORIA" | "SUBCATEGORIA";
 export type TipoMetodo = "PIX" | "DEBITO" | "DINHEIRO" | "BOLETO" | "CARTAO_CREDITO" | "OUTRO";
 export type TipoAtivo =
+  | "CAIXINHA_CDB"
+  | "RESERVA_EMERGENCIA"
   | "RENDA_FIXA"
   | "ACAO_BR"
   | "FII"
@@ -14,6 +16,7 @@ export type TipoAtivo =
   | "DOLAR_CAIXA"
   | "PREVIDENCIA"
   | "OUTRO";
+export type TipoProvento = "DIVIDENDO" | "JCP" | "RENDIMENTO_FII" | "DIVIDENDO_EXTERIOR" | "JUROS_RENDA_FIXA" | "OUTRO";
 
 export interface Categoria {
   id: string;
@@ -224,6 +227,11 @@ export interface Posicao {
   valor_total_aportado: string | number;
   valor_atual: string | number;
   lucro_prejuizo: string | number;
+  rentabilidade_percentual?: string | number;
+  tem_dividendos?: boolean;
+  dividendos_recebidos?: string | number;
+  lucro_prejuizo_com_dividendos?: string | number;
+  rentabilidade_com_dividendos_percentual?: string | number;
   data_cotacao?: string | null;
   fonte_cotacao?: string | null;
 }
@@ -257,6 +265,11 @@ export interface DesempenhoAtivo {
   total_aportado_brl: string | number;
   resultado_brl: string | number;
   rentabilidade_percentual: string | number;
+  dividendos_brl?: string | number;
+  dividendos_original?: string | number;
+  resultado_com_dividendos_brl?: string | number;
+  rentabilidade_com_dividendos_percentual?: string | number;
+  tem_dividendos?: boolean;
   percentual: string | number;
   cotacao_automatica: boolean;
   fonte_cotacao?: string | null;
@@ -268,6 +281,9 @@ export interface DesempenhoInvestimentos {
   total_aportado_brl: string | number;
   lucro_prejuizo_brl: string | number;
   rentabilidade_percentual: string | number;
+  dividendos_brl?: string | number;
+  lucro_prejuizo_com_dividendos_brl?: string | number;
+  rentabilidade_com_dividendos_percentual?: string | number;
   exterior_brl: string | number;
   alocacao_por_tipo: DesempenhoAlocacaoTipo[];
   alocacao_por_ativo: DesempenhoAtivo[];
@@ -279,6 +295,64 @@ export interface DesempenhoInvestimentos {
     ibovespa: DesempenhoBenchmark;
     cdi: DesempenhoBenchmark;
   };
+}
+
+export interface HistoricoDesempenhoInvestimento {
+  id: string;
+  ano: number;
+  mes: number;
+  periodo: string;
+  patrimonio_atual_brl: string | number;
+  total_aportado_brl: string | number;
+  lucro_prejuizo_brl: string | number;
+  dividendos_brl: string | number;
+  rentabilidade_percentual: string | number;
+}
+
+export interface HistoricoProventosPeriodo {
+  ano: number;
+  mes: number;
+  periodo: string;
+  total_brl: string | number;
+  quantidade: number;
+}
+
+export interface HistoricoProventosTipo {
+  tipo_provento: TipoProvento;
+  tipo_label: string;
+  total_brl: string | number;
+  quantidade: number;
+}
+
+export interface HistoricoProventosAtivo {
+  ativo_id: string;
+  ticker: string;
+  nome: string;
+  tipo_ativo: TipoAtivo;
+  tipo_label: string;
+  corretora?: string | null;
+  total_brl: string | number;
+  quantidade: number;
+}
+
+export interface HistoricoProventosClasse {
+  tipo_ativo: TipoAtivo;
+  tipo_label: string;
+  total_brl: string | number;
+  quantidade: number;
+}
+
+export interface HistoricoProventosInvestimentos {
+  modo: "mensal" | "anual";
+  total_brl: string | number;
+  media_periodo_brl: string | number;
+  maior_periodo_brl: string | number;
+  maior_periodo?: string | null;
+  quantidade: number;
+  por_periodo: HistoricoProventosPeriodo[];
+  por_classe: HistoricoProventosClasse[];
+  por_tipo: HistoricoProventosTipo[];
+  por_ativo: HistoricoProventosAtivo[];
 }
 
 export interface ExtratoDolar {
@@ -336,4 +410,8 @@ export interface Dividendo {
   data_recebimento: string;
   valor: string | number;
   moeda: string;
+  valor_brl?: string | number;
+  cotacao_brl?: string | number | null;
+  data_cotacao?: string | null;
+  fonte_cotacao?: string | null;
 }

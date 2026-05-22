@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import httpx
@@ -27,6 +27,7 @@ SAIDAS = {
 }
 
 COTACAO_USD_BRL_URL = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
+COTACAO_USD_BRL_HISTORICO_URL = "https://economia.awesomeapi.com.br/json/daily/USD-BRL/7"
 
 
 def registrar_movimento_dolar(
@@ -169,6 +170,64 @@ def buscar_cotacao_dolar_atual(session: Session) -> dict:
         "data_cotacao": data_cotacao,
         "fonte": "AwesomeAPI",
     }
+
+
+def _data_item_cotacao(item: dict) -> date | None:
+    create_date = item.get("create_date")
+    if create_date:
+        try:
+            return datetime.fromisoformat(str(create_date)).date()
+        except ValueError:
+            pass
+    timestamp = item.get("timestamp")
+    if timestamp:
+        try:
+            return datetime.fromtimestamp(int(timestamp)).date()
+        except (TypeError, ValueError, OSError):
+            pass
+    return None
+
+
+def buscar_cotacao_dolar_data(session: Session, data_referencia: date) -> dict:
+    if data_referencia >= date.today():
+        return buscar_cotacao_dolar_atual(session)
+
+    inicio = (data_referencia - timedelta(days=7)).strftime("%Y%m%d")
+    fim = data_referencia.strftime("%Y%m%d")
+    try:
+        response = httpx.get(
+            COTACAO_USD_BRL_HISTORICO_URL,
+            params={"start_date": inicio, "end_date": fim},
+            timeout=8,
+        )
+        response.raise_for_status()
+        itens = response.json() or []
+        candidatos = []
+        for item in itens:
+            data_item = _data_item_cotacao(item)
+            if data_item and data_item <= data_referencia:
+                candidatos.append((data_item, item))
+        if not candidatos and itens:
+            candidatos.append((data_referencia, itens[0]))
+        if not candidatos:
+            raise ValueError("sem cotacao historica")
+        data_cotacao, item = sorted(candidatos, key=lambda valor: valor[0])[-1]
+        compra = Decimal(str(item.get("bid") or "0"))
+        venda = Decimal(str(item.get("ask") or "0"))
+        cotacao = venda if venda > 0 else compra
+        if cotacao <= 0:
+            raise ValueError("cotacao historica invalida")
+        return {
+            "cotacao_brl": cotacao,
+            "compra_brl": compra,
+            "venda_brl": venda,
+            "variacao_brl": Decimal(str(item.get("varBid") or "0")),
+            "percentual_variacao": Decimal(str(item.get("pctChange") or "0")),
+            "data_cotacao": data_cotacao,
+            "fonte": "AwesomeAPI",
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Nao foi possivel buscar cotacao historica do dolar.") from exc
 
 
 def informar_saldo_real(session: Session, payload: SaldoDolarInformado) -> dict:

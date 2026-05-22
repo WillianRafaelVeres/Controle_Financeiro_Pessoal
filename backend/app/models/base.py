@@ -74,6 +74,8 @@ class EscopoOrcamento(str, Enum):
 
 
 class TipoAtivo(str, Enum):
+    CAIXINHA_CDB = "CAIXINHA_CDB"
+    RESERVA_EMERGENCIA = "RESERVA_EMERGENCIA"
     RENDA_FIXA = "RENDA_FIXA"
     ACAO_BR = "ACAO_BR"
     FII = "FII"

@@ -12,16 +12,17 @@ interface MoneyCardProps {
   tone?: "default" | "green" | "blue" | "red" | "yellow";
   className?: string;
   size?: "sm" | "md";
+  currency?: string;
 }
 
-export function MoneyCard({ title, value, subtitle, variation, icon, tone = "default", className, size = "md" }: MoneyCardProps) {
+export function MoneyCard({ title, value, subtitle, variation, icon, tone = "default", className, size = "md", currency = "BRL" }: MoneyCardProps) {
   return (
     <section className={cn("rounded-md border border-slate-800 bg-[#111821] p-2.5", className)}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-[11px] font-medium uppercase text-slate-500">{title}</p>
           <p className={cn("mt-0.5 font-semibold tracking-normal text-slate-100", size === "md" ? "text-lg" : "text-base")}>
-            {formatMoney(value)}
+            {formatMoney(value, currency)}
           </p>
           {subtitle && <p className="mt-0.5 truncate text-xs text-slate-500">{subtitle}</p>}
         </div>

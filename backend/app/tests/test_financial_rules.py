@@ -9,23 +9,27 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from app import models  # noqa: F401
 from app.models.base import (
     EscopoOrcamento,
+    Moeda,
     NaturezaCategoria,
     StatusContaFutura,
     TipoAtivo,
     TipoItemOrcamento,
     TipoLancamento,
     TipoMetodo,
+    TipoProvento,
 )
 from app.models.cartao import Cartao
 from app.models.categoria import Categoria
 from app.models.compromisso_cartao import CompromissoCartao
 from app.models.conta import Conta
+from app.models.dividendo import Dividendo
 from app.models.investimento import Ativo, MovimentoInvestimento
 from app.models.metodo_pagamento import MetodoPagamento
 from app.models.orcamento import OrcamentoItem, OrcamentoMensal
 from app.models.subcategoria import Subcategoria
 from app.schemas.cartao_schema import PagarFatura
 from app.schemas.compromisso_cartao_schema import SepararCompromisso
+from app.schemas.dividendo_schema import DividendoCreate
 from app.schemas.investimento_schema import MovimentoInvestimentoCreate
 from app.schemas.lancamento_schema import CartaoLancamentoInput, LancamentoCreate, LancamentoUpdate
 from app.schemas.orcamento_schema import OrcamentoAlterar, OrcamentoCreate, OrcamentoItemCreate
@@ -33,6 +37,7 @@ from app.schemas.conta_schema import ContaCreate, ContaSaldoCreate
 from app.schemas.conta_futura_schema import ContaFuturaCreate, PagarContaFutura
 from app.schemas.exterior_dolar_schema import MovimentoDolarCreate
 from app.api.routes.contas import criar as criar_conta_route, atualizar_saldo as atualizar_saldo_conta_route
+from app.api.routes.dividendos import criar as criar_dividendo_route
 from app.services.cartao_service import pagar_fatura, separar_compromisso
 from app.services.conta_futura_service import criar_conta_futura, pagar_conta_futura
 from app.services.investimento_service import (
@@ -41,7 +46,9 @@ from app.services.investimento_service import (
     ativos_para_dividendos,
     atualizar_cotacao_automatica,
     calcular_desempenho,
+    calcular_posicao,
     comprar,
+    listar_historico_desempenho,
     listar_posicoes,
     registrar_cotacao,
     vender,
@@ -68,6 +75,7 @@ from app.services.saldo_service import (
     conciliacao,
 )
 from app.services.exterior_dolar_service import buscar_cotacao_dolar_atual, listar_extrato, registrar_manual, resumo_dolar, saldo_teorico_usd
+from app.services.dividendo_service import listar_historico_proventos
 
 
 @pytest.fixture()
@@ -501,6 +509,166 @@ def test_cotacao_manual_altera_valor_atual_posicao(session: Session):
     assert posicao["lucro_prejuizo"] == Decimal("100.0000")
 
 
+def test_preco_medio_ponderado_considera_compras_e_venda_parcial(session: Session):
+    ativo = Ativo(ticker="BBAS3", nome="Banco do Brasil", tipo_ativo=TipoAtivo.ACAO_BR)
+    session.add(ativo)
+    session.commit()
+    session.refresh(ativo)
+
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=ativo.id,
+            quantidade=Decimal("10.00"),
+            preco_unitario=Decimal("10.00"),
+            data_movimento=date(2026, 5, 1),
+        ),
+    )
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=ativo.id,
+            quantidade=Decimal("10.00"),
+            preco_unitario=Decimal("20.00"),
+            data_movimento=date(2026, 5, 2),
+        ),
+    )
+
+    posicao = calcular_posicao(session, ativo.id)
+    assert posicao["quantidade_atual"] == Decimal("20.00")
+    assert posicao["valor_total_aportado"] == Decimal("300.0000")
+    assert posicao["preco_medio"] == Decimal("15.0000")
+
+    vender(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=ativo.id,
+            quantidade=Decimal("5.00"),
+            preco_unitario=Decimal("30.00"),
+            data_movimento=date(2026, 5, 3),
+        ),
+    )
+
+    posicao = calcular_posicao(session, ativo.id)
+    assert posicao["quantidade_atual"] == Decimal("15.00")
+    assert posicao["valor_total_aportado"] == Decimal("225.000000")
+    assert posicao["preco_medio"] == Decimal("15.0000")
+
+
+def test_posicao_inclui_dividendos_e_retorno_total(session: Session):
+    ativo = Ativo(ticker="BBAS3", nome="Banco do Brasil", tipo_ativo=TipoAtivo.ACAO_BR)
+    session.add(ativo)
+    session.commit()
+    session.refresh(ativo)
+
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=ativo.id,
+            quantidade=Decimal("10.00"),
+            preco_unitario=Decimal("10.00"),
+        ),
+    )
+    registrar_cotacao(session, ativo.id, Decimal("15.00"))
+    session.add(
+        Dividendo(
+            ativo_id=ativo.id,
+            tipo_provento=TipoProvento.DIVIDENDO,
+            data_recebimento=date(2026, 5, 20),
+            valor=Decimal("20.00"),
+        )
+    )
+    session.commit()
+
+    posicao = listar_posicoes(session)[0]
+
+    assert posicao["tem_dividendos"] is True
+    assert posicao["lucro_prejuizo"] == Decimal("50.0000")
+    assert posicao["rentabilidade_percentual"] == Decimal("50.0")
+    assert posicao["dividendos_recebidos"] == Decimal("20.00")
+    assert posicao["lucro_prejuizo_com_dividendos"] == Decimal("70.0000")
+    assert posicao["rentabilidade_com_dividendos_percentual"] == Decimal("70.0")
+
+
+def test_proventos_usd_guardam_valor_brl_historico(session: Session, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.dividendo_service.buscar_cotacao_dolar_data",
+        lambda session, data_referencia: {
+            "cotacao_brl": Decimal("4.90"),
+            "data_cotacao": data_referencia,
+            "fonte": "AwesomeAPI",
+        },
+    )
+    acao = Ativo(ticker="BBAS3", nome="Banco do Brasil", tipo_ativo=TipoAtivo.ACAO_BR)
+    exterior = Ativo(ticker="AAPL", nome="Apple", tipo_ativo=TipoAtivo.EXTERIOR)
+    session.add(acao)
+    session.add(exterior)
+    session.commit()
+    session.refresh(acao)
+    session.refresh(exterior)
+
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=acao.id,
+            quantidade=Decimal("10.00"),
+            preco_unitario=Decimal("10.00"),
+        ),
+    )
+    registrar_manual(
+        session,
+        MovimentoDolarCreate(
+            tipo="ENVIO",
+            valor_brl=Decimal("1000.00"),
+            valor_usd=Decimal("200.00"),
+        ),
+    )
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=exterior.id,
+            quantidade=Decimal("2.00"),
+            preco_unitario=Decimal("20.00"),
+        ),
+    )
+
+    criar_dividendo_route(
+        DividendoCreate(
+            ativo_id=acao.id,
+            tipo_provento=TipoProvento.DIVIDENDO,
+            data_recebimento=date(2026, 5, 5),
+            valor=Decimal("20.00"),
+            moeda=Moeda.BRL,
+        ),
+        session,
+    )
+    dividendo_usd = criar_dividendo_route(
+        DividendoCreate(
+            ativo_id=exterior.id,
+            tipo_provento=TipoProvento.DIVIDENDO_EXTERIOR,
+            data_recebimento=date(2026, 5, 10),
+            valor=Decimal("10.00"),
+            moeda=Moeda.USD,
+        ),
+        session,
+    )
+
+    assert dividendo_usd.valor_brl == Decimal("49.0000")
+    assert dividendo_usd.cotacao_brl == Decimal("4.900000")
+
+    historico = listar_historico_proventos(session, "mensal")
+    assert historico["total_brl"] == Decimal("69.0000")
+    assert historico["por_periodo"][0]["periodo"] == "05/2026"
+    assert historico["por_periodo"][0]["total_brl"] == Decimal("69.0000")
+    exterior_filtrado = listar_historico_proventos(session, "mensal", tipo_ativo=TipoAtivo.EXTERIOR)
+    assert exterior_filtrado["total_brl"] == Decimal("49.0000")
+
+    extrato = listar_extrato(session)
+    movimento_dividendo = next(item for item in extrato if item["tipo"] == "DIVIDENDO_EXTERIOR")
+    assert movimento_dividendo["valor_brl"] == Decimal("49.0000")
+    assert movimento_dividendo["cotacao_efetiva"] == Decimal("4.9000")
+
+
 def test_cotacao_automatica_inclui_etf_br(session: Session, monkeypatch):
     assert {TipoAtivo.ACAO_BR, TipoAtivo.FII, TipoAtivo.ETF_BR}.issubset(TIPOS_COTACAO_AUTOMATICA_BR)
     ativo = Ativo(ticker="BOVA11", nome="iShares Bovespa", tipo_ativo=TipoAtivo.ETF_BR)
@@ -589,6 +757,107 @@ def test_cotacao_automatica_de_cripto_usa_preco_brl(session: Session, monkeypatc
     assert cotacao.preco == Decimal("388416")
 
 
+def test_cotacao_automatica_exterior_usa_ticker_original(session: Session, monkeypatch):
+    assert TipoAtivo.EXTERIOR in TIPOS_COTACAO_AUTOMATICA
+    ativo = Ativo(ticker="AAPL", nome="Apple", tipo_ativo=TipoAtivo.EXTERIOR)
+    session.add(ativo)
+    session.commit()
+    session.refresh(ativo)
+    registrar_manual(
+        session,
+        MovimentoDolarCreate(
+            tipo="ENVIO",
+            valor_brl=Decimal("1000.00"),
+            valor_usd=Decimal("200.00"),
+        ),
+    )
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=ativo.id,
+            quantidade=Decimal("1.00"),
+            preco_unitario=Decimal("10.00"),
+        ),
+    )
+    urls = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"chart": {"result": [{"meta": {"regularMarketPrice": 180.12}}]}}
+
+    def fake_get(url, *args, **kwargs):
+        urls.append(url)
+        return FakeResponse()
+
+    monkeypatch.setattr("app.services.investimento_service.httpx.get", fake_get)
+
+    cotacao = atualizar_cotacao_automatica(session, ativo.id)
+
+    assert cotacao.preco == Decimal("180.12")
+    assert any("/AAPL" in url for url in urls)
+    assert not any("AAPL.SA" in url for url in urls)
+
+
+def test_caixinha_cdb_usa_saldo_atual_como_valor_da_posicao(session: Session):
+    primeira = comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            tipo_ativo=TipoAtivo.CAIXINHA_CDB,
+            corretora="Banco",
+            quantidade=Decimal("1.00"),
+            preco_unitario=Decimal("500.00"),
+        ),
+    )
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=primeira.ativo_id,
+            quantidade=Decimal("1.00"),
+            preco_unitario=Decimal("300.00"),
+        ),
+    )
+    registrar_cotacao(session, primeira.ativo_id, Decimal("850.00"))
+
+    posicao = calcular_posicao(session, primeira.ativo_id)
+
+    assert posicao["valor_total_aportado"] == Decimal("800.0000")
+    assert posicao["valor_atual"] == Decimal("850.00")
+    assert posicao["lucro_prejuizo"] == Decimal("50.0000")
+
+
+def test_reserva_emergencia_funciona_como_conta_de_investimento(session: Session):
+    primeira = comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            tipo_ativo=TipoAtivo.RESERVA_EMERGENCIA,
+            corretora="Reserva",
+            quantidade=Decimal("1.00"),
+            preco_unitario=Decimal("1000.00"),
+        ),
+    )
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=primeira.ativo_id,
+            quantidade=Decimal("1.00"),
+            preco_unitario=Decimal("500.00"),
+        ),
+    )
+    registrar_cotacao(session, primeira.ativo_id, Decimal("1525.00"))
+
+    ativo = session.get(Ativo, primeira.ativo_id)
+    posicao = calcular_posicao(session, primeira.ativo_id)
+
+    assert ativo is not None
+    assert ativo.ticker == "RESERVA_EMERGENCIA_RESERVA"
+    assert posicao["valor_total_aportado"] == Decimal("1500.0000")
+    assert posicao["valor_atual"] == Decimal("1525.00")
+    assert posicao["lucro_prejuizo"] == Decimal("25.0000")
+
+
 def test_desempenho_converte_posicao_usd_por_dolar_atual(session: Session, monkeypatch):
     monkeypatch.setattr(
         "app.services.investimento_service.buscar_cotacao_dolar_atual",
@@ -663,6 +932,14 @@ def test_desempenho_converte_posicao_usd_por_dolar_atual(session: Session, monke
     assert desempenho["exterior_brl"] == Decimal("300.000000")
     assert desempenho["rentabilidade_percentual"] == Decimal("50.0")
     assert desempenho["benchmarks"]["dolar"]["valor"] == Decimal("5.00")
+
+    historico = listar_historico_desempenho(session, "mensal")
+    snapshot = historico[-1]
+    assert snapshot["ano"] == date.today().year
+    assert snapshot["mes"] == date.today().month
+    assert snapshot["patrimonio_atual_brl"] == Decimal("450.00")
+    assert snapshot["total_aportado_brl"] == Decimal("300.00")
+    assert snapshot["lucro_prejuizo_brl"] == Decimal("150.00")
 
 
 def test_compra_sem_ticker_agrupa_por_tipo_e_corretora(session: Session):
@@ -1060,6 +1337,108 @@ def test_gasto_fora_do_planejamento_aparece_como_nao_planejado(session: Session)
     assert nao_planejados[0]["categoria"] == "Lazer"
     assert nao_planejados[0]["subcategoria"] == "Cinema"
     assert nao_planejados[0]["valor_realizado"] == Decimal("80.00")
+
+
+def test_orcamento_categoria_agrega_subitens_e_subcategoria_isola_demais_gastos(session: Session):
+    conta = Conta(nome="Conta", saldo_inicial=Decimal("2000.00"))
+    categoria = Categoria(nome="Moradia")
+    pix = MetodoPagamento(nome="Pix", tipo_metodo=TipoMetodo.PIX)
+    session.add(conta)
+    session.add(categoria)
+    session.add(pix)
+    session.flush()
+    aluguel = Subcategoria(nome="Aluguel", categoria_id=categoria.id)
+    agua = Subcategoria(nome="Agua", categoria_id=categoria.id)
+    session.add(aluguel)
+    session.add(agua)
+    session.commit()
+
+    adicionar_item_orcamento(
+        session,
+        OrcamentoItemCreate(
+            ano=2026,
+            mes=5,
+            tipo_item=TipoItemOrcamento.SUBCATEGORIA,
+            natureza=NaturezaCategoria.GASTO,
+            categoria_id=categoria.id,
+            subcategoria_id=aluguel.id,
+            valor_orcado=Decimal("600.00"),
+        ),
+    )
+    criar_lancamento(
+        session,
+        LancamentoCreate(
+            valor=Decimal("500.00"),
+            tipo=TipoLancamento.GASTO,
+            categoria_id=categoria.id,
+            subcategoria_id=aluguel.id,
+            metodo_pagamento_id=pix.id,
+            conta_id=conta.id,
+            data_lancamento=date(2026, 5, 3),
+        ),
+    )
+    criar_lancamento(
+        session,
+        LancamentoCreate(
+            valor=Decimal("120.00"),
+            tipo=TipoLancamento.GASTO,
+            categoria_id=categoria.id,
+            subcategoria_id=agua.id,
+            metodo_pagamento_id=pix.id,
+            conta_id=conta.id,
+            data_lancamento=date(2026, 5, 4),
+        ),
+    )
+
+    linhas_maio = listar_itens_orcamento_mes(session, 2026, 5)
+    nao_planejados_maio = listar_nao_planejados_mes(session, 2026, 5)
+
+    assert linhas_maio[0]["gasto_real"] == Decimal("500.00")
+    assert len(nao_planejados_maio) == 1
+    assert nao_planejados_maio[0]["subcategoria"] == "Agua"
+    assert nao_planejados_maio[0]["valor_realizado"] == Decimal("120.00")
+
+    adicionar_item_orcamento(
+        session,
+        OrcamentoItemCreate(
+            ano=2026,
+            mes=6,
+            tipo_item=TipoItemOrcamento.CATEGORIA,
+            natureza=NaturezaCategoria.GASTO,
+            categoria_id=categoria.id,
+            valor_orcado=Decimal("800.00"),
+        ),
+    )
+    criar_lancamento(
+        session,
+        LancamentoCreate(
+            valor=Decimal("500.00"),
+            tipo=TipoLancamento.GASTO,
+            categoria_id=categoria.id,
+            subcategoria_id=aluguel.id,
+            metodo_pagamento_id=pix.id,
+            conta_id=conta.id,
+            data_lancamento=date(2026, 6, 3),
+        ),
+    )
+    criar_lancamento(
+        session,
+        LancamentoCreate(
+            valor=Decimal("120.00"),
+            tipo=TipoLancamento.GASTO,
+            categoria_id=categoria.id,
+            subcategoria_id=agua.id,
+            metodo_pagamento_id=pix.id,
+            conta_id=conta.id,
+            data_lancamento=date(2026, 6, 4),
+        ),
+    )
+
+    linhas_junho = listar_itens_orcamento_mes(session, 2026, 6)
+    nao_planejados_junho = listar_nao_planejados_mes(session, 2026, 6)
+
+    assert linhas_junho[0]["gasto_real"] == Decimal("620.00")
+    assert nao_planejados_junho == []
 
 
 def test_investimento_nao_planejado_aparece_separado_de_gasto(session: Session):

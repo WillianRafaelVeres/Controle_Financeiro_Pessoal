@@ -14,8 +14,8 @@ interface DialogProps {
 export function Dialog({ open, title, onClose, className, children }: PropsWithChildren<DialogProps>) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className={cn("w-full max-w-lg rounded-md border border-slate-700 bg-[#111821]", className)}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
+      <div className={cn("w-full max-w-lg animate-[page-enter_160ms_ease-out] rounded-md border border-slate-700 bg-[#111821] shadow-2xl shadow-black/40", className)}>
         <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
           <h2 className="text-sm font-semibold text-slate-100">{title}</h2>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Fechar">

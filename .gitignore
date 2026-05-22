@@ -2,11 +2,18 @@
 __pycache__/
 .pytest_cache/
 *.pyc
+build/
+dist/
+Central Financeira.spec
 
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/node_modules/.tmp/
+frontend/src-tauri/target/
+
+.cargo/
+.rustup/
 
 backend/data/*.db
 backend/data/*.log

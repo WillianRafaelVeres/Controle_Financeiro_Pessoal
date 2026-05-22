@@ -57,6 +57,12 @@ def _ensure_schema_compatibility() -> None:
         add_column_if_missing("extrato_dolar", "valor_brl", "NUMERIC(14, 2) DEFAULT 0 NOT NULL")
         add_column_if_missing("extrato_dolar", "cotacao_efetiva", "NUMERIC(14, 2) DEFAULT 0 NOT NULL")
 
+    if "dividendos" in tables:
+        add_column_if_missing("dividendos", "valor_brl", "NUMERIC(14, 2) DEFAULT 0 NOT NULL")
+        add_column_if_missing("dividendos", "cotacao_brl", "NUMERIC(14, 6)")
+        add_column_if_missing("dividendos", "data_cotacao", "DATE")
+        add_column_if_missing("dividendos", "fonte_cotacao", "VARCHAR(80)")
+
     if "contas_futuras" in tables:
         add_column_if_missing("contas_futuras", "metodo_pagamento_id", "VARCHAR")
 

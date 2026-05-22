@@ -16,6 +16,7 @@ import { IntegracoesPage } from "./pages/IntegracoesPage";
 import { InvestimentosPage } from "./pages/InvestimentosPage";
 import { LancamentosPage } from "./pages/LancamentosPage";
 import { OrcamentoPage } from "./pages/OrcamentoPage";
+import { PatrimonioPage } from "./pages/PatrimonioPage";
 import type { PageKey } from "./pages/pageTypes";
 import { RelatoriosPage } from "./pages/RelatoriosPage";
 
@@ -35,6 +36,7 @@ const pageTitles: Record<PageKey, string> = {
   contas_futuras: "Contas futuras",
   orcamento: "Orçamento",
   cartoes: "Cartões",
+  patrimonio: "Meu patrimonio",
   investimentos: "Investimentos",
   desempenho: "Desempenho",
   dividendos: "Dividendos",
@@ -56,6 +58,8 @@ function CurrentPage({ page }: { page: PageKey }) {
       return <OrcamentoPage />;
     case "cartoes":
       return <CartoesPage />;
+    case "patrimonio":
+      return <PatrimonioPage />;
     case "investimentos":
       return <InvestimentosPage />;
     case "desempenho":

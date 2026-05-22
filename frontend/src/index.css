@@ -4,25 +4,38 @@
 
 :root {
   color: #d8dee9;
-  background: #090d12;
+  background: #080c11;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color-scheme: dark;
   font-size: 14px;
+  --surface: #111821;
+  --surface-soft: #0e151d;
+  --surface-elevated: #151e29;
+  --line: #263345;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #090d12;
+  background:
+    linear-gradient(180deg, rgba(18, 26, 36, 0.86) 0%, rgba(8, 12, 17, 0.98) 38%, #080c11 100%);
   line-height: 1.4;
+}
+
+#root {
+  min-height: 100vh;
 }
 
 button,
@@ -30,6 +43,18 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  user-select: none;
 }
 
 ::selection {
@@ -53,6 +78,32 @@ textarea {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #3b4758;
+}
+
+main > * {
+  animation: page-enter 180ms ease-out both;
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 /* Tema escuro para telas existentes que ainda usam utilitários claros do Tailwind. */
@@ -133,5 +184,5 @@ textarea {
 .shadow-sm,
 .shadow-lg,
 .shadow-xl {
-  box-shadow: none;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2);
 }

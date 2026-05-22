@@ -21,7 +21,7 @@ export function AppShell({
   children,
 }: PropsWithChildren<AppShellProps>) {
   return (
-    <div className="flex min-h-screen bg-[#090d12] text-slate-100">
+    <div className="flex min-h-screen bg-[#080c11] text-slate-100">
       <Sidebar current={current} onNavigate={onNavigate} />
       <div className="flex min-w-0 flex-1 flex-col lg:pl-0">
         <Topbar title={title} backendStatus={backendStatus} onNewLancamento={onNewLancamento} />

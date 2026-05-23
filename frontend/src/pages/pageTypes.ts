@@ -3,6 +3,7 @@ export type PageKey =
   | "lancamentos"
   | "contas"
   | "contas_futuras"
+  | "dinheiro_separado"
   | "orcamento"
   | "cartoes"
   | "patrimonio"

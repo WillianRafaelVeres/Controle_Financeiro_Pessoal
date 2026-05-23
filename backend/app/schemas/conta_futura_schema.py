@@ -10,6 +10,7 @@ class ContaFuturaCreate(SQLModel):
     categoria_id: str
     subcategoria_id: str
     metodo_pagamento_id: str
+    conta_id: str | None = None
     data_vencimento: date | None = None
     observacao: str | None = None
 
@@ -20,6 +21,7 @@ class ContaFuturaUpdate(SQLModel):
     categoria_id: str | None = None
     subcategoria_id: str | None = None
     metodo_pagamento_id: str | None = None
+    conta_id: str | None = None
     data_vencimento: date | None = None
     observacao: str | None = None
 

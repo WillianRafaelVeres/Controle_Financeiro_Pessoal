@@ -1,21 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react";
+import { BarChart3, History, Pencil, RefreshCw, ShieldCheck, Trash2, TrendingDown, TrendingUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { EmptyState } from "../components/finance/EmptyState";
 import { MoneyCard } from "../components/finance/MoneyCard";
+import { MoneyInput } from "../components/finance/MoneyInput";
 import { SectionCard } from "../components/finance/SectionCard";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Button } from "../components/ui/button";
+import { Dialog } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
+import { Table, Td, Th } from "../components/ui/table";
 import { AtivosTable } from "../features/investimentos/AtivosTable";
 import { CompraAtivoModal } from "../features/investimentos/CompraAtivoModal";
 import { VendaAtivoModal } from "../features/investimentos/VendaAtivoModal";
 import { api } from "../lib/api";
-import { formatMoney, formatPercent, toNumber } from "../lib/formatters";
-import { INVESTMENT_TYPE_LABELS, INVESTMENT_TYPE_OPTIONS } from "../lib/investmentProfiles";
-import type { Posicao, TipoAtivo } from "../lib/types";
+import { formatDate, formatMoney, formatPercent, toNumber } from "../lib/formatters";
+import { INVESTMENT_TYPE_LABELS, INVESTMENT_TYPE_OPTIONS, isAccountLikeInvestment } from "../lib/investmentProfiles";
+import type { MovimentoInvestimento, Posicao, TipoAtivo } from "../lib/types";
 import { currentMonth } from "../lib/utils";
 
 function groupVisual(tipo: TipoAtivo) {
@@ -36,6 +39,18 @@ const RESERVA_MESES_KEY = "central-financeira:reserva-emergencia:meses";
 
 function supportsDividendos(tipo: TipoAtivo) {
   return DIVIDEND_TYPES.has(tipo);
+}
+
+function movimentoLabel(tipo: MovimentoInvestimento["tipo_movimento"]) {
+  if (tipo === "COMPRA") return "Compra";
+  if (tipo === "VENDA") return "Venda";
+  if (tipo === "APORTE") return "Aporte";
+  if (tipo === "RESGATE") return "Resgate";
+  return "Ajuste";
+}
+
+function formatQuantity(value: string | number) {
+  return toNumber(value).toLocaleString("pt-BR", { maximumFractionDigits: 6 });
 }
 
 function GroupMetric({ label, children, tone = "default" }: { label: string; children: ReactNode; tone?: "default" | "green" | "red" | "yellow" }) {
@@ -69,6 +84,7 @@ export function InvestimentosPage() {
     queryFn: () => api.planejamentoResumo(month.ano, month.mes),
   });
   const cotacaoDolar = useQuery({ queryKey: ["dolar-cotacao-atual"], queryFn: api.dolarCotacaoAtual, refetchInterval: 60_000, retry: false });
+  const movimentos = useQuery({ queryKey: ["investimentos", "movimentos"], queryFn: api.movimentosInvestimentos });
   const cotacoesAutomaticas = useQuery({
     queryKey: ["investimentos-cotacoes-auto"],
     queryFn: api.atualizarCotacoesInvestimentos,
@@ -77,6 +93,11 @@ export function InvestimentosPage() {
   });
   const comprar = useMutation({ mutationFn: api.comprar, onSuccess: () => queryClient.invalidateQueries() });
   const vender = useMutation({ mutationFn: api.vender, onSuccess: () => queryClient.invalidateQueries() });
+  const atualizarMovimento = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.atualizarMovimentoInvestimento(id, payload),
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
+  const excluirMovimento = useMutation({ mutationFn: api.excluirMovimentoInvestimento, onSuccess: () => queryClient.invalidateQueries() });
   const atualizarCotacoes = useMutation({
     mutationFn: api.atualizarCotacoesInvestimentos,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["posicoes"] }),
@@ -85,6 +106,9 @@ export function InvestimentosPage() {
   const [compraTipoInicial, setCompraTipoInicial] = useState<TipoAtivo | undefined>();
   const [vendaOpen, setVendaOpen] = useState(false);
   const [selectedSell, setSelectedSell] = useState<Posicao | null>(null);
+  const [editingMovimento, setEditingMovimento] = useState<MovimentoInvestimento | null>(null);
+  const [deleteMovimento, setDeleteMovimento] = useState<MovimentoInvestimento | null>(null);
+  const [deleteMovimentoError, setDeleteMovimentoError] = useState("");
   const [reservaMeses, setReservaMeses] = useState(() => localStorage.getItem(RESERVA_MESES_KEY) || "6");
   const dolarCotacao = toNumber(cotacaoDolar.data?.cotacao_brl);
   const gastoProjetadoMes = toNumber(planejamento.data?.gastos_planejados);
@@ -158,6 +182,17 @@ export function InvestimentosPage() {
   function fecharCompra() {
     setCompraOpen(false);
     setCompraTipoInicial(undefined);
+  }
+
+  async function confirmarExclusaoMovimento() {
+    if (!deleteMovimento) return;
+    setDeleteMovimentoError("");
+    try {
+      await excluirMovimento.mutateAsync(deleteMovimento.id);
+      setDeleteMovimento(null);
+    } catch (error) {
+      setDeleteMovimentoError(error instanceof Error ? error.message : "Nao foi possivel excluir a operacao.");
+    }
   }
 
   const resultadoTitle = cards.lucro < 0 ? "Prejuizo" : "Lucro";
@@ -309,6 +344,77 @@ export function InvestimentosPage() {
           </div>
         )}
       </SectionCard>
+      <SectionCard
+        title="Operacoes de investimento"
+        description="Historico de compras, vendas, aportes e resgates. Edicoes aqui atualizam a carteira e o extrato dolar vinculado."
+      >
+        {(movimentos.data?.length ?? 0) === 0 ? (
+          <EmptyState
+            icon={<History className="h-6 w-6" />}
+            title="Nenhuma operacao registrada"
+            description="Compras e vendas de ativos aparecerao aqui para edicao ou exclusao."
+          />
+        ) : (
+          <Table className="min-w-[980px]">
+            <thead>
+              <tr>
+                <Th>Data</Th>
+                <Th>Operacao</Th>
+                <Th>Ativo</Th>
+                <Th>Classe</Th>
+                <Th>Conta/corretora</Th>
+                <Th className="text-right">Quantidade</Th>
+                <Th className="text-right">Preco</Th>
+                <Th className="text-right">Total</Th>
+                <Th className="w-[84px] text-center">Acoes</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {(movimentos.data ?? []).map((movimento) => {
+                const entrada = ["COMPRA", "APORTE", "AJUSTE"].includes(movimento.tipo_movimento);
+                return (
+                  <tr key={movimento.id}>
+                    <Td>{formatDate(movimento.data_movimento)}</Td>
+                    <Td>
+                      <span className={entrada ? "rounded border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-xs font-semibold text-brand-400" : "rounded border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-300"}>
+                        {movimentoLabel(movimento.tipo_movimento)}
+                      </span>
+                    </Td>
+                    <Td>
+                      <p className="font-semibold text-slate-100">{movimento.ticker}</p>
+                      <p className="text-xs text-slate-500">{movimento.nome}</p>
+                    </Td>
+                    <Td>{INVESTMENT_TYPE_LABELS[movimento.tipo_ativo] ?? movimento.tipo_ativo}</Td>
+                    <Td>{movimento.corretora || "-"}</Td>
+                    <Td className="text-right">{isAccountLikeInvestment(movimento.tipo_ativo) ? "-" : formatQuantity(movimento.quantidade)}</Td>
+                    <Td className="text-right">{formatMoney(movimento.preco_unitario, movimento.moeda)}</Td>
+                    <Td className="text-right font-semibold text-slate-100">{formatMoney(movimento.valor_financeiro, movimento.moeda)}</Td>
+                    <Td className="text-center">
+                      <div className="inline-flex items-center gap-1">
+                        <Button size="icon" variant="secondary" title="Editar operacao" aria-label="Editar operacao" onClick={() => setEditingMovimento(movimento)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Excluir operacao"
+                          aria-label="Excluir operacao"
+                          onClick={() => {
+                            setDeleteMovimentoError("");
+                            setDeleteMovimento(movimento);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        )}
+      </SectionCard>
       <CompraAtivoModal open={compraOpen} initialTipoAtivo={compraTipoInicial} onClose={fecharCompra} onSubmit={(payload) => comprar.mutateAsync(payload).then(() => undefined)} />
       <VendaAtivoModal
         open={vendaOpen}
@@ -317,6 +423,157 @@ export function InvestimentosPage() {
         onClose={() => setVendaOpen(false)}
         onSubmit={(payload) => vender.mutateAsync(payload).then(() => undefined)}
       />
+      <MovimentoInvestimentoDialog
+        movimento={editingMovimento}
+        onClose={() => setEditingMovimento(null)}
+        onSubmit={(id, payload) => atualizarMovimento.mutateAsync({ id, payload }).then(() => undefined)}
+      />
+      <Dialog open={deleteMovimento !== null} title="Excluir operacao" onClose={() => setDeleteMovimento(null)}>
+        <div className="space-y-3">
+          <p className="text-sm text-slate-300">
+            A operacao sera removida da carteira. Se ela tiver extrato dolar ou lancamento BRL vinculado, ele sera ajustado junto.
+          </p>
+          {deleteMovimento && (
+            <div className="rounded-md border border-slate-800 bg-slate-950/45 p-3 text-sm">
+              <p className="font-semibold text-slate-100">
+                {movimentoLabel(deleteMovimento.tipo_movimento)} {deleteMovimento.ticker}
+              </p>
+              <p className="mt-1 text-slate-400">
+                {formatDate(deleteMovimento.data_movimento)} · {formatMoney(deleteMovimento.valor_financeiro, deleteMovimento.moeda)}
+              </p>
+            </div>
+          )}
+          {deleteMovimentoError && <div className="rounded-md border border-red-500/30 bg-red-500/10 p-2 text-xs font-medium text-red-300">{deleteMovimentoError}</div>}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setDeleteMovimento(null)}>
+              Cancelar
+            </Button>
+            <Button variant="danger" disabled={excluirMovimento.isPending} onClick={confirmarExclusaoMovimento}>
+              Excluir
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
+  );
+}
+
+function MovimentoInvestimentoDialog({
+  movimento,
+  onClose,
+  onSubmit,
+}: {
+  movimento: MovimentoInvestimento | null;
+  onClose: () => void;
+  onSubmit: (id: string, payload: Record<string, unknown>) => Promise<void>;
+}) {
+  const [form, setForm] = useState({
+    data_movimento: "",
+    quantidade: "",
+    preco_unitario: "",
+    taxas: "",
+    corretora: "",
+    observacao: "",
+  });
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    if (!movimento) return;
+    setForm({
+      data_movimento: movimento.data_movimento,
+      quantidade: String(toNumber(movimento.quantidade)),
+      preco_unitario: String(toNumber(movimento.preco_unitario)),
+      taxas: String(toNumber(movimento.taxas)),
+      corretora: movimento.corretora || "",
+      observacao: movimento.observacao || "",
+    });
+    setErro("");
+    setSalvando(false);
+  }, [movimento]);
+
+  if (!movimento) return null;
+
+  const investimentoConta = isAccountLikeInvestment(movimento.tipo_ativo);
+  const moeda = movimento.moeda || "BRL";
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setErro("");
+    if (!movimento) return;
+    if (!investimentoConta && toNumber(form.quantidade) <= 0) {
+      setErro("Informe uma quantidade maior que zero.");
+      return;
+    }
+    if (toNumber(form.preco_unitario) <= 0) {
+      setErro("Informe um preco maior que zero.");
+      return;
+    }
+    setSalvando(true);
+    try {
+      await onSubmit(movimento.id, {
+        data_movimento: form.data_movimento || null,
+        quantidade: investimentoConta ? toNumber(movimento.quantidade) : toNumber(form.quantidade),
+        preco_unitario: toNumber(form.preco_unitario),
+        taxas: toNumber(form.taxas),
+        corretora: form.corretora.trim() || null,
+        observacao: form.observacao.trim() || null,
+      });
+      onClose();
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : "Nao foi possivel salvar a operacao.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Dialog open={movimento !== null} title="Editar operacao de investimento" onClose={onClose} className="max-w-2xl">
+      <form className="grid gap-3 sm:grid-cols-2" onSubmit={submit}>
+        <div className="rounded-md border border-slate-800 bg-slate-950/45 p-3 sm:col-span-2">
+          <p className="text-sm font-semibold text-slate-100">
+            {movimentoLabel(movimento.tipo_movimento)} {movimento.ticker}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {INVESTMENT_TYPE_LABELS[movimento.tipo_ativo] ?? movimento.tipo_ativo} · valores em {moeda}
+          </p>
+        </div>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-500">Data</span>
+          <Input type="date" value={form.data_movimento} onChange={(event) => setForm({ ...form, data_movimento: event.target.value })} />
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-500">Conta/corretora</span>
+          <Input value={form.corretora} onChange={(event) => setForm({ ...form, corretora: event.target.value })} />
+        </label>
+        {!investimentoConta && (
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-slate-500">Quantidade</span>
+            <MoneyInput currency={false} decimals={6} preview={false} value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} required />
+          </label>
+        )}
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-500">{investimentoConta ? `Valor aportado (${moeda})` : `Preco unitario (${moeda})`}</span>
+          <MoneyInput currency={moeda} value={form.preco_unitario} onChange={(event) => setForm({ ...form, preco_unitario: event.target.value })} required />
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-500">Taxas ({moeda})</span>
+          <MoneyInput currency={moeda} value={form.taxas} onChange={(event) => setForm({ ...form, taxas: event.target.value })} />
+        </label>
+        <label className="space-y-1 sm:col-span-2">
+          <span className="text-xs font-medium text-slate-500">Observacao</span>
+          <Input value={form.observacao} onChange={(event) => setForm({ ...form, observacao: event.target.value })} />
+        </label>
+        {erro && <div className="rounded-md border border-red-500/30 bg-red-500/10 p-2 text-xs font-medium text-red-300 sm:col-span-2">{erro}</div>}
+        <div className="flex justify-end gap-2 sm:col-span-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={salvando}>
+            Salvar
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }

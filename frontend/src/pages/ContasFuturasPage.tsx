@@ -29,13 +29,16 @@ export function ContasFuturasPage() {
     categoria_id: "",
     subcategoria_id: "",
     metodo_pagamento_id: "",
+    conta_id: "",
     data_vencimento: "",
     observacao: "",
   });
   const [pagamento, setPagamento] = useState<ContaFutura | null>(null);
-  const [pagamentoForm, setPagamentoForm] = useState({ metodo_pagamento_id: "", data_pagamento: todayIso(), observacao: "" });
+  const [pagamentoForm, setPagamentoForm] = useState({ metodo_pagamento_id: "", conta_id: "", data_pagamento: todayIso(), observacao: "" });
 
-  const contas = useQuery({ queryKey: ["contas-futuras"], queryFn: () => api.contasFuturas(false) });
+  const contas = useQuery({ queryKey: ["contas", "contas-futuras"], queryFn: () => api.contas(false) });
+  const contasAtivas = (contas.data ?? []).filter((item) => item.ativa !== false);
+  const contasFuturas = useQuery({ queryKey: ["contas-futuras"], queryFn: () => api.contasFuturas(false) });
   const categorias = useQuery({ queryKey: ["categorias", "contas-futuras"], queryFn: () => api.categorias("GASTO", true) });
   const subcategorias = useQuery({ queryKey: ["subcategorias", "contas-futuras"], queryFn: () => api.subcategorias(undefined, true) });
   const metodos = useQuery({ queryKey: ["metodos", "contas-futuras"], queryFn: api.metodos });
@@ -49,8 +52,9 @@ export function ContasFuturasPage() {
       ),
     [form.categoria_id, subcategorias.data],
   );
-  const abertas = (contas.data ?? []).filter((item) => item.status === "ABERTA");
+  const abertas = (contasFuturas.data ?? []).filter((item) => item.status === "ABERTA");
   const totalAberto = abertas.reduce((acc, item) => acc + toNumber(item.valor), 0);
+  const contaNome = (id?: string | null) => contas.data?.find((item) => item.id === id)?.nome ?? "-";
 
   const criar = useMutation({
     mutationFn: api.criarContaFutura,
@@ -73,14 +77,20 @@ export function ContasFuturasPage() {
       categoria_id: form.categoria_id,
       subcategoria_id: form.subcategoria_id,
       metodo_pagamento_id: form.metodo_pagamento_id,
+      conta_id: form.conta_id || null,
       data_vencimento: form.data_vencimento || null,
       observacao: form.observacao.trim() || null,
     });
-    setForm({ descricao: "", valor: "", categoria_id: "", subcategoria_id: "", metodo_pagamento_id: "", data_vencimento: "", observacao: "" });
+    setForm({ descricao: "", valor: "", categoria_id: "", subcategoria_id: "", metodo_pagamento_id: "", conta_id: "", data_vencimento: "", observacao: "" });
   }
 
   function abrirPagamento(item: ContaFutura) {
-    setPagamentoForm({ metodo_pagamento_id: item.metodo_pagamento_id ?? metodosPagamento[0]?.id ?? "", data_pagamento: todayIso(), observacao: "" });
+    setPagamentoForm({
+      metodo_pagamento_id: item.metodo_pagamento_id ?? metodosPagamento[0]?.id ?? "",
+      conta_id: item.conta_id ?? contasAtivas[0]?.id ?? "",
+      data_pagamento: todayIso(),
+      observacao: "",
+    });
     setPagamento(item);
   }
 
@@ -91,6 +101,7 @@ export function ContasFuturasPage() {
       id: pagamento.id,
       payload: {
         metodo_pagamento_id: pagamentoForm.metodo_pagamento_id,
+        conta_id: pagamentoForm.conta_id || null,
         data_pagamento: pagamentoForm.data_pagamento || null,
         observacao: pagamentoForm.observacao.trim() || null,
       },
@@ -153,6 +164,17 @@ export function ContasFuturasPage() {
             </Select>
           </label>
           <label className="space-y-1">
+            <span className="text-xs font-medium text-slate-500">Conta (opcional)</span>
+            <Select value={form.conta_id} onChange={(event) => setForm({ ...form, conta_id: event.target.value })}>
+              <option value="">Nenhuma</option>
+              {contasAtivas.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.nome}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="space-y-1">
             <span className="text-xs font-medium text-slate-500">Metodo</span>
             <Select
               value={form.metodo_pagamento_id}
@@ -188,10 +210,11 @@ export function ContasFuturasPage() {
             <thead>
               <tr>
                 <Th className="w-[110px]">Vencimento</Th>
-                <Th>Conta</Th>
+                <Th>Descricao</Th>
                 <Th className="w-[150px]">Item</Th>
                 <Th className="w-[150px]">Subitem</Th>
                 <Th className="w-[130px]">Metodo</Th>
+                <Th className="w-[130px]">Conta</Th>
                 <Th className="w-[120px] text-right">Valor</Th>
                 <Th className="w-[56px] text-center">Acao</Th>
               </tr>
@@ -208,6 +231,7 @@ export function ContasFuturasPage() {
                   </Td>
                   <Td className="truncate">{subcategoriaNome(item.subcategoria_id)}</Td>
                   <Td className="truncate">{metodoNome(item.metodo_pagamento_id)}</Td>
+                  <Td className="truncate">{contaNome(item.conta_id)}</Td>
                   <Td className="text-right font-medium text-slate-100">{formatMoney(item.valor)}</Td>
                   <Td className="text-center">
                     <Button size="icon" variant="secondary" onClick={() => abrirPagamento(item)} title="Pagar" aria-label="Pagar">
@@ -236,6 +260,17 @@ export function ContasFuturasPage() {
             >
               <option value="">Selecione</option>
               {metodosPagamento.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.nome}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-slate-500">Conta (opcional)</span>
+            <Select value={pagamentoForm.conta_id} onChange={(event) => setPagamentoForm({ ...pagamentoForm, conta_id: event.target.value })}>
+              <option value="">Nenhuma</option>
+              {contasAtivas.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.nome}
                 </option>

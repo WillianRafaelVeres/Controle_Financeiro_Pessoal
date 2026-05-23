@@ -23,12 +23,14 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: hidden;
   background:
     linear-gradient(180deg, rgba(18, 26, 36, 0.86) 0%, rgba(8, 12, 17, 0.98) 38%, #080c11 100%);
   line-height: 1.4;
@@ -36,6 +38,7 @@ body {
 
 #root {
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 button,

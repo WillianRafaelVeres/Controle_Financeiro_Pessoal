@@ -1,10 +1,10 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlmodel import Session, select
 
-from app.models.base import NaturezaCategoria, StatusContaFutura, TipoLancamento, TipoMovimentoInvestimento, month_bounds
+from app.models.base import NaturezaCategoria, StatusContaFutura, TipoConta, TipoLancamento, TipoMovimentoInvestimento, month_bounds
 from app.models.cartao import Cartao
 from app.models.compromisso_cartao import CompromissoCartao
 from app.models.conta import Conta
@@ -21,14 +21,58 @@ def _decimal(value: object) -> Decimal:
     return Decimal(str(value))
 
 
+TIPOS_CONTA_FORA_CONCILIACAO = (TipoConta.CORRETORA, TipoConta.CONTA_EXTERIOR, TipoConta.INVESTIMENTO)
+
+
+def _filtros_contas_saldo_livre():
+    return (
+        Conta.ativa.is_(True),
+        Conta.conta_gasto.is_(True),
+        ~Conta.tipo_conta.in_(TIPOS_CONTA_FORA_CONCILIACAO),
+    )
+
+
 def soma_saldo_inicial_contas_gasto(session: Session) -> Decimal:
     value = session.exec(
-        select(func.sum(Conta.saldo_inicial)).where(Conta.ativa.is_(True), Conta.conta_gasto.is_(True))
+        select(func.sum(Conta.saldo_inicial)).where(*_filtros_contas_saldo_livre())
     ).one()
     return _decimal(value)
 
 
-def soma_lancamentos_contas_gasto(session: Session) -> Decimal:
+def _filtro_envio_dolar_lancamento():
+    return or_(
+        Lancamento.origem_sistema == "DOLAR_ENVIO",
+        and_(
+            Lancamento.origem_sistema.is_(None),
+            Lancamento.categoria_id.is_(None),
+            Lancamento.subcategoria_id.is_(None),
+            Lancamento.metodo_pagamento_id.is_(None),
+            Lancamento.cartao_id.is_(None),
+            Lancamento.caixinha_id.is_(None),
+            or_(
+                Lancamento.observacao.ilike("%dolar%"),
+                Lancamento.observacao.ilike("%exterior%"),
+            ),
+        ),
+    )
+
+
+def soma_lancamentos_contas_gasto(
+    session: Session,
+    incluir_investimentos: bool = True,
+    incluir_envios_dolar: bool = False,
+) -> Decimal:
+    tipos_saida = [TipoLancamento.GASTO, TipoLancamento.SEPARAR]
+    filtros_saida_tipo = [Lancamento.tipo.in_(tipos_saida)]
+    if incluir_investimentos:
+        filtros_saida_tipo.append(Lancamento.tipo == TipoLancamento.INVESTIMENTO)
+    elif incluir_envios_dolar:
+        filtros_saida_tipo.append(
+            and_(
+                Lancamento.tipo == TipoLancamento.INVESTIMENTO,
+                _filtro_envio_dolar_lancamento(),
+            )
+        )
     receitas = session.exec(
         select(func.sum(Lancamento.valor)).where(
             Lancamento.ativo.is_(True),
@@ -42,7 +86,7 @@ def soma_lancamentos_contas_gasto(session: Session) -> Decimal:
             Lancamento.ativo.is_(True),
             Lancamento.afeta_saldo_livre.is_(True),
             Lancamento.transferencia_interna.is_(False),
-            Lancamento.tipo.in_([TipoLancamento.GASTO, TipoLancamento.INVESTIMENTO]),
+            or_(*filtros_saida_tipo),
         )
     ).one()
     return _decimal(receitas) - _decimal(saidas)
@@ -78,10 +122,18 @@ def calcular_saldo_livre(session: Session) -> Decimal:
     )
 
 
+def calcular_saldo_livre_conciliacao(session: Session) -> Decimal:
+    return (
+        soma_saldo_inicial_contas_gasto(session)
+        + soma_lancamentos_contas_gasto(session, incluir_investimentos=False, incluir_envios_dolar=True)
+        - calcular_reservado_contas_futuras(session)
+    )
+
+
 def calcular_saldo_em_contas(session: Session) -> Decimal:
     value = session.exec(
         select(func.sum(Conta.saldo_atual_informado)).where(
-            Conta.ativa.is_(True),
+            *_filtros_contas_saldo_livre(),
             Conta.entra_no_saldo_em_contas.is_(True),
         )
     ).one()
@@ -93,7 +145,7 @@ def calcular_reservado_cartao(session: Session, cartao_id: str | None = None) ->
         Lancamento.ativo.is_(True),
         Lancamento.tipo == TipoLancamento.GASTO,
         Lancamento.cartao_id.is_not(None),
-        Lancamento.afeta_saldo_livre.is_(True),
+        or_(Lancamento.afeta_saldo_livre.is_(True), Lancamento.caixinha_id.is_not(None)),
     ]
     filtros_pagamento = []
     if cartao_id:
@@ -116,6 +168,26 @@ def calcular_reservado_contas_futuras(session: Session) -> Decimal:
     return _decimal(value)
 
 
+def calcular_reservado_caixinhas(session: Session) -> Decimal:
+    separados = session.exec(
+        select(func.sum(Lancamento.valor)).where(
+            Lancamento.ativo.is_(True),
+            Lancamento.caixinha_id.is_not(None),
+            Lancamento.tipo == TipoLancamento.SEPARAR,
+        )
+    ).one()
+    usados = session.exec(
+        select(func.sum(Lancamento.valor)).where(
+            Lancamento.ativo.is_(True),
+            Lancamento.caixinha_id.is_not(None),
+            Lancamento.tipo == TipoLancamento.GASTO,
+            Lancamento.afeta_saldo_livre.is_(False),
+            Lancamento.afeta_orcamento.is_(False),
+        )
+    ).one()
+    return max(_decimal(separados) - _decimal(usados), Decimal("0.00"))
+
+
 def calcular_compromisso_futuro_cartao(session: Session, cartao_id: str | None = None) -> Decimal:
     filtros = [CompromissoCartao.ativo.is_(True), CompromissoCartao.valor_em_aberto > 0]
     if cartao_id:
@@ -128,7 +200,7 @@ def calcular_gasto_real_mes(session: Session, ano: int, mes: int, categoria_id: 
     inicio, fim = month_bounds(ano, mes)
     filtros = [
         Lancamento.ativo.is_(True),
-        Lancamento.tipo == TipoLancamento.GASTO,
+        Lancamento.tipo.in_([TipoLancamento.GASTO, TipoLancamento.SEPARAR]),
         Lancamento.afeta_orcamento.is_(True),
         Lancamento.transferencia_interna.is_(False),
         Lancamento.data_lancamento >= inicio,
@@ -218,11 +290,11 @@ def resumo_cartoes(session: Session) -> list[dict]:
 
 def conciliacao(session: Session) -> dict:
     saldo_em_contas = calcular_saldo_em_contas(session)
-    saldo_livre = calcular_saldo_livre(session)
+    saldo_livre = calcular_saldo_livre_conciliacao(session)
     reservado_cartao = calcular_reservado_cartao(session)
     reservado_contas_futuras = calcular_reservado_contas_futuras(session)
-    reservado_metas = Decimal("0.00")
-    saldo_explicado = saldo_livre + reservado_cartao + reservado_contas_futuras + reservado_metas
+    reservado_caixinhas = calcular_reservado_caixinhas(session)
+    saldo_explicado = saldo_livre + reservado_cartao + reservado_contas_futuras + reservado_caixinhas
     diferenca = saldo_em_contas - saldo_explicado
     return {
         "saldo_em_contas": saldo_em_contas,
@@ -230,7 +302,8 @@ def conciliacao(session: Session) -> dict:
         "saldo_livre": saldo_livre,
         "reservado_cartao": reservado_cartao,
         "reservado_contas_futuras": reservado_contas_futuras,
-        "reservado_metas": reservado_metas,
+        "reservado_caixinhas": reservado_caixinhas,
+        "reservado_metas": Decimal("0.00"),
         "saldo_explicado": saldo_explicado,
         "saldo_final": saldo_explicado,
         "diferenca_nao_explicada": diferenca,

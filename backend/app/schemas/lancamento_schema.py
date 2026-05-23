@@ -21,6 +21,8 @@ class LancamentoCreate(SQLModel):
     subcategoria_id: str | None = None
     metodo_pagamento_id: str | None = None
     conta_id: str | None = None
+    caixinha_id: str | None = None
+    caixinha_nome: str | None = None
     observacao: str | None = None
     data_lancamento: date | None = None
     transferencia_interna: bool = False
@@ -35,6 +37,8 @@ class LancamentoUpdate(SQLModel):
     subcategoria_id: str | None = None
     metodo_pagamento_id: str | None = None
     conta_id: str | None = None
+    caixinha_id: str | None = None
+    caixinha_nome: str | None = None
     observacao: str | None = None
     data_lancamento: date | None = None
     movimento_investimento: MovimentoInvestimentoCreate | None = None

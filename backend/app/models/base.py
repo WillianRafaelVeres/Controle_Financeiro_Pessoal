@@ -30,6 +30,7 @@ class TipoLancamento(str, Enum):
     INVESTIMENTO = "INVESTIMENTO"
     DIVIDENDO = "DIVIDENDO"
     AJUSTE = "AJUSTE"
+    SEPARAR = "SEPARAR"
 
 
 class TipoMetodo(str, Enum):

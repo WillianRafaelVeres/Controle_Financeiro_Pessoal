@@ -5,7 +5,13 @@ from decimal import Decimal
 from app.core.database import get_session
 from app.models.base import TipoAtivo, TipoProvento
 from app.models.investimento import Ativo, MovimentoInvestimento
-from app.schemas.investimento_schema import AtivoCreate, AtivoUpdate, CotacaoAtivoCreate, MovimentoInvestimentoCreate
+from app.schemas.investimento_schema import (
+    AtivoCreate,
+    AtivoUpdate,
+    CotacaoAtivoCreate,
+    MovimentoInvestimentoCreate,
+    MovimentoInvestimentoUpdate,
+)
 from app.services.dividendo_service import listar_historico_proventos
 from app.services.relatorio_service import projetar_patrimonio
 from app.services.investimento_service import (
@@ -13,7 +19,10 @@ from app.services.investimento_service import (
     atualizar_cotacoes_automaticas,
     calcular_desempenho,
     comprar,
+    atualizar_movimento,
+    excluir_movimento,
     listar_historico_desempenho,
+    listar_movimentos,
     listar_posicoes,
     registrar_cotacao,
     vender,
@@ -116,8 +125,22 @@ def vender_ativo(payload: MovimentoInvestimentoCreate, session: Session = Depend
 
 
 @router.get("/movimentos")
-def movimentos(session: Session = Depends(get_session)) -> list[MovimentoInvestimento]:
-    return session.exec(select(MovimentoInvestimento).order_by(MovimentoInvestimento.data_movimento.desc())).all()
+def movimentos(session: Session = Depends(get_session)) -> list[dict]:
+    return listar_movimentos(session)
+
+
+@router.put("/movimentos/{movimento_id}")
+def atualizar_movimento_investimento(
+    movimento_id: str,
+    payload: MovimentoInvestimentoUpdate,
+    session: Session = Depends(get_session),
+) -> dict:
+    return atualizar_movimento(session, movimento_id, payload)
+
+
+@router.delete("/movimentos/{movimento_id}", status_code=204)
+def excluir_movimento_investimento(movimento_id: str, session: Session = Depends(get_session)) -> None:
+    excluir_movimento(session, movimento_id)
 
 
 @router.get("/projecao")

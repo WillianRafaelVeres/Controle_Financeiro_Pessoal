@@ -38,5 +38,14 @@ class MovimentoInvestimentoCreate(SQLModel):
     observacao: str | None = None
 
 
+class MovimentoInvestimentoUpdate(SQLModel):
+    data_movimento: date | None = None
+    quantidade: Decimal | None = None
+    preco_unitario: Decimal | None = None
+    taxas: Decimal | None = None
+    corretora: str | None = None
+    observacao: str | None = None
+
+
 class CotacaoAtivoCreate(SQLModel):
     preco: Decimal

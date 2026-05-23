@@ -12,6 +12,7 @@ from app.models.compromisso_cartao import CompromissoCartao
 from app.models.lancamento import Lancamento
 from app.models.metodo_pagamento import MetodoPagamento
 from app.models.subcategoria import Subcategoria
+from app.services.caixinha_service import obter_ou_criar_caixinha
 from app.services.investimento_service import comprar
 from app.schemas.lancamento_schema import LancamentoCreate, LancamentoUpdate
 
@@ -34,7 +35,7 @@ def _get_method(session: Session, metodo_id: str | None) -> MetodoPagamento | No
 
 
 def _natureza_esperada(tipo: TipoLancamento) -> NaturezaCategoria | None:
-    if tipo == TipoLancamento.GASTO:
+    if tipo in {TipoLancamento.GASTO, TipoLancamento.SEPARAR}:
         return NaturezaCategoria.GASTO
     if tipo == TipoLancamento.RECEITA:
         return NaturezaCategoria.RECEITA
@@ -108,6 +109,8 @@ def criar_lancamento(session: Session, payload: LancamentoCreate) -> Lancamento:
 
     if payload.tipo == TipoLancamento.GASTO and not payload.metodo_pagamento_id and not payload.cartao:
         raise HTTPException(status_code=422, detail="Gasto exige metodo de pagamento.")
+    if payload.tipo == TipoLancamento.SEPARAR and payload.cartao:
+        raise HTTPException(status_code=422, detail="Separar dinheiro nao usa cartao de credito.")
     if payload.tipo != TipoLancamento.INVESTIMENTO and payload.movimento_investimento:
         raise HTTPException(status_code=422, detail="Movimento de investimento so pode ser usado com tipo INVESTIMENTO.")
 
@@ -137,7 +140,27 @@ def criar_lancamento(session: Session, payload: LancamentoCreate) -> Lancamento:
         return _criar_lancamento_cartao(session, payload, data_lancamento, metodo)
 
     investimento_exterior = _movimento_investimento_exterior(session, payload)
-    afeta_orcamento = payload.tipo in {TipoLancamento.GASTO, TipoLancamento.RECEITA, TipoLancamento.INVESTIMENTO} and not investimento_exterior
+    afeta_orcamento = payload.tipo in {
+        TipoLancamento.GASTO,
+        TipoLancamento.RECEITA,
+        TipoLancamento.INVESTIMENTO,
+        TipoLancamento.SEPARAR,
+    } and not investimento_exterior
+    caixinha_id = payload.caixinha_id
+    if payload.tipo == TipoLancamento.SEPARAR:
+        if not payload.categoria_id or not payload.subcategoria_id:
+            raise HTTPException(status_code=422, detail="Separar dinheiro exige categoria e subcategoria.")
+        nome_caixinha = payload.caixinha_nome or payload.observacao or subcategoria_snapshot or categoria_snapshot or "Caixinha"
+        caixinha = obter_ou_criar_caixinha(
+            session,
+            nome_caixinha,
+            payload.categoria_id,
+            payload.subcategoria_id,
+            None,
+            None,
+            payload.observacao,
+        )
+        caixinha_id = caixinha.id
     lancamento = Lancamento(
         data_lancamento=data_lancamento,
         tipo=payload.tipo,
@@ -147,8 +170,9 @@ def criar_lancamento(session: Session, payload: LancamentoCreate) -> Lancamento:
         subcategoria_id=payload.subcategoria_id,
         categoria_nome_snapshot=categoria_snapshot,
         subcategoria_nome_snapshot=subcategoria_snapshot,
-        metodo_pagamento_id=payload.metodo_pagamento_id,
-        conta_id=payload.conta_id,
+        metodo_pagamento_id=None if payload.tipo == TipoLancamento.SEPARAR else payload.metodo_pagamento_id,
+        conta_id=None if payload.tipo == TipoLancamento.SEPARAR else payload.conta_id,
+        caixinha_id=caixinha_id,
         observacao=payload.observacao,
         afeta_saldo_livre=not investimento_exterior,
         afeta_orcamento=afeta_orcamento,
@@ -164,7 +188,10 @@ def criar_lancamento(session: Session, payload: LancamentoCreate) -> Lancamento:
                 "observacao": payload.movimento_investimento.observacao or payload.observacao,
             }
         )
-        comprar(session, movimento, commit=False)
+        movimento_criado = comprar(session, movimento, commit=False)
+        lancamento.origem_sistema = "INVESTIMENTO_COMPRA"
+        lancamento.referencia_id = movimento_criado.id
+        session.add(lancamento)
 
     session.commit()
     session.refresh(lancamento)
@@ -244,6 +271,7 @@ def atualizar_lancamento(session: Session, lancamento_id: str, payload: Lancamen
         raise HTTPException(status_code=404, detail="Lancamento nao encontrado.")
     data = payload.model_dump(exclude_unset=True)
     data.pop("movimento_investimento", None)
+    caixinha_nome = data.pop("caixinha_nome", None)
 
     if (lancamento.cartao_id or lancamento.compromisso_cartao_id) and data.get("tipo", lancamento.tipo) != TipoLancamento.GASTO:
         raise HTTPException(status_code=422, detail="Lancamento de cartao deve permanecer como gasto.")
@@ -290,9 +318,31 @@ def atualizar_lancamento(session: Session, lancamento_id: str, payload: Lancamen
     categoria_snapshot, subcategoria_snapshot = _validar_categoria_lancamento(
         session, lancamento.tipo, lancamento.categoria_id, lancamento.subcategoria_id
     )
+    if lancamento.tipo == TipoLancamento.SEPARAR:
+        lancamento.metodo_pagamento_id = None
+        lancamento.conta_id = None
+        if not lancamento.categoria_id or not lancamento.subcategoria_id:
+            raise HTTPException(status_code=422, detail="Separar dinheiro exige categoria e subcategoria.")
+        if not lancamento.caixinha_id:
+            nome_caixinha = caixinha_nome or lancamento.observacao or subcategoria_snapshot or categoria_snapshot or "Caixinha"
+            caixinha = obter_ou_criar_caixinha(
+                session,
+                nome_caixinha,
+                lancamento.categoria_id,
+                lancamento.subcategoria_id,
+                None,
+                None,
+                lancamento.observacao,
+            )
+            lancamento.caixinha_id = caixinha.id
     lancamento.categoria_nome_snapshot = categoria_snapshot
     lancamento.subcategoria_nome_snapshot = subcategoria_snapshot
-    lancamento.afeta_orcamento = lancamento.tipo in {TipoLancamento.GASTO, TipoLancamento.RECEITA, TipoLancamento.INVESTIMENTO} and not lancamento.transferencia_interna
+    lancamento.afeta_orcamento = lancamento.tipo in {
+        TipoLancamento.GASTO,
+        TipoLancamento.RECEITA,
+        TipoLancamento.INVESTIMENTO,
+        TipoLancamento.SEPARAR,
+    } and not lancamento.transferencia_interna
 
     if lancamento.compromisso_cartao_id:
         compromisso = session.get(CompromissoCartao, lancamento.compromisso_cartao_id)

@@ -38,7 +38,7 @@ def gastos_por_metodo(session: Session, ano: int, mes: int) -> list[dict]:
     valor_total = session.exec(
         select(func.sum(Lancamento.valor)).where(
             Lancamento.ativo.is_(True),
-            Lancamento.tipo == TipoLancamento.GASTO,
+            Lancamento.tipo.in_([TipoLancamento.GASTO, TipoLancamento.SEPARAR]),
             Lancamento.afeta_orcamento.is_(True),
             Lancamento.transferencia_interna.is_(False),
             Lancamento.data_lancamento >= inicio,
@@ -52,7 +52,7 @@ def gastos_por_metodo(session: Session, ano: int, mes: int) -> list[dict]:
         valor = session.exec(
             select(func.sum(Lancamento.valor)).where(
                 Lancamento.ativo.is_(True),
-                Lancamento.tipo == TipoLancamento.GASTO,
+                Lancamento.tipo.in_([TipoLancamento.GASTO, TipoLancamento.SEPARAR]),
                 Lancamento.afeta_orcamento.is_(True),
                 Lancamento.transferencia_interna.is_(False),
                 Lancamento.metodo_pagamento_id == metodo.id,
@@ -214,4 +214,3 @@ def gerar_insights(session: Session, ano: int, mes: int) -> list[dict]:
     # Limitar a top 3 insights mais importantes
     insights.sort(key=lambda x: x["prioridade"])
     return insights[:3]
-

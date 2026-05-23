@@ -41,6 +41,8 @@ export function CompraAtivoModal({
   });
   const [ativoId, setAtivoId] = useState("");
   const [sugestoesOpen, setSugestoesOpen] = useState(false);
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
   const tipoAtivo = form.tipo_ativo;
   const tickerObrigatorio = needsTicker(tipoAtivo);
   const investimentoConta = isAccountLikeInvestment(tipoAtivo);
@@ -109,8 +111,17 @@ export function CompraAtivoModal({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    setErro("");
     const corretora = form.corretora.trim();
     if (!ativoId && tickerObrigatorio && !form.ticker.trim()) return;
+    if (!investimentoConta && toNumber(form.quantidade) <= 0) {
+      setErro("Informe uma quantidade maior que zero.");
+      return;
+    }
+    if (toNumber(form.preco_unitario) <= 0) {
+      setErro("Informe um preco maior que zero.");
+      return;
+    }
 
     const payload = {
       ...(ativoId
@@ -125,12 +136,23 @@ export function CompraAtivoModal({
       observacao: form.observacao.trim() || null,
     };
 
-    await onSubmit(payload);
-
-    saveInvestmentBrokerPref(tipoAtivo, corretora);
-    setAtivoId("");
-    setForm({ ...form, ticker: "", corretora, quantidade: "", preco_unitario: "", observacao: "" });
-    onClose();
+    setSalvando(true);
+    try {
+      await onSubmit(payload);
+      saveInvestmentBrokerPref(tipoAtivo, corretora);
+      setAtivoId("");
+      setForm({ ...form, ticker: "", corretora, quantidade: "", preco_unitario: "", observacao: "" });
+      onClose();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Nao foi possivel comprar o ativo.";
+      if (/insuficiente/i.test(message)) {
+        setErro("Saldo insuficiente em USD para esta compra. Verifique seu saldo em conta dolar.");
+      } else {
+        setErro(message);
+      }
+    } finally {
+      setSalvando(false);
+    }
   }
 
   return (
@@ -192,21 +214,32 @@ export function CompraAtivoModal({
           </label>
         )}
         <label className="space-y-1">
-          <span className="text-xs font-medium text-slate-500">{investimentoConta ? "Valor aportado" : "Preco unitario"}</span>
-          <MoneyInput value={form.preco_unitario} onChange={(event) => setForm({ ...form, preco_unitario: event.target.value })} required />
+          <span className="text-xs font-medium text-slate-500">
+            {investimentoConta ? `Valor aportado (${moeda})` : `Preco unitario (${moeda})`}
+          </span>
+          <MoneyInput currency={moeda} value={form.preco_unitario} onChange={(event) => setForm({ ...form, preco_unitario: event.target.value })} required />
         </label>
         <label className="space-y-1 sm:col-span-2">
           <span className="text-xs font-medium text-slate-500">Observacao</span>
           <Input value={form.observacao} onChange={(event) => setForm({ ...form, observacao: event.target.value })} />
         </label>
         <div className="rounded-md border border-slate-800 bg-slate-950/50 p-2 text-xs text-slate-500 sm:col-span-2">
-          Moeda definida automaticamente: {moeda}. Data de compra: hoje.
+          {moeda === "USD"
+            ? "Informe preco e total em USD (dolares). O movimento e registrado no extrato Exterior/Dolar automaticamente."
+            : `Moeda definida automaticamente: ${moeda}. Data de compra: hoje.`}
         </div>
+        {erro && (
+          <div className="rounded-md border border-red-500/30 bg-red-500/10 p-2 text-xs font-medium text-red-300 sm:col-span-2">
+            {erro}
+          </div>
+        )}
         <div className="flex justify-end gap-2 sm:col-span-2">
           <Button variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit">Comprar</Button>
+          <Button type="submit" disabled={salvando}>
+            Comprar
+          </Button>
         </div>
       </form>
     </Dialog>

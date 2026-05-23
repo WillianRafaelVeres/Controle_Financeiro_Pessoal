@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
 from app.core.database import get_session
-from app.schemas.exterior_dolar_schema import MovimentoDolarCreate, SaldoDolarInformado
+from app.schemas.exterior_dolar_schema import MovimentoDolarCreate, MovimentoDolarUpdate, SaldoDolarInformado
 from app.services.exterior_dolar_service import (
+    atualizar_manual,
     buscar_cotacao_dolar_atual,
+    excluir_manual,
     informar_saldo_real,
     listar_extrato,
     registrar_manual,
@@ -27,6 +29,16 @@ def extrato(session: Session = Depends(get_session)) -> list[dict]:
 @router.post("/movimentos")
 def movimento(payload: MovimentoDolarCreate, session: Session = Depends(get_session)):
     return registrar_manual(session, payload)
+
+
+@router.put("/movimentos/{movimento_id}")
+def atualizar_movimento(movimento_id: str, payload: MovimentoDolarUpdate, session: Session = Depends(get_session)):
+    return atualizar_manual(session, movimento_id, payload)
+
+
+@router.delete("/movimentos/{movimento_id}", status_code=204)
+def excluir_movimento(movimento_id: str, session: Session = Depends(get_session)) -> None:
+    excluir_manual(session, movimento_id)
 
 
 @router.post("/informar-saldo")

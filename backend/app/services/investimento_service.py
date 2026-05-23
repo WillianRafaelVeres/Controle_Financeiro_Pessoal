@@ -6,13 +6,14 @@ import httpx
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from app.models.base import Moeda, TipoAtivo, TipoLancamento, TipoMovimentoDolar, TipoMovimentoInvestimento
+from app.models.base import Moeda, TipoAtivo, TipoLancamento, TipoMovimentoDolar, TipoMovimentoInvestimento, now_utc
 from app.models.cotacao import Cotacao
 from app.models.dividendo import Dividendo
+from app.models.extrato_dolar import ExtratoDolar
 from app.models.historico_investimento import HistoricoInvestimentoMensal
 from app.models.investimento import Ativo, MovimentoInvestimento
 from app.models.lancamento import Lancamento
-from app.schemas.investimento_schema import MovimentoInvestimentoCreate
+from app.schemas.investimento_schema import MovimentoInvestimentoCreate, MovimentoInvestimentoUpdate
 from app.services.dividendo_service import dividendos_recebidos_brl
 from app.services.exterior_dolar_service import buscar_cotacao_dolar_atual, registrar_movimento_dolar, resumo_dolar, saldo_teorico_usd
 
@@ -337,6 +338,303 @@ def _obter_ou_criar_ativo(session: Session, payload: MovimentoInvestimentoCreate
     return ativo
 
 
+def _movimento_entrada(tipo_movimento: TipoMovimentoInvestimento) -> bool:
+    return tipo_movimento in [
+        TipoMovimentoInvestimento.COMPRA,
+        TipoMovimentoInvestimento.APORTE,
+        TipoMovimentoInvestimento.AJUSTE,
+    ]
+
+
+def _movimento_saida(tipo_movimento: TipoMovimentoInvestimento) -> bool:
+    return tipo_movimento in [TipoMovimentoInvestimento.VENDA, TipoMovimentoInvestimento.RESGATE]
+
+
+def _valor_financeiro_compra(movimento: MovimentoInvestimento) -> Decimal:
+    return movimento.valor_total + movimento.taxas
+
+
+def _valor_financeiro_venda(movimento: MovimentoInvestimento) -> Decimal:
+    return max(movimento.valor_total - movimento.taxas, Decimal("0.00"))
+
+
+def _buscar_extrato_vinculado(session: Session, movimento_id: str) -> ExtratoDolar | None:
+    return session.exec(
+        select(ExtratoDolar).where(
+            ExtratoDolar.ativo.is_(True),
+            ExtratoDolar.origem == "INVESTIMENTO",
+            ExtratoDolar.referencia_id == movimento_id,
+        )
+    ).first()
+
+
+def _buscar_lancamento_investimento_vinculado(
+    session: Session,
+    movimento: MovimentoInvestimento,
+    ativo: Ativo,
+) -> Lancamento | None:
+    vinculado = session.exec(
+        select(Lancamento).where(
+            Lancamento.ativo.is_(True),
+            Lancamento.referencia_id == movimento.id,
+            Lancamento.origem_sistema == "INVESTIMENTO_COMPRA",
+        )
+    ).first()
+    if vinculado:
+        return vinculado
+
+    valor_financeiro = _valor_financeiro_compra(movimento)
+    return session.exec(
+        select(Lancamento).where(
+            Lancamento.ativo.is_(True),
+            Lancamento.referencia_id.is_(None),
+            Lancamento.tipo == TipoLancamento.INVESTIMENTO,
+            Lancamento.data_lancamento == movimento.data_movimento,
+            Lancamento.valor == valor_financeiro,
+            Lancamento.observacao.in_([movimento.observacao or "", f"Compra {ativo.ticker}"]),
+        )
+    ).first()
+
+
+def _validar_fluxo_quantidade(session: Session, ativo_id: str, ignorar_movimento_id: str | None = None) -> None:
+    movimentos = session.exec(
+        select(MovimentoInvestimento)
+        .where(MovimentoInvestimento.ativo_id == ativo_id)
+        .order_by(MovimentoInvestimento.data_movimento, MovimentoInvestimento.criado_em)
+    ).all()
+    quantidade = Decimal("0.00")
+    for movimento in movimentos:
+        if movimento.id == ignorar_movimento_id:
+            continue
+        if _movimento_entrada(movimento.tipo_movimento):
+            quantidade += movimento.quantidade
+            continue
+        if _movimento_saida(movimento.tipo_movimento):
+            quantidade -= movimento.quantidade
+            if quantidade < Decimal("0.00"):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Esta alteracao deixaria a posicao negativa. Ajuste ou remova vendas posteriores primeiro.",
+                )
+
+
+def _sincronizar_lancamento_investimento_brl(
+    session: Session,
+    ativo: Ativo,
+    movimento: MovimentoInvestimento,
+    lancamento_existente: Lancamento | None = None,
+) -> None:
+    lancamento = lancamento_existente
+    if not _movimento_entrada(movimento.tipo_movimento):
+        if lancamento:
+            lancamento.ativo = False
+            lancamento.atualizado_em = now_utc()
+            session.add(lancamento)
+        return
+
+    valor_financeiro = _valor_financeiro_compra(movimento)
+    descricao = movimento.observacao or f"Compra {ativo.ticker}"
+    if not lancamento:
+        lancamento = Lancamento(
+            data_lancamento=movimento.data_movimento,
+            tipo=TipoLancamento.INVESTIMENTO,
+            valor=valor_financeiro,
+            valor_original=valor_financeiro,
+            conta_id=movimento.conta_id,
+            observacao=descricao,
+            origem_sistema="INVESTIMENTO_COMPRA",
+            referencia_id=movimento.id,
+            afeta_saldo_livre=True,
+            afeta_orcamento=True,
+        )
+    else:
+        lancamento.data_lancamento = movimento.data_movimento
+        lancamento.tipo = TipoLancamento.INVESTIMENTO
+        lancamento.valor = valor_financeiro
+        lancamento.valor_original = valor_financeiro
+        lancamento.conta_id = movimento.conta_id
+        lancamento.observacao = descricao
+        lancamento.origem_sistema = "INVESTIMENTO_COMPRA"
+        lancamento.referencia_id = movimento.id
+        lancamento.afeta_saldo_livre = True
+        lancamento.afeta_orcamento = True
+        lancamento.ativo = True
+        lancamento.atualizado_em = now_utc()
+    session.add(lancamento)
+
+
+def _sincronizar_extrato_investimento_usd(
+    session: Session,
+    ativo: Ativo,
+    movimento: MovimentoInvestimento,
+    extrato_existente: ExtratoDolar | None = None,
+) -> None:
+    if _movimento_entrada(movimento.tipo_movimento):
+        tipo_dolar = TipoMovimentoDolar.COMPRA_EXTERIOR
+        valor_usd = _valor_financeiro_compra(movimento)
+        entrada_usd = Decimal("0.00")
+        saida_usd = valor_usd
+        descricao = f"Compra {ativo.ticker}"
+        if saldo_teorico_usd(session, ignorar_movimento_id=extrato_existente.id if extrato_existente else None) < valor_usd:
+            raise HTTPException(
+                status_code=422,
+                detail="Saldo USD insuficiente para esta operacao. Verifique seu saldo em conta dolar.",
+            )
+    elif _movimento_saida(movimento.tipo_movimento):
+        tipo_dolar = TipoMovimentoDolar.VENDA_EXTERIOR
+        valor_usd = _valor_financeiro_venda(movimento)
+        entrada_usd = valor_usd
+        saida_usd = Decimal("0.00")
+        descricao = f"Venda {ativo.ticker}"
+    else:
+        return
+
+    descricao = movimento.observacao or descricao
+    if not extrato_existente:
+        registrar_movimento_dolar(
+            session,
+            tipo_dolar,
+            valor_usd,
+            valor_brl=Decimal("0.00"),
+            descricao=descricao,
+            origem="INVESTIMENTO",
+            referencia_id=movimento.id,
+            data_movimento=movimento.data_movimento,
+        )
+        return
+
+    extrato_existente.data_movimento = movimento.data_movimento
+    extrato_existente.tipo = tipo_dolar
+    extrato_existente.descricao = descricao
+    extrato_existente.entrada_usd = entrada_usd
+    extrato_existente.saida_usd = saida_usd
+    extrato_existente.valor_brl = Decimal("0.00")
+    extrato_existente.cotacao_efetiva = Decimal("0.00")
+    extrato_existente.origem = "INVESTIMENTO"
+    extrato_existente.referencia_id = movimento.id
+    extrato_existente.ativo = True
+    extrato_existente.atualizado_em = now_utc()
+    session.add(extrato_existente)
+
+
+def _movimento_to_dict(session: Session, movimento: MovimentoInvestimento) -> dict:
+    ativo = session.get(Ativo, movimento.ativo_id)
+    if not ativo:
+        raise HTTPException(status_code=404, detail="Ativo nao encontrado para movimento.")
+    valor_financeiro = _valor_financeiro_compra(movimento) if _movimento_entrada(movimento.tipo_movimento) else _valor_financeiro_venda(movimento)
+    return {
+        "id": movimento.id,
+        "ativo_id": movimento.ativo_id,
+        "ticker": ativo.ticker,
+        "nome": ativo.nome,
+        "tipo_ativo": ativo.tipo_ativo,
+        "tipo_movimento": movimento.tipo_movimento,
+        "data_movimento": movimento.data_movimento,
+        "quantidade": movimento.quantidade,
+        "preco_unitario": movimento.preco_unitario,
+        "valor_total": movimento.valor_total,
+        "taxas": movimento.taxas,
+        "valor_financeiro": valor_financeiro,
+        "moeda": movimento.moeda,
+        "corretora": ativo.corretora,
+        "conta_id": movimento.conta_id,
+        "observacao": movimento.observacao,
+        "origem_dolar": ativo.tipo_ativo in TIPOS_EXTERIOR,
+    }
+
+
+def listar_movimentos(session: Session) -> list[dict]:
+    movimentos = session.exec(
+        select(MovimentoInvestimento).order_by(MovimentoInvestimento.data_movimento.desc(), MovimentoInvestimento.criado_em.desc())
+    ).all()
+    return [_movimento_to_dict(session, movimento) for movimento in movimentos if session.get(Ativo, movimento.ativo_id)]
+
+
+def atualizar_movimento(
+    session: Session,
+    movimento_id: str,
+    payload: MovimentoInvestimentoUpdate,
+) -> dict:
+    movimento = session.get(MovimentoInvestimento, movimento_id)
+    if not movimento:
+        raise HTTPException(status_code=404, detail="Movimento de investimento nao encontrado.")
+    ativo = session.get(Ativo, movimento.ativo_id)
+    if not ativo or not ativo.ativo:
+        raise HTTPException(status_code=404, detail="Ativo nao encontrado.")
+
+    extrato_vinculado = _buscar_extrato_vinculado(session, movimento.id) if ativo.tipo_ativo in TIPOS_EXTERIOR else None
+    lancamento_vinculado = (
+        _buscar_lancamento_investimento_vinculado(session, movimento, ativo)
+        if ativo.tipo_ativo not in TIPOS_EXTERIOR
+        else None
+    )
+    data = payload.model_dump(exclude_unset=True)
+    quantidade = data.get("quantidade", movimento.quantidade)
+    preco_unitario = data.get("preco_unitario", movimento.preco_unitario)
+    taxas = data.get("taxas", movimento.taxas)
+    if quantidade <= 0:
+        raise HTTPException(status_code=422, detail="Quantidade deve ser maior que zero.")
+    if preco_unitario <= 0:
+        raise HTTPException(status_code=422, detail="Preco unitario deve ser maior que zero.")
+    if taxas < 0:
+        raise HTTPException(status_code=422, detail="Taxas nao podem ser negativas.")
+
+    movimento.data_movimento = data.get("data_movimento", movimento.data_movimento)
+    movimento.quantidade = quantidade
+    movimento.preco_unitario = preco_unitario
+    movimento.taxas = taxas
+    movimento.valor_total = quantidade * preco_unitario
+    movimento.observacao = data.get("observacao", movimento.observacao)
+    movimento.atualizado_em = now_utc()
+    if "corretora" in data:
+        ativo.corretora = _normalizar_texto(data.get("corretora")) or None
+        session.add(ativo)
+    session.add(movimento)
+
+    _validar_fluxo_quantidade(session, ativo.id)
+    if ativo.tipo_ativo in TIPOS_EXTERIOR:
+        _sincronizar_extrato_investimento_usd(session, ativo, movimento, extrato_vinculado)
+    else:
+        _sincronizar_lancamento_investimento_brl(session, ativo, movimento, lancamento_vinculado)
+    session.commit()
+    session.refresh(movimento)
+    return _movimento_to_dict(session, movimento)
+
+
+def excluir_movimento(session: Session, movimento_id: str) -> None:
+    movimento = session.get(MovimentoInvestimento, movimento_id)
+    if not movimento:
+        raise HTTPException(status_code=404, detail="Movimento de investimento nao encontrado.")
+    ativo = session.get(Ativo, movimento.ativo_id)
+    if not ativo:
+        raise HTTPException(status_code=404, detail="Ativo nao encontrado.")
+
+    _validar_fluxo_quantidade(session, ativo.id, ignorar_movimento_id=movimento.id)
+    extrato_vinculado = _buscar_extrato_vinculado(session, movimento.id) if ativo.tipo_ativo in TIPOS_EXTERIOR else None
+    lancamento_vinculado = (
+        _buscar_lancamento_investimento_vinculado(session, movimento, ativo)
+        if ativo.tipo_ativo not in TIPOS_EXTERIOR
+        else None
+    )
+    if extrato_vinculado:
+        extrato_vinculado.ativo = False
+        extrato_vinculado.atualizado_em = now_utc()
+        session.add(extrato_vinculado)
+        session.flush()
+        if saldo_teorico_usd(session) < Decimal("0.00"):
+            session.rollback()
+            raise HTTPException(
+                status_code=422,
+                detail="Nao foi possivel excluir: o saldo USD ficaria negativo depois desta remocao.",
+            )
+    if lancamento_vinculado:
+        lancamento_vinculado.ativo = False
+        lancamento_vinculado.atualizado_em = now_utc()
+        session.add(lancamento_vinculado)
+    session.delete(movimento)
+    session.commit()
+
+
 def calcular_posicao(session: Session, ativo_id: str) -> dict:
     ativo = session.get(Ativo, ativo_id)
     if not ativo:
@@ -564,8 +862,6 @@ def comprar(session: Session, payload: MovimentoInvestimentoCreate, commit: bool
     session.add(ativo)
     valor_total = payload.quantidade * payload.preco_unitario
     valor_financeiro = valor_total + payload.taxas
-    if ativo.tipo_ativo in TIPOS_EXTERIOR and saldo_teorico_usd(session) < valor_financeiro:
-        raise HTTPException(status_code=422, detail="Saldo USD insuficiente. Envie dolar para o exterior antes da compra.")
     movimento = MovimentoInvestimento(
         ativo_id=ativo.id,
         tipo_movimento=TipoMovimentoInvestimento.COMPRA,
@@ -591,18 +887,7 @@ def comprar(session: Session, payload: MovimentoInvestimentoCreate, commit: bool
             data_movimento=movimento.data_movimento,
         )
     elif commit:
-        session.add(
-            Lancamento(
-                data_lancamento=movimento.data_movimento,
-                tipo=TipoLancamento.INVESTIMENTO,
-                valor=valor_financeiro,
-                valor_original=valor_financeiro,
-                conta_id=payload.conta_id,
-                observacao=payload.observacao or f"Compra {ativo.ticker}",
-                afeta_saldo_livre=True,
-                afeta_orcamento=True,
-            )
-        )
+        _sincronizar_lancamento_investimento_brl(session, ativo, movimento)
     if commit:
         session.commit()
         session.refresh(movimento)

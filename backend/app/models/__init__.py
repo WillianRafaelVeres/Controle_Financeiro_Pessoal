@@ -13,6 +13,7 @@ from app.models.base import (
     TipoMovimentoDolar,
     TipoProvento,
 )
+from app.models.caixinha import Caixinha
 from app.models.cartao import Cartao
 from app.models.categoria import Categoria
 from app.models.compromisso_cartao import CompromissoCartao
@@ -33,6 +34,7 @@ from app.models.subcategoria import Subcategoria
 
 __all__ = [
     "Ativo",
+    "Caixinha",
     "Cartao",
     "Categoria",
     "CompraDolar",

@@ -14,6 +14,14 @@ class MovimentoDolarCreate(SQLModel):
     descricao: str | None = None
 
 
+class MovimentoDolarUpdate(SQLModel):
+    tipo: TipoMovimentoDolar | None = None
+    data_movimento: date | None = None
+    valor_usd: Decimal | None = None
+    valor_brl: Decimal | None = None
+    descricao: str | None = None
+
+
 class SaldoDolarInformado(SQLModel):
     saldo_usd: Decimal
     cotacao_brl: Decimal | None = None

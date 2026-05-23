@@ -1,5 +1,11 @@
 const DEFAULT_DESKTOP_PORT = 17831;
 const PORT_ATTEMPTS = 80;
+const REQUIRED_API_CAPABILITIES = [
+  { path: "/api/exterior-dolar/movimentos/{movimento_id}", method: "delete" },
+  { path: "/api/exterior-dolar/movimentos/{movimento_id}", method: "put" },
+  { path: "/api/investimentos/movimentos/{movimento_id}", method: "delete" },
+  { path: "/api/investimentos/movimentos/{movimento_id}", method: "put" },
+];
 
 let apiBaseUrl = normalizeApiBase(import.meta.env.VITE_API_URL ?? `http://127.0.0.1:${DEFAULT_DESKTOP_PORT}/api`);
 let backendProcess: { kill?: () => Promise<void> } | null = null;
@@ -117,7 +123,10 @@ export async function waitForHealth(baseUrl: string, attempts = 40, delayMs = 30
       const response = await fetch(healthUrl, { cache: "no-store" });
       if (response.ok) {
         const body = await response.json();
-        if (body.status === "ok") return;
+        if (body.status === "ok") {
+          await assertBackendCompatible(baseUrl);
+          return;
+        }
       }
     } catch (error) {
       lastError = error;
@@ -125,6 +134,18 @@ export async function waitForHealth(baseUrl: string, attempts = 40, delayMs = 30
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
   throw lastError instanceof Error ? lastError : new Error("Backend local indisponível.");
+}
+
+async function assertBackendCompatible(baseUrl: string) {
+  const apiRoot = baseUrl.replace(/\/api\/?$/, "");
+  const response = await fetch(`${apiRoot}/openapi.json`, { cache: "no-store" });
+  if (!response.ok) throw new Error("Backend local incompativel.");
+  const openapi = await response.json();
+  const paths = openapi?.paths ?? {};
+  const missing = REQUIRED_API_CAPABILITIES.find(({ path, method }) => !paths[path]?.[method]);
+  if (missing) {
+    throw new Error("Backend local antigo detectado. Feche instancias antigas e abra novamente o aplicativo.");
+  }
 }
 
 function normalizeApiBase(url: string) {

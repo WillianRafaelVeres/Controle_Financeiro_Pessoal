@@ -80,35 +80,36 @@ export function LancamentoForm({
   const [quantidade, setQuantidade] = useState("");
   const [precoUnitario, setPrecoUnitario] = useState("");
 
+  const naturezaTipo: NaturezaCategoria = tipo === "SEPARAR" ? "GASTO" : tipo;
+  const isContaFutura = tipo === "GASTO" && separarContaFutura && Boolean(onCreateContaFutura);
   const categoriaOptions = categorias
-    .filter((item) => item.ativa && (item.natureza ?? "GASTO") === tipo)
+    .filter((item) => item.ativa && (item.natureza ?? "GASTO") === naturezaTipo)
     .map((item) => ({ id: item.id, label: item.nome }));
   const subcategoriaOptions = useMemo(
     () =>
       subcategorias
-        .filter((item) => item.ativa && (item.natureza ?? "GASTO") === tipo)
+        .filter((item) => item.ativa && (item.natureza ?? "GASTO") === naturezaTipo)
         .filter((item) => !categoriaId || item.categoria_id === categoriaId)
         .map((item) => ({ id: item.id, label: item.nome })),
-    [categoriaId, subcategorias, tipo],
+    [categoriaId, naturezaTipo, subcategorias],
   );
   const firstCartaoId = cartoes[0]?.id ? `cartao:${cartoes[0].id}` : null;
-  const isContaFutura = tipo === "GASTO" && separarContaFutura;
   const metodoOptions = [
     ...metodos.filter((item) => item.tipo_metodo !== "CARTAO_CREDITO").map((item) => ({
       id: item.id,
       label: item.nome,
     })),
-    ...(isContaFutura
-      ? []
-      : cartoes.map((item) => ({
+    ...(tipo === "GASTO" && !isContaFutura
+      ? cartoes.map((item) => ({
           id: `cartao:${item.id}`,
           label: item.nome,
           description: "cartao cadastrado",
-        }))),
+        }))
+      : []),
   ];
   const metodoSelecionado = metodos.find((item) => item.id === metodoId);
   const selectedCartaoId = metodoId?.startsWith("cartao:") ? metodoId.replace("cartao:", "") : null;
-  const isCartao = !isContaFutura && (Boolean(selectedCartaoId) || metodoSelecionado?.tipo_metodo === "CARTAO_CREDITO");
+  const isCartao = tipo === "GASTO" && !isContaFutura && (Boolean(selectedCartaoId) || metodoSelecionado?.tipo_metodo === "CARTAO_CREDITO");
   const valorNumber = toNumber(valor);
   const tickerInvestimentoObrigatorio = needsTicker(tipoAtivo);
   const moedaInvestimento = defaultCurrencyForInvestment(tipoAtivo);
@@ -122,10 +123,17 @@ export function LancamentoForm({
     } else {
       setMetodoId(null);
     }
+    setSepararContaFutura(false);
     if (initialType === "INVESTIMENTO") {
       setCorretoraInvestimento(readInvestmentBrokerPrefs()[tipoAtivo] ?? "");
     }
   }, [allowInvestment, firstCartaoId, initialCardFlow, initialType]);
+
+  useEffect(() => {
+    if (isContaFutura && selectedCartaoId) {
+      setMetodoId(null);
+    }
+  }, [isContaFutura, selectedCartaoId]);
 
   function resetForm() {
     setValor("");
@@ -133,11 +141,11 @@ export function LancamentoForm({
     setCategoriaId(null);
     setSubcategoriaId(null);
     setMetodoId(initialCardFlow ? firstCartaoId : null);
+    setSepararContaFutura(false);
     setTempCategoria("");
     setTempSubcategoria("");
     setTempMetodo("");
     setObservacao("");
-    setSepararContaFutura(false);
     setDataLancamento("");
     setShowDate(false);
     setDestinoInvestimento("RESERVA");
@@ -148,6 +156,8 @@ export function LancamentoForm({
   }
 
   function buildPayload(cartao?: Record<string, unknown>) {
+    const categoriaLabel = categoriaOptions.find((item) => item.id === categoriaId)?.label ?? tempCategoria;
+    const subcategoriaLabel = subcategoriaOptions.find((item) => item.id === subcategoriaId)?.label ?? tempSubcategoria;
     const extras = [
       tempCategoria ? `Categoria temporaria: ${tempCategoria}` : "",
       tempSubcategoria ? `Subcategoria temporaria: ${tempSubcategoria}` : "",
@@ -171,7 +181,8 @@ export function LancamentoForm({
       tipo,
       categoria_id: categoriaId,
       subcategoria_id: subcategoriaId,
-      metodo_pagamento_id: tipo === "INVESTIMENTO" || selectedCartaoId ? null : metodoId,
+      metodo_pagamento_id: tipo === "INVESTIMENTO" || tipo === "SEPARAR" || selectedCartaoId ? null : metodoId,
+      caixinha_nome: tipo === "SEPARAR" ? observacao.trim() || subcategoriaLabel || categoriaLabel || "Caixinha" : undefined,
       observacao: obs || null,
       data_lancamento: dataLancamento || null,
       cartao,
@@ -180,10 +191,11 @@ export function LancamentoForm({
   }
 
   function buildContaFuturaPayload() {
-    const categoriaLabel = categoriaOptions.find((item) => item.id === categoriaId)?.label ?? "";
-    const subcategoriaLabel = subcategoriaOptions.find((item) => item.id === subcategoriaId)?.label ?? "";
+    const categoriaLabel = categoriaOptions.find((item) => item.id === categoriaId)?.label ?? tempCategoria;
+    const subcategoriaLabel = subcategoriaOptions.find((item) => item.id === subcategoriaId)?.label ?? tempSubcategoria;
+    const descricao = observacao.trim() || subcategoriaLabel || categoriaLabel || "Conta futura";
     return {
-      descricao: observacao.trim() || subcategoriaLabel || categoriaLabel || "Conta futura",
+      descricao,
       valor: valorNumber,
       categoria_id: categoriaId,
       subcategoria_id: subcategoriaId,
@@ -203,27 +215,38 @@ export function LancamentoForm({
     }
   }
 
+  async function persistContaFutura(payload: Record<string, unknown>) {
+    if (!onCreateContaFutura) return;
+    setSubmitting(true);
+    try {
+      await onCreateContaFutura(payload);
+      resetForm();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (valorNumber <= 0) return;
+    if (tipo === "GASTO" && !metodoId) {
+      alert("Gasto exige metodo de pagamento.");
+      return;
+    }
+    if (tipo === "SEPARAR" && (!categoriaId || !subcategoriaId)) {
+      alert("Separar dinheiro exige categoria e subcategoria.");
+      return;
+    }
     if (isContaFutura) {
-      if (!onCreateContaFutura) {
-        alert("Controle de contas futuras indisponivel nesta tela.");
-        return;
-      }
       if (!categoriaId || !subcategoriaId) {
-        alert("Conta futura exige item e subitem para entrar corretamente no orcamento quando for paga.");
+        alert("Conta futura exige item e subitem.");
         return;
       }
       if (!metodoId || selectedCartaoId) {
         alert("Conta futura exige metodo de pagamento sem cartao.");
         return;
       }
-      await persistFuture(buildContaFuturaPayload());
-      return;
-    }
-    if (tipo === "GASTO" && !metodoId) {
-      alert("Gasto exige metodo de pagamento.");
+      await persistContaFutura(buildContaFuturaPayload());
       return;
     }
     if (tipo === "INVESTIMENTO" && destinoInvestimento === "COMPRA_ATIVO" && tickerInvestimentoObrigatorio && !ticker.trim()) {
@@ -246,17 +269,6 @@ export function LancamentoForm({
       saveInvestmentBrokerPref(tipoAtivo, corretoraInvestimento);
     }
     await persist(buildPayload());
-  }
-
-  async function persistFuture(payload: Record<string, unknown>) {
-    if (!onCreateContaFutura) return;
-    setSubmitting(true);
-    try {
-      await onCreateContaFutura(payload);
-      resetForm();
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   function changeTipo(value: TipoLancamento) {
@@ -285,11 +297,12 @@ export function LancamentoForm({
           <span className="text-xs font-medium text-slate-500">Tipo</span>
           {lockType ? (
             <div className="flex h-8 items-center rounded-md border border-slate-700 bg-slate-950 px-2.5 text-[13px] text-slate-300">
-              {tipo === "INVESTIMENTO" ? "Investimento" : tipo === "RECEITA" ? "Receita" : "Despesa"}
+              {tipo === "INVESTIMENTO" ? "Investimento" : tipo === "RECEITA" ? "Receita" : tipo === "SEPARAR" ? "Separar" : "Despesa"}
             </div>
           ) : (
             <Select value={tipo} onChange={(event) => changeTipo(event.target.value as TipoLancamento)}>
               <option value="GASTO">Despesa</option>
+              <option value="SEPARAR">Separar</option>
               <option value="RECEITA">Receita</option>
               {allowInvestment && <option value="INVESTIMENTO">Investimento</option>}
             </Select>
@@ -306,7 +319,7 @@ export function LancamentoForm({
             setTempCategoria("");
             setSubcategoriaId(null);
           }}
-          onCreatePersist={async (nome) => onCreateCategoria(nome, tipo)}
+          onCreatePersist={async (nome) => onCreateCategoria(nome, naturezaTipo)}
           onUseTemporary={(nome) => {
             setCategoriaId(null);
             setTempCategoria(nome);
@@ -332,9 +345,9 @@ export function LancamentoForm({
             setTempSubcategoria(nome);
           }}
         />
-        {tipo !== "INVESTIMENTO" ? (
+        {tipo !== "INVESTIMENTO" && tipo !== "SEPARAR" ? (
           <ComboboxCreate
-            label={tipo === "RECEITA" ? "Metodo de recebimento" : isContaFutura ? "Metodo que sera pago" : "Metodo de pagamento"}
+            label={tipo === "RECEITA" ? "Metodo de recebimento" : "Metodo de pagamento"}
             createNoun="metodo de pagamento"
             dialogArticle="O"
             valueId={metodoId}
@@ -358,30 +371,35 @@ export function LancamentoForm({
             </div>
           </div>
         )}
+        {tipo === "GASTO" && onCreateContaFutura && (
+          <label className="flex h-8 min-w-0 items-center gap-2 rounded-md border border-slate-700 bg-slate-950 px-2.5 text-[13px] text-slate-300 transition hover:border-slate-600">
+            <input
+              className="h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-950 accent-brand-500"
+              type="checkbox"
+              checked={separarContaFutura}
+              onChange={(event) => setSepararContaFutura(event.target.checked)}
+            />
+            <span className="min-w-0 truncate">
+              Conta futura
+              <span className="ml-1 hidden text-slate-500 2xl:inline">separar para pagar depois</span>
+            </span>
+          </label>
+        )}
         <label className="space-y-1">
-          <span className="text-xs font-medium text-slate-500">{isContaFutura ? "Conta" : "Observacao"}</span>
-          <Textarea className="min-h-9 resize-none py-2" value={observacao} onChange={(event) => setObservacao(event.target.value)} placeholder="Opcional" />
+          <span className="text-xs font-medium text-slate-500">{tipo === "SEPARAR" ? "Caixinha" : isContaFutura ? "Descricao da conta" : "Observacao"}</span>
+          <Textarea
+            className="min-h-9 resize-none py-2"
+            value={observacao}
+            onChange={(event) => setObservacao(event.target.value)}
+            placeholder={tipo === "SEPARAR" ? "Ex.: IPVA, Livros" : isContaFutura ? "Ex.: Luz, internet, boleto" : "Opcional"}
+          />
         </label>
         <div className="flex items-end xl:col-span-1">
           <Button className="w-full" type="submit" disabled={submitting || valorNumber <= 0}>
             <Save className="h-4 w-4" />
-            {isContaFutura ? "Separar" : "Salvar"}
+            {isContaFutura ? "Separar conta" : tipo === "SEPARAR" ? "Separar" : "Salvar"}
           </Button>
         </div>
-        {tipo === "GASTO" && onCreateContaFutura && (
-          <label className="flex h-8 items-center gap-2 rounded-md border border-slate-800 bg-slate-950/50 px-2.5 text-[13px] text-slate-300">
-            <input
-              type="checkbox"
-              className="h-4 w-4 accent-brand-500"
-              checked={separarContaFutura}
-              onChange={(event) => {
-                setSepararContaFutura(event.target.checked);
-                if (event.target.checked && metodoId?.startsWith("cartao:")) setMetodoId(null);
-              }}
-            />
-            Pagar depois
-          </label>
-        )}
 
         {tipo === "INVESTIMENTO" && (
           <div className="grid gap-3 rounded-md border border-slate-800 bg-slate-950/50 p-3 xl:col-span-4 xl:grid-cols-4">

@@ -20,6 +20,7 @@ export function ConciliacaoBox({ data }: { data?: Record<string, string | number
         <Line label="Saldo livre" value={data?.saldo_livre} highlight />
         <Line label="Reservado cartao" value={data?.reservado_cartao} />
         <Line label="Contas futuras" value={data?.reservado_contas_futuras} />
+        <Line label="Dinheiro separado" value={data?.reservado_caixinhas} />
         <Line label="Saldo final" value={saldoFinal} />
         <div className="border-t border-slate-800 pt-2">
           <Line label="Diferenca" value={data?.diferenca_nao_explicada ?? data?.diferenca_conciliacao} strong />

@@ -1,4 +1,4 @@
-import { Banknote, CalendarClock, CreditCard, DollarSign, Landmark, PiggyBank, TrendingDown, WalletCards } from "lucide-react";
+import { Archive, Banknote, CalendarClock, CreditCard, DollarSign, Landmark, PiggyBank, TrendingDown, WalletCards } from "lucide-react";
 
 import { MoneyCard } from "../../components/finance/MoneyCard";
 import type { DashboardResumo } from "../../lib/types";
@@ -13,6 +13,7 @@ export function DashboardCards({ resumo }: { resumo?: DashboardResumo }) {
     saldo_em_contas: 0,
     reservado_cartao: 0,
     reservado_contas_futuras: 0,
+    reservado_caixinhas: 0,
     compromissos_futuros_cartao: 0,
     saldo_teorico_usd: 0,
     gasto_mes: 0,
@@ -22,7 +23,7 @@ export function DashboardCards({ resumo }: { resumo?: DashboardResumo }) {
   };
 
   return (
-    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-10">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-2">
       <MoneyCard
         title="Saldo livre para gastar"
         value={data.saldo_livre}
@@ -63,6 +64,13 @@ export function DashboardCards({ resumo }: { resumo?: DashboardResumo }) {
         value={data.reservado_contas_futuras ?? 0}
         subtitle="Separado do saldo livre"
         icon={<CalendarClock className="h-4 w-4" />}
+        tone="yellow"
+      />
+      <MoneyCard
+        title="Dinheiro separado"
+        value={data.reservado_caixinhas ?? 0}
+        subtitle="Caixinhas acumuladas"
+        icon={<Archive className="h-4 w-4" />}
         tone="yellow"
       />
       <MoneyCard

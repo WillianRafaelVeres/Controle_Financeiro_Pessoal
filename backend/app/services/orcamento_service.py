@@ -344,19 +344,19 @@ def atualizar_item_orcamento(
     return list(itens)
 
 
-def _tipo_lancamento_por_natureza(natureza: NaturezaCategoria) -> TipoLancamento:
+def _tipos_lancamento_por_natureza(natureza: NaturezaCategoria) -> list[TipoLancamento]:
     if natureza == NaturezaCategoria.INVESTIMENTO:
-        return TipoLancamento.INVESTIMENTO
+        return [TipoLancamento.INVESTIMENTO]
     if natureza == NaturezaCategoria.RECEITA:
-        return TipoLancamento.RECEITA
-    return TipoLancamento.GASTO
+        return [TipoLancamento.RECEITA]
+    return [TipoLancamento.GASTO, TipoLancamento.SEPARAR]
 
 
 def _realizado_item(session: Session, item: OrcamentoItem, ano: int, mes: int) -> Decimal:
     inicio, fim = month_bounds(ano, mes)
     filtros = [
         Lancamento.ativo.is_(True),
-        Lancamento.tipo == _tipo_lancamento_por_natureza(item.natureza),
+        Lancamento.tipo.in_(_tipos_lancamento_por_natureza(item.natureza)),
         Lancamento.afeta_orcamento.is_(True),
         Lancamento.transferencia_interna.is_(False),
         Lancamento.data_lancamento >= inicio,
@@ -524,7 +524,7 @@ def listar_nao_planejados_mes(session: Session, ano: int, mes: int) -> list[dict
             Lancamento.ativo.is_(True),
             Lancamento.afeta_orcamento.is_(True),
             Lancamento.transferencia_interna.is_(False),
-            Lancamento.tipo.in_([TipoLancamento.GASTO, TipoLancamento.INVESTIMENTO, TipoLancamento.RECEITA]),
+            Lancamento.tipo.in_([TipoLancamento.GASTO, TipoLancamento.SEPARAR, TipoLancamento.INVESTIMENTO, TipoLancamento.RECEITA]),
             Lancamento.data_lancamento >= inicio,
             Lancamento.data_lancamento < fim,
         )

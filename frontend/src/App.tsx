@@ -10,6 +10,7 @@ import { ContasFuturasPage } from "./pages/ContasFuturasPage";
 import { ContasPage } from "./pages/ContasPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DesempenhoPage } from "./pages/DesempenhoPage";
+import { DinheiroSeparadoPage } from "./pages/DinheiroSeparadoPage";
 import { DividendosPage } from "./pages/DividendosPage";
 import { ExteriorDolarPage } from "./pages/ExteriorDolarPage";
 import { IntegracoesPage } from "./pages/IntegracoesPage";
@@ -34,6 +35,7 @@ const pageTitles: Record<PageKey, string> = {
   lancamentos: "Lançamentos",
   contas: "Contas",
   contas_futuras: "Contas futuras",
+  dinheiro_separado: "Dinheiro separado",
   orcamento: "Orçamento",
   cartoes: "Cartões",
   patrimonio: "Meu patrimonio",
@@ -54,6 +56,8 @@ function CurrentPage({ page }: { page: PageKey }) {
       return <ContasPage />;
     case "contas_futuras":
       return <ContasFuturasPage />;
+    case "dinheiro_separado":
+      return <DinheiroSeparadoPage />;
     case "orcamento":
       return <OrcamentoPage />;
     case "cartoes":

@@ -65,6 +65,13 @@ def _ensure_schema_compatibility() -> None:
 
     if "contas_futuras" in tables:
         add_column_if_missing("contas_futuras", "metodo_pagamento_id", "VARCHAR")
+        add_column_if_missing("contas_futuras", "conta_id", "VARCHAR")
+
+    if "caixinhas" in tables:
+        add_column_if_missing("caixinhas", "categoria_id", "VARCHAR")
+        add_column_if_missing("caixinhas", "subcategoria_id", "VARCHAR")
+        add_column_if_missing("caixinhas", "metodo_pagamento_id", "VARCHAR")
+        add_column_if_missing("caixinhas", "conta_id", "VARCHAR")
 
     if "ativos" in tables:
         add_column_if_missing("ativos", "corretora", "VARCHAR(120)")
@@ -72,6 +79,11 @@ def _ensure_schema_compatibility() -> None:
     for table in ["lancamentos", "orcamento_itens", "orcamento_itens_padrao"]:
         add_column_if_missing(table, "categoria_nome_snapshot", "VARCHAR(120)")
         add_column_if_missing(table, "subcategoria_nome_snapshot", "VARCHAR(120)")
+
+    if "lancamentos" in tables:
+        add_column_if_missing("lancamentos", "caixinha_id", "VARCHAR")
+        add_column_if_missing("lancamentos", "origem_sistema", "VARCHAR(80)")
+        add_column_if_missing("lancamentos", "referencia_id", "VARCHAR")
 
     if "orcamento_itens" in tables:
         add_column_if_missing("orcamento_itens", "natureza", "VARCHAR DEFAULT 'GASTO' NOT NULL")
@@ -125,6 +137,45 @@ def _ensure_schema_compatibility() -> None:
                             THEN saldo_inicial
                             ELSE saldo_atual_informado
                         END
+                    """
+                )
+            )
+        if "lancamentos" in tables:
+            conn.execute(
+                text(
+                    """
+                    UPDATE lancamentos
+                    SET origem_sistema = 'DOLAR_ENVIO'
+                    WHERE origem_sistema IS NULL
+                      AND tipo = 'INVESTIMENTO'
+                      AND categoria_id IS NULL
+                      AND subcategoria_id IS NULL
+                      AND metodo_pagamento_id IS NULL
+                      AND cartao_id IS NULL
+                      AND caixinha_id IS NULL
+                      AND (
+                        lower(COALESCE(observacao, '')) LIKE '%dolar%'
+                        OR lower(COALESCE(observacao, '')) LIKE '%exterior%'
+                      )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE lancamentos
+                    SET origem_sistema = 'DOLAR_RETIRADA'
+                    WHERE origem_sistema IS NULL
+                      AND tipo = 'RECEITA'
+                      AND categoria_id IS NULL
+                      AND subcategoria_id IS NULL
+                      AND metodo_pagamento_id IS NULL
+                      AND cartao_id IS NULL
+                      AND caixinha_id IS NULL
+                      AND (
+                        lower(COALESCE(observacao, '')) LIKE '%dolar%'
+                        OR lower(COALESCE(observacao, '')) LIKE '%exterior%'
+                      )
                     """
                 )
             )

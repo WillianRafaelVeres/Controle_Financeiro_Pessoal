@@ -1,4 +1,5 @@
 import type { PropsWithChildren } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 import { cn } from "../../lib/utils";
@@ -13,17 +14,18 @@ interface DialogProps {
 
 export function Dialog({ open, title, onClose, className, children }: PropsWithChildren<DialogProps>) {
   if (!open) return null;
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
-      <div className={cn("w-full max-w-lg animate-[page-enter_160ms_ease-out] rounded-md border border-slate-700 bg-[#111821] shadow-2xl shadow-black/40", className)}>
+      <div className={cn("flex max-h-[calc(100vh-2rem)] w-full max-w-lg animate-[page-enter_160ms_ease-out] flex-col rounded-md border border-slate-700 bg-[#111821] shadow-2xl shadow-black/40", className)}>
         <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
           <h2 className="text-sm font-semibold text-slate-100">{title}</h2>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Fechar">
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <div className="p-4">{children}</div>
+        <div className="min-h-0 overflow-y-auto p-4">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Archive,
   Banknote,
   CalendarClock,
   ChevronsLeft,
@@ -29,6 +30,7 @@ const groups: Array<{ title: string; items: Array<{ key: PageKey; label: string;
       { key: "lancamentos", label: "Lancamentos", icon: ReceiptText },
       { key: "contas", label: "Contas", icon: Landmark },
       { key: "contas_futuras", label: "Contas futuras", icon: CalendarClock },
+      { key: "dinheiro_separado", label: "Dinheiro separado", icon: Archive },
       { key: "orcamento", label: "Orcamento", icon: Target },
       { key: "cartoes", label: "Cartoes", icon: CreditCard },
     ],

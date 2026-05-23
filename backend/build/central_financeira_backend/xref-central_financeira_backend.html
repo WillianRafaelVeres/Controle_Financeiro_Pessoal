@@ -85,6 +85,7 @@ imports:
  &#8226;   <a href="#app">app</a>
  &#8226;   <a href="#app.api">app.api</a>
  &#8226;   <a href="#app.api.routes">app.api.routes</a>
+ &#8226;   <a href="#app.api.routes.caixinhas">app.api.routes.caixinhas</a>
  &#8226;   <a href="#app.api.routes.cartoes">app.api.routes.cartoes</a>
  &#8226;   <a href="#app.api.routes.categorias">app.api.routes.categorias</a>
  &#8226;   <a href="#app.api.routes.compromissos_cartao">app.api.routes.compromissos_cartao</a>
@@ -110,6 +111,7 @@ imports:
  &#8226;   <a href="#app.main">app.main</a>
  &#8226;   <a href="#app.models">app.models</a>
  &#8226;   <a href="#app.models.base">app.models.base</a>
+ &#8226;   <a href="#app.models.caixinha">app.models.caixinha</a>
  &#8226;   <a href="#app.models.cartao">app.models.cartao</a>
  &#8226;   <a href="#app.models.categoria">app.models.categoria</a>
  &#8226;   <a href="#app.models.compromisso_cartao">app.models.compromisso_cartao</a>
@@ -128,6 +130,7 @@ imports:
  &#8226;   <a href="#app.models.pagamento_fatura">app.models.pagamento_fatura</a>
  &#8226;   <a href="#app.models.subcategoria">app.models.subcategoria</a>
  &#8226;   <a href="#app.schemas">app.schemas</a>
+ &#8226;   <a href="#app.schemas.caixinha_schema">app.schemas.caixinha_schema</a>
  &#8226;   <a href="#app.schemas.cartao_schema">app.schemas.cartao_schema</a>
  &#8226;   <a href="#app.schemas.categoria_schema">app.schemas.categoria_schema</a>
  &#8226;   <a href="#app.schemas.compromisso_cartao_schema">app.schemas.compromisso_cartao_schema</a>
@@ -142,6 +145,7 @@ imports:
  &#8226;   <a href="#app.schemas.orcamento_schema">app.schemas.orcamento_schema</a>
  &#8226;   <a href="#app.schemas.subcategoria_schema">app.schemas.subcategoria_schema</a>
  &#8226;   <a href="#app.services">app.services</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
  &#8226;   <a href="#app.services.cartao_service">app.services.cartao_service</a>
  &#8226;   <a href="#app.services.conciliacao_service">app.services.conciliacao_service</a>
  &#8226;   <a href="#app.services.conta_futura_service">app.services.conta_futura_service</a>
@@ -10361,7 +10365,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#app.api.routes.cartoes">app.api.routes.cartoes</a>
+    <a href="#app.api.routes.caixinhas">app.api.routes.caixinhas</a>
+ &#8226;   <a href="#app.api.routes.cartoes">app.api.routes.cartoes</a>
  &#8226;   <a href="#app.api.routes.categorias">app.api.routes.categorias</a>
  &#8226;   <a href="#app.api.routes.compromissos_cartao">app.api.routes.compromissos_cartao</a>
  &#8226;   <a href="#app.api.routes.configuracoes">app.api.routes.configuracoes</a>
@@ -10379,6 +10384,29 @@ imported by:
  &#8226;   <a href="#app.api.routes.relatorios">app.api.routes.relatorios</a>
  &#8226;   <a href="#app.api.routes.subcategorias">app.api.routes.subcategorias</a>
  &#8226;   <a href="#app.main">app.main</a>
+ &#8226;   <a href="#desktop_server.py">desktop_server.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="app.api.routes.caixinhas"></a>
+  <a target="code" href="///A:/GitHub/Controle_Financeiro_Pessoal/backend/app/api/routes/caixinhas.py" type="text/plain"><tt>app.api.routes.caixinhas</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#app.api.routes">app.api.routes</a>
+ &#8226;   <a href="#app.core.database">app.core.database</a>
+ &#8226;   <a href="#app.models.lancamento">app.models.lancamento</a>
+ &#8226;   <a href="#app.schemas.caixinha_schema">app.schemas.caixinha_schema</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
+ &#8226;   <a href="#fastapi">fastapi</a>
+ &#8226;   <a href="#sqlmodel">sqlmodel</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#app.main">app.main</a>
  &#8226;   <a href="#desktop_server.py">desktop_server.py</a>
 
   </div>
@@ -10855,7 +10883,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#app.api.routes.cartoes">app.api.routes.cartoes</a>
+    <a href="#app.api.routes.caixinhas">app.api.routes.caixinhas</a>
+ &#8226;   <a href="#app.api.routes.cartoes">app.api.routes.cartoes</a>
  &#8226;   <a href="#app.api.routes.categorias">app.api.routes.categorias</a>
  &#8226;   <a href="#app.api.routes.compromissos_cartao">app.api.routes.compromissos_cartao</a>
  &#8226;   <a href="#app.api.routes.configuracoes">app.api.routes.configuracoes</a>
@@ -10921,6 +10950,7 @@ imported by:
 imports:
     <a href="#app">app</a>
  &#8226;   <a href="#app.api.routes">app.api.routes</a>
+ &#8226;   <a href="#app.api.routes.caixinhas">app.api.routes.caixinhas</a>
  &#8226;   <a href="#app.api.routes.cartoes">app.api.routes.cartoes</a>
  &#8226;   <a href="#app.api.routes.categorias">app.api.routes.categorias</a>
  &#8226;   <a href="#app.api.routes.compromissos_cartao">app.api.routes.compromissos_cartao</a>
@@ -10959,6 +10989,7 @@ imported by:
 imports:
     <a href="#app">app</a>
  &#8226;   <a href="#app.models.base">app.models.base</a>
+ &#8226;   <a href="#app.models.caixinha">app.models.caixinha</a>
  &#8226;   <a href="#app.models.cartao">app.models.cartao</a>
  &#8226;   <a href="#app.models.categoria">app.models.categoria</a>
  &#8226;   <a href="#app.models.compromisso_cartao">app.models.compromisso_cartao</a>
@@ -10983,6 +11014,7 @@ imported by:
     <a href="#app">app</a>
  &#8226;   <a href="#app.core.database">app.core.database</a>
  &#8226;   <a href="#app.models.base">app.models.base</a>
+ &#8226;   <a href="#app.models.caixinha">app.models.caixinha</a>
  &#8226;   <a href="#app.models.cartao">app.models.cartao</a>
  &#8226;   <a href="#app.models.categoria">app.models.categoria</a>
  &#8226;   <a href="#app.models.compromisso_cartao">app.models.compromisso_cartao</a>
@@ -11031,6 +11063,7 @@ imported by:
  &#8226;   <a href="#app.api.routes.subcategorias">app.api.routes.subcategorias</a>
  &#8226;   <a href="#app.core.database">app.core.database</a>
  &#8226;   <a href="#app.models">app.models</a>
+ &#8226;   <a href="#app.models.caixinha">app.models.caixinha</a>
  &#8226;   <a href="#app.models.cartao">app.models.cartao</a>
  &#8226;   <a href="#app.models.categoria">app.models.categoria</a>
  &#8226;   <a href="#app.models.compromisso_cartao">app.models.compromisso_cartao</a>
@@ -11057,6 +11090,7 @@ imported by:
  &#8226;   <a href="#app.schemas.metodo_pagamento_schema">app.schemas.metodo_pagamento_schema</a>
  &#8226;   <a href="#app.schemas.orcamento_schema">app.schemas.orcamento_schema</a>
  &#8226;   <a href="#app.schemas.subcategoria_schema">app.schemas.subcategoria_schema</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
  &#8226;   <a href="#app.services.cartao_service">app.services.cartao_service</a>
  &#8226;   <a href="#app.services.conta_futura_service">app.services.conta_futura_service</a>
  &#8226;   <a href="#app.services.dashboard_service">app.services.dashboard_service</a>
@@ -11068,6 +11102,27 @@ imported by:
  &#8226;   <a href="#app.services.orcamento_service">app.services.orcamento_service</a>
  &#8226;   <a href="#app.services.relatorio_service">app.services.relatorio_service</a>
  &#8226;   <a href="#app.services.saldo_service">app.services.saldo_service</a>
+ &#8226;   <a href="#desktop_server.py">desktop_server.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="app.models.caixinha"></a>
+  <a target="code" href="///A:/GitHub/Controle_Financeiro_Pessoal/backend/app/models/caixinha.py" type="text/plain"><tt>app.models.caixinha</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#app.models">app.models</a>
+ &#8226;   <a href="#app.models.base">app.models.base</a>
+ &#8226;   <a href="#decimal">decimal</a>
+ &#8226;   <a href="#sqlmodel">sqlmodel</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#app.models">app.models</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
  &#8226;   <a href="#desktop_server.py">desktop_server.py</a>
 
   </div>
@@ -11090,6 +11145,7 @@ imports:
 imported by:
     <a href="#app.api.routes.cartoes">app.api.routes.cartoes</a>
  &#8226;   <a href="#app.models">app.models</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
  &#8226;   <a href="#app.services.cartao_service">app.services.cartao_service</a>
  &#8226;   <a href="#app.services.lancamento_service">app.services.lancamento_service</a>
  &#8226;   <a href="#app.services.saldo_service">app.services.saldo_service</a>
@@ -11116,6 +11172,7 @@ imported by:
  &#8226;   <a href="#app.api.routes.subcategorias">app.api.routes.subcategorias</a>
  &#8226;   <a href="#app.core.database">app.core.database</a>
  &#8226;   <a href="#app.models">app.models</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
  &#8226;   <a href="#app.services.conta_futura_service">app.services.conta_futura_service</a>
  &#8226;   <a href="#app.services.dashboard_service">app.services.dashboard_service</a>
  &#8226;   <a href="#app.services.lancamento_service">app.services.lancamento_service</a>
@@ -11188,6 +11245,8 @@ imports:
 imported by:
     <a href="#app.api.routes.contas">app.api.routes.contas</a>
  &#8226;   <a href="#app.models">app.models</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
+ &#8226;   <a href="#app.services.conta_futura_service">app.services.conta_futura_service</a>
  &#8226;   <a href="#app.services.saldo_service">app.services.saldo_service</a>
  &#8226;   <a href="#desktop_server.py">desktop_server.py</a>
 
@@ -11283,6 +11342,7 @@ imported by:
     <a href="#app.api.routes.dividendos">app.api.routes.dividendos</a>
  &#8226;   <a href="#app.models">app.models</a>
  &#8226;   <a href="#app.services.exterior_dolar_service">app.services.exterior_dolar_service</a>
+ &#8226;   <a href="#app.services.investimento_service">app.services.investimento_service</a>
  &#8226;   <a href="#desktop_server.py">desktop_server.py</a>
 
   </div>
@@ -11352,11 +11412,13 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#app.api.routes.categorias">app.api.routes.categorias</a>
+    <a href="#app.api.routes.caixinhas">app.api.routes.caixinhas</a>
+ &#8226;   <a href="#app.api.routes.categorias">app.api.routes.categorias</a>
  &#8226;   <a href="#app.api.routes.contas_futuras">app.api.routes.contas_futuras</a>
  &#8226;   <a href="#app.api.routes.lancamentos">app.api.routes.lancamentos</a>
  &#8226;   <a href="#app.api.routes.subcategorias">app.api.routes.subcategorias</a>
  &#8226;   <a href="#app.models">app.models</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
  &#8226;   <a href="#app.services.cartao_service">app.services.cartao_service</a>
  &#8226;   <a href="#app.services.conta_futura_service">app.services.conta_futura_service</a>
  &#8226;   <a href="#app.services.dashboard_service">app.services.dashboard_service</a>
@@ -11409,6 +11471,7 @@ imports:
 imported by:
     <a href="#app.api.routes.metodos_pagamento">app.api.routes.metodos_pagamento</a>
  &#8226;   <a href="#app.models">app.models</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
  &#8226;   <a href="#app.services.conta_futura_service">app.services.conta_futura_service</a>
  &#8226;   <a href="#app.services.lancamento_service">app.services.lancamento_service</a>
  &#8226;   <a href="#app.services.relatorio_service">app.services.relatorio_service</a>
@@ -11485,6 +11548,7 @@ imported by:
     <a href="#app.api.routes.categorias">app.api.routes.categorias</a>
  &#8226;   <a href="#app.api.routes.subcategorias">app.api.routes.subcategorias</a>
  &#8226;   <a href="#app.models">app.models</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
  &#8226;   <a href="#app.services.conta_futura_service">app.services.conta_futura_service</a>
  &#8226;   <a href="#app.services.lancamento_service">app.services.lancamento_service</a>
  &#8226;   <a href="#app.services.orcamento_service">app.services.orcamento_service</a>
@@ -11504,7 +11568,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#app.schemas.cartao_schema">app.schemas.cartao_schema</a>
+    <a href="#app.schemas.caixinha_schema">app.schemas.caixinha_schema</a>
+ &#8226;   <a href="#app.schemas.cartao_schema">app.schemas.cartao_schema</a>
  &#8226;   <a href="#app.schemas.categoria_schema">app.schemas.categoria_schema</a>
  &#8226;   <a href="#app.schemas.compromisso_cartao_schema">app.schemas.compromisso_cartao_schema</a>
  &#8226;   <a href="#app.schemas.conta_futura_schema">app.schemas.conta_futura_schema</a>
@@ -11517,6 +11582,27 @@ imported by:
  &#8226;   <a href="#app.schemas.metodo_pagamento_schema">app.schemas.metodo_pagamento_schema</a>
  &#8226;   <a href="#app.schemas.orcamento_schema">app.schemas.orcamento_schema</a>
  &#8226;   <a href="#app.schemas.subcategoria_schema">app.schemas.subcategoria_schema</a>
+ &#8226;   <a href="#desktop_server.py">desktop_server.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="app.schemas.caixinha_schema"></a>
+  <a target="code" href="///A:/GitHub/Controle_Financeiro_Pessoal/backend/app/schemas/caixinha_schema.py" type="text/plain"><tt>app.schemas.caixinha_schema</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#app.schemas">app.schemas</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#decimal">decimal</a>
+ &#8226;   <a href="#sqlmodel">sqlmodel</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#app.api.routes.caixinhas">app.api.routes.caixinhas</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
  &#8226;   <a href="#desktop_server.py">desktop_server.py</a>
 
   </div>
@@ -11802,7 +11888,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#app.services.cartao_service">app.services.cartao_service</a>
+    <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
+ &#8226;   <a href="#app.services.cartao_service">app.services.cartao_service</a>
  &#8226;   <a href="#app.services.conciliacao_service">app.services.conciliacao_service</a>
  &#8226;   <a href="#app.services.conta_futura_service">app.services.conta_futura_service</a>
  &#8226;   <a href="#app.services.dashboard_service">app.services.dashboard_service</a>
@@ -11814,6 +11901,38 @@ imported by:
  &#8226;   <a href="#app.services.orcamento_service">app.services.orcamento_service</a>
  &#8226;   <a href="#app.services.relatorio_service">app.services.relatorio_service</a>
  &#8226;   <a href="#app.services.saldo_service">app.services.saldo_service</a>
+ &#8226;   <a href="#desktop_server.py">desktop_server.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="app.services.caixinha_service"></a>
+  <a target="code" href="///A:/GitHub/Controle_Financeiro_Pessoal/backend/app/services/caixinha_service.py" type="text/plain"><tt>app.services.caixinha_service</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#app.models.base">app.models.base</a>
+ &#8226;   <a href="#app.models.caixinha">app.models.caixinha</a>
+ &#8226;   <a href="#app.models.cartao">app.models.cartao</a>
+ &#8226;   <a href="#app.models.categoria">app.models.categoria</a>
+ &#8226;   <a href="#app.models.conta">app.models.conta</a>
+ &#8226;   <a href="#app.models.lancamento">app.models.lancamento</a>
+ &#8226;   <a href="#app.models.metodo_pagamento">app.models.metodo_pagamento</a>
+ &#8226;   <a href="#app.models.subcategoria">app.models.subcategoria</a>
+ &#8226;   <a href="#app.schemas.caixinha_schema">app.schemas.caixinha_schema</a>
+ &#8226;   <a href="#app.services">app.services</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#decimal">decimal</a>
+ &#8226;   <a href="#fastapi">fastapi</a>
+ &#8226;   <a href="#sqlalchemy">sqlalchemy</a>
+ &#8226;   <a href="#sqlmodel">sqlmodel</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#app.api.routes.caixinhas">app.api.routes.caixinhas</a>
+ &#8226;   <a href="#app.services.lancamento_service">app.services.lancamento_service</a>
  &#8226;   <a href="#desktop_server.py">desktop_server.py</a>
 
   </div>
@@ -11875,6 +11994,7 @@ imported by:
 imports:
     <a href="#app.models.base">app.models.base</a>
  &#8226;   <a href="#app.models.categoria">app.models.categoria</a>
+ &#8226;   <a href="#app.models.conta">app.models.conta</a>
  &#8226;   <a href="#app.models.conta_futura">app.models.conta_futura</a>
  &#8226;   <a href="#app.models.lancamento">app.models.lancamento</a>
  &#8226;   <a href="#app.models.metodo_pagamento">app.models.metodo_pagamento</a>
@@ -12016,6 +12136,7 @@ imports:
     <a href="#app.models.base">app.models.base</a>
  &#8226;   <a href="#app.models.cotacao">app.models.cotacao</a>
  &#8226;   <a href="#app.models.dividendo">app.models.dividendo</a>
+ &#8226;   <a href="#app.models.extrato_dolar">app.models.extrato_dolar</a>
  &#8226;   <a href="#app.models.historico_investimento">app.models.historico_investimento</a>
  &#8226;   <a href="#app.models.investimento">app.models.investimento</a>
  &#8226;   <a href="#app.models.lancamento">app.models.lancamento</a>
@@ -12058,6 +12179,7 @@ imports:
  &#8226;   <a href="#app.models.subcategoria">app.models.subcategoria</a>
  &#8226;   <a href="#app.schemas.lancamento_schema">app.schemas.lancamento_schema</a>
  &#8226;   <a href="#app.services">app.services</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
  &#8226;   <a href="#app.services.investimento_service">app.services.investimento_service</a>
  &#8226;   <a href="#datetime">datetime</a>
  &#8226;   <a href="#decimal">decimal</a>
@@ -15785,6 +15907,7 @@ imported by:
  &#8226;   <a href="#app.models.orcamento">app.models.orcamento</a>
  &#8226;   <a href="#app.models.pagamento_fatura">app.models.pagamento_fatura</a>
  &#8226;   <a href="#app.models.subcategoria">app.models.subcategoria</a>
+ &#8226;   <a href="#app.schemas.caixinha_schema">app.schemas.caixinha_schema</a>
  &#8226;   <a href="#app.schemas.compromisso_cartao_schema">app.schemas.compromisso_cartao_schema</a>
  &#8226;   <a href="#app.schemas.conta_futura_schema">app.schemas.conta_futura_schema</a>
  &#8226;   <a href="#app.schemas.conta_schema">app.schemas.conta_schema</a>
@@ -15793,6 +15916,7 @@ imported by:
  &#8226;   <a href="#app.schemas.investimento_schema">app.schemas.investimento_schema</a>
  &#8226;   <a href="#app.schemas.lancamento_schema">app.schemas.lancamento_schema</a>
  &#8226;   <a href="#app.schemas.orcamento_schema">app.schemas.orcamento_schema</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
  &#8226;   <a href="#app.services.cartao_service">app.services.cartao_service</a>
  &#8226;   <a href="#app.services.conta_futura_service">app.services.conta_futura_service</a>
  &#8226;   <a href="#app.services.dividendo_service">app.services.dividendo_service</a>
@@ -15867,6 +15991,7 @@ imported by:
     <a href="#_pytest.python_api">_pytest.python_api</a>
  &#8226;   <a href="#app.api.routes.investimentos">app.api.routes.investimentos</a>
  &#8226;   <a href="#app.models.base">app.models.base</a>
+ &#8226;   <a href="#app.models.caixinha">app.models.caixinha</a>
  &#8226;   <a href="#app.models.cartao">app.models.cartao</a>
  &#8226;   <a href="#app.models.compromisso_cartao">app.models.compromisso_cartao</a>
  &#8226;   <a href="#app.models.conta">app.models.conta</a>
@@ -15880,6 +16005,7 @@ imported by:
  &#8226;   <a href="#app.models.meta">app.models.meta</a>
  &#8226;   <a href="#app.models.orcamento">app.models.orcamento</a>
  &#8226;   <a href="#app.models.pagamento_fatura">app.models.pagamento_fatura</a>
+ &#8226;   <a href="#app.schemas.caixinha_schema">app.schemas.caixinha_schema</a>
  &#8226;   <a href="#app.schemas.cartao_schema">app.schemas.cartao_schema</a>
  &#8226;   <a href="#app.schemas.compromisso_cartao_schema">app.schemas.compromisso_cartao_schema</a>
  &#8226;   <a href="#app.schemas.conta_futura_schema">app.schemas.conta_futura_schema</a>
@@ -15890,6 +16016,7 @@ imported by:
  &#8226;   <a href="#app.schemas.investimento_schema">app.schemas.investimento_schema</a>
  &#8226;   <a href="#app.schemas.lancamento_schema">app.schemas.lancamento_schema</a>
  &#8226;   <a href="#app.schemas.orcamento_schema">app.schemas.orcamento_schema</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
  &#8226;   <a href="#app.services.cartao_service">app.services.cartao_service</a>
  &#8226;   <a href="#app.services.dashboard_service">app.services.dashboard_service</a>
  &#8226;   <a href="#app.services.dividendo_service">app.services.dividendo_service</a>
@@ -19424,7 +19551,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#app.api.routes.cartoes">app.api.routes.cartoes</a>
+    <a href="#app.api.routes.caixinhas">app.api.routes.caixinhas</a>
+ &#8226;   <a href="#app.api.routes.cartoes">app.api.routes.cartoes</a>
  &#8226;   <a href="#app.api.routes.categorias">app.api.routes.categorias</a>
  &#8226;   <a href="#app.api.routes.compromissos_cartao">app.api.routes.compromissos_cartao</a>
  &#8226;   <a href="#app.api.routes.configuracoes">app.api.routes.configuracoes</a>
@@ -19442,6 +19570,7 @@ imported by:
  &#8226;   <a href="#app.api.routes.relatorios">app.api.routes.relatorios</a>
  &#8226;   <a href="#app.api.routes.subcategorias">app.api.routes.subcategorias</a>
  &#8226;   <a href="#app.main">app.main</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
  &#8226;   <a href="#app.services.cartao_service">app.services.cartao_service</a>
  &#8226;   <a href="#app.services.conta_futura_service">app.services.conta_futura_service</a>
  &#8226;   <a href="#app.services.dividendo_service">app.services.dividendo_service</a>
@@ -45556,6 +45685,7 @@ imported by:
  &#8226;   <a href="#app.models.historico_investimento">app.models.historico_investimento</a>
  &#8226;   <a href="#app.models.orcamento">app.models.orcamento</a>
  &#8226;   <a href="#app.models.subcategoria">app.models.subcategoria</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
  &#8226;   <a href="#app.services.exterior_dolar_service">app.services.exterior_dolar_service</a>
  &#8226;   <a href="#app.services.financeiro_service">app.services.financeiro_service</a>
  &#8226;   <a href="#app.services.orcamento_service">app.services.orcamento_service</a>
@@ -56447,7 +56577,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#app.api.routes.cartoes">app.api.routes.cartoes</a>
+    <a href="#app.api.routes.caixinhas">app.api.routes.caixinhas</a>
+ &#8226;   <a href="#app.api.routes.cartoes">app.api.routes.cartoes</a>
  &#8226;   <a href="#app.api.routes.categorias">app.api.routes.categorias</a>
  &#8226;   <a href="#app.api.routes.compromissos_cartao">app.api.routes.compromissos_cartao</a>
  &#8226;   <a href="#app.api.routes.configuracoes">app.api.routes.configuracoes</a>
@@ -56466,6 +56597,7 @@ imported by:
  &#8226;   <a href="#app.api.routes.subcategorias">app.api.routes.subcategorias</a>
  &#8226;   <a href="#app.core.database">app.core.database</a>
  &#8226;   <a href="#app.models.base">app.models.base</a>
+ &#8226;   <a href="#app.models.caixinha">app.models.caixinha</a>
  &#8226;   <a href="#app.models.cartao">app.models.cartao</a>
  &#8226;   <a href="#app.models.categoria">app.models.categoria</a>
  &#8226;   <a href="#app.models.compromisso_cartao">app.models.compromisso_cartao</a>
@@ -56483,6 +56615,7 @@ imported by:
  &#8226;   <a href="#app.models.orcamento">app.models.orcamento</a>
  &#8226;   <a href="#app.models.pagamento_fatura">app.models.pagamento_fatura</a>
  &#8226;   <a href="#app.models.subcategoria">app.models.subcategoria</a>
+ &#8226;   <a href="#app.schemas.caixinha_schema">app.schemas.caixinha_schema</a>
  &#8226;   <a href="#app.schemas.cartao_schema">app.schemas.cartao_schema</a>
  &#8226;   <a href="#app.schemas.categoria_schema">app.schemas.categoria_schema</a>
  &#8226;   <a href="#app.schemas.compromisso_cartao_schema">app.schemas.compromisso_cartao_schema</a>
@@ -56496,6 +56629,7 @@ imported by:
  &#8226;   <a href="#app.schemas.metodo_pagamento_schema">app.schemas.metodo_pagamento_schema</a>
  &#8226;   <a href="#app.schemas.orcamento_schema">app.schemas.orcamento_schema</a>
  &#8226;   <a href="#app.schemas.subcategoria_schema">app.schemas.subcategoria_schema</a>
+ &#8226;   <a href="#app.services.caixinha_service">app.services.caixinha_service</a>
  &#8226;   <a href="#app.services.cartao_service">app.services.cartao_service</a>
  &#8226;   <a href="#app.services.conciliacao_service">app.services.conciliacao_service</a>
  &#8226;   <a href="#app.services.conta_futura_service">app.services.conta_futura_service</a>

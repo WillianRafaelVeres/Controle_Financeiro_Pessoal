@@ -1,6 +1,7 @@
 import type {
   Ativo,
   CartaoResumo,
+  Caixinha,
   Categoria,
   CompromissoCartao,
   Conta,
@@ -14,6 +15,7 @@ import type {
   HistoricoProventosInvestimentos,
   Lancamento,
   MetodoPagamento,
+  MovimentoInvestimento,
   OrcamentoLinha,
   PlanejamentoNaoPlanejado,
   PlanejamentoResumo,
@@ -109,6 +111,14 @@ export const api = {
     apiFetch<Lancamento>(`/contas-futuras/${id}/pagar`, { method: "POST", body: JSON.stringify(payload) }),
   cancelarContaFutura: (id: string) => apiFetch<void>(`/contas-futuras/${id}`, { method: "DELETE" }),
 
+  caixinhas: () => apiFetch<Caixinha[]>("/caixinhas"),
+  criarCaixinha: (payload: Record<string, unknown>) => apiFetch<Caixinha>("/caixinhas", { method: "POST", body: JSON.stringify(payload) }),
+  atualizarCaixinha: (id: string, payload: Record<string, unknown>) =>
+    apiFetch<Caixinha>(`/caixinhas/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  usarCaixinha: (id: string, payload: Record<string, unknown>) =>
+    apiFetch<Lancamento>(`/caixinhas/${id}/usar`, { method: "POST", body: JSON.stringify(payload) }),
+  excluirCaixinha: (id: string) => apiFetch<void>(`/caixinhas/${id}`, { method: "DELETE" }),
+
   cartoes: () => apiFetch<CartaoResumo[]>("/cartoes"),
   criarCartao: (payload: Record<string, unknown>) => apiFetch<CartaoResumo>("/cartoes", { method: "POST", body: JSON.stringify(payload) }),
   atualizarCartao: (id: string, payload: Record<string, unknown>) =>
@@ -157,6 +167,10 @@ export const api = {
   ) => apiFetch<HistoricoProventosInvestimentos>("/investimentos/desempenho/proventos", {}, { modo, ...filtros }),
   comprar: (payload: Record<string, unknown>) => apiFetch("/investimentos/comprar", { method: "POST", body: JSON.stringify(payload) }),
   vender: (payload: Record<string, unknown>) => apiFetch("/investimentos/vender", { method: "POST", body: JSON.stringify(payload) }),
+  movimentosInvestimentos: () => apiFetch<MovimentoInvestimento[]>("/investimentos/movimentos"),
+  atualizarMovimentoInvestimento: (id: string, payload: Record<string, unknown>) =>
+    apiFetch<MovimentoInvestimento>(`/investimentos/movimentos/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  excluirMovimentoInvestimento: (id: string) => apiFetch<void>(`/investimentos/movimentos/${id}`, { method: "DELETE" }),
   atualizarCotacaoAtivo: (ativoId: string, preco: number) =>
     apiFetch(`/investimentos/ativos/${ativoId}/cotacao`, { method: "POST", body: JSON.stringify({ preco }) }),
   buscarCotacaoAtivo: (ativoId: string) => apiFetch(`/investimentos/ativos/${ativoId}/cotacao/auto`, { method: "POST" }),
@@ -183,6 +197,9 @@ export const api = {
   dolarExtrato: () => apiFetch<ExtratoDolar[]>("/exterior-dolar/extrato"),
   dolarMovimento: (payload: Record<string, unknown>) =>
     apiFetch("/exterior-dolar/movimentos", { method: "POST", body: JSON.stringify(payload) }),
+  dolarAtualizarMovimento: (id: string, payload: Record<string, unknown>) =>
+    apiFetch(`/exterior-dolar/movimentos/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  dolarExcluirMovimento: (id: string) => apiFetch<void>(`/exterior-dolar/movimentos/${id}`, { method: "DELETE" }),
   dolarInformarSaldo: (payload: Record<string, unknown>) =>
     apiFetch<ResumoDolar>("/exterior-dolar/informar-saldo", { method: "POST", body: JSON.stringify(payload) }),
   dolarCotacaoAtual: () => apiFetch<CotacaoDolarAtual>("/exterior-dolar/cotacao-atual"),

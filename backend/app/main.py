@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
+    caixinhas,
     cartoes,
     categorias,
     compromissos_cartao,
@@ -53,6 +54,7 @@ for router in [
     metodos_pagamento.router,
     contas.router,
     contas_futuras.router,
+    caixinhas.router,
     cartoes.router,
     lancamentos.router,
     compromissos_cartao.router,

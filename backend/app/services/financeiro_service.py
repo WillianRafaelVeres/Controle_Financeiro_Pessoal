@@ -9,11 +9,12 @@ from app.services.exterior_dolar_service import resumo_dolar
 from app.services.orcamento_service import listar_itens_orcamento_mes, listar_nao_planejados_mes
 from app.services.saldo_service import (
     calcular_compromisso_futuro_cartao,
+    calcular_reservado_caixinhas,
     calcular_investimentos,
     calcular_reservado_cartao,
     calcular_reservado_contas_futuras,
     calcular_saldo_em_contas,
-    calcular_saldo_livre,
+    calcular_saldo_livre_conciliacao,
 )
 
 
@@ -42,12 +43,26 @@ def _sum_lancamentos_mes(session: Session, ano: int, mes: int, tipo: TipoLancame
     return _decimal(value)
 
 
+def _sum_lancamentos_mes_tipos(session: Session, ano: int, mes: int, tipos: list[TipoLancamento]) -> Decimal:
+    inicio, fim = month_bounds(ano, mes)
+    filtros = [
+        Lancamento.ativo.is_(True),
+        Lancamento.transferencia_interna.is_(False),
+        Lancamento.tipo.in_(tipos),
+        Lancamento.afeta_orcamento.is_(True),
+        Lancamento.data_lancamento >= inicio,
+        Lancamento.data_lancamento < fim,
+    ]
+    value = session.exec(select(func.sum(Lancamento.valor)).where(*filtros)).one()
+    return _decimal(value)
+
+
 def receitas_mes(session: Session, ano: int, mes: int) -> Decimal:
     return _sum_lancamentos_mes(session, ano, mes, TipoLancamento.RECEITA)
 
 
 def despesas_mes(session: Session, ano: int, mes: int) -> Decimal:
-    return _sum_lancamentos_mes(session, ano, mes, TipoLancamento.GASTO)
+    return _sum_lancamentos_mes_tipos(session, ano, mes, [TipoLancamento.GASTO, TipoLancamento.SEPARAR])
 
 
 def investimentos_mes(session: Session, ano: int, mes: int) -> Decimal:
@@ -56,10 +71,11 @@ def investimentos_mes(session: Session, ano: int, mes: int) -> Decimal:
 
 def resumo_conciliacao(session: Session) -> dict:
     saldo_em_contas = calcular_saldo_em_contas(session)
-    saldo_livre = calcular_saldo_livre(session)
+    saldo_livre = calcular_saldo_livre_conciliacao(session)
     reservado_cartao = calcular_reservado_cartao(session)
     reservado_contas_futuras = calcular_reservado_contas_futuras(session)
-    saldo_explicado = saldo_livre + reservado_cartao + reservado_contas_futuras
+    reservado_caixinhas = calcular_reservado_caixinhas(session)
+    saldo_explicado = saldo_livre + reservado_cartao + reservado_contas_futuras + reservado_caixinhas
     diferenca = saldo_em_contas - saldo_explicado
     return {
         "saldo_em_contas": saldo_em_contas,
@@ -67,6 +83,7 @@ def resumo_conciliacao(session: Session) -> dict:
         "saldo_livre": saldo_livre,
         "reservado_cartao": reservado_cartao,
         "reservado_contas_futuras": reservado_contas_futuras,
+        "reservado_caixinhas": reservado_caixinhas,
         "reservado_metas": Decimal("0.00"),
         "saldo_explicado": saldo_explicado,
         "saldo_final": saldo_explicado,
@@ -141,9 +158,8 @@ def resumo_painel(session: Session, ano: int, mes: int) -> dict:
     patrimonio_investido = calcular_investimentos(session)
     despesas = despesas_mes(session, ano, mes)
     receitas = receitas_mes(session, ano, mes)
-
     return {
-        "saldo_livre": calcular_saldo_livre(session),
+        "saldo_livre": conciliacao["saldo_livre"],
         "receitas_mes": receitas,
         "despesas_mes": despesas,
         "investimentos_mes": investimentos_realizados,
@@ -153,6 +169,7 @@ def resumo_painel(session: Session, ano: int, mes: int) -> dict:
         "saldo_final": conciliacao["saldo_final"],
         "reservado_cartao": conciliacao["reservado_cartao"],
         "reservado_contas_futuras": conciliacao["reservado_contas_futuras"],
+        "reservado_caixinhas": conciliacao["reservado_caixinhas"],
         "compromissos_futuros_cartao": calcular_compromisso_futuro_cartao(session),
         "saldo_teorico_usd": dolar["saldo_teorico_usd"],
         "diferenca_conciliacao": conciliacao["diferenca_conciliacao"],

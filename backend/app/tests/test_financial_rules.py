@@ -12,6 +12,7 @@ from app.models.base import (
     Moeda,
     NaturezaCategoria,
     StatusContaFutura,
+    TipoConta,
     TipoAtivo,
     TipoItemOrcamento,
     TipoLancamento,
@@ -22,33 +23,39 @@ from app.models.cartao import Cartao
 from app.models.categoria import Categoria
 from app.models.compromisso_cartao import CompromissoCartao
 from app.models.conta import Conta
+from app.models.lancamento import Lancamento
 from app.models.dividendo import Dividendo
 from app.models.investimento import Ativo, MovimentoInvestimento
 from app.models.metodo_pagamento import MetodoPagamento
 from app.models.orcamento import OrcamentoItem, OrcamentoMensal
 from app.models.subcategoria import Subcategoria
 from app.schemas.cartao_schema import PagarFatura
+from app.schemas.caixinha_schema import UsarCaixinha
 from app.schemas.compromisso_cartao_schema import SepararCompromisso
 from app.schemas.dividendo_schema import DividendoCreate
-from app.schemas.investimento_schema import MovimentoInvestimentoCreate
+from app.schemas.investimento_schema import MovimentoInvestimentoCreate, MovimentoInvestimentoUpdate
 from app.schemas.lancamento_schema import CartaoLancamentoInput, LancamentoCreate, LancamentoUpdate
 from app.schemas.orcamento_schema import OrcamentoAlterar, OrcamentoCreate, OrcamentoItemCreate
 from app.schemas.conta_schema import ContaCreate, ContaSaldoCreate
 from app.schemas.conta_futura_schema import ContaFuturaCreate, PagarContaFutura
-from app.schemas.exterior_dolar_schema import MovimentoDolarCreate
+from app.schemas.exterior_dolar_schema import MovimentoDolarCreate, MovimentoDolarUpdate
 from app.api.routes.contas import criar as criar_conta_route, atualizar_saldo as atualizar_saldo_conta_route
 from app.api.routes.dividendos import criar as criar_dividendo_route
 from app.services.cartao_service import pagar_fatura, separar_compromisso
+from app.services.caixinha_service import listar_caixinhas, usar_caixinha
 from app.services.conta_futura_service import criar_conta_futura, pagar_conta_futura
 from app.services.investimento_service import (
     TIPOS_COTACAO_AUTOMATICA,
     TIPOS_COTACAO_AUTOMATICA_BR,
     ativos_para_dividendos,
     atualizar_cotacao_automatica,
+    atualizar_movimento,
     calcular_desempenho,
     calcular_posicao,
     comprar,
+    excluir_movimento,
     listar_historico_desempenho,
+    listar_movimentos,
     listar_posicoes,
     registrar_cotacao,
     vender,
@@ -69,12 +76,21 @@ from app.services.saldo_service import (
     calcular_compromisso_futuro_cartao,
     calcular_gasto_real_mes,
     calcular_reservado_cartao,
+    calcular_reservado_caixinhas,
     calcular_reservado_contas_futuras,
     calcular_saldo_em_contas,
     calcular_saldo_livre,
     conciliacao,
 )
-from app.services.exterior_dolar_service import buscar_cotacao_dolar_atual, listar_extrato, registrar_manual, resumo_dolar, saldo_teorico_usd
+from app.services.exterior_dolar_service import (
+    atualizar_manual,
+    buscar_cotacao_dolar_atual,
+    excluir_manual,
+    listar_extrato,
+    registrar_manual,
+    resumo_dolar,
+    saldo_teorico_usd,
+)
 from app.services.dividendo_service import listar_historico_proventos
 
 
@@ -127,6 +143,115 @@ def test_lancamento_pix_reduz_saldo_livre(session: Session):
 
     assert calcular_saldo_livre(session) == Decimal("900.00")
     assert calcular_gasto_real_mes(session, 2026, 5) == Decimal("100.00")
+
+
+def test_separar_dinheiro_cria_caixinha_e_conta_no_orcamento(session: Session):
+    _, categoria, subcategoria, _, _, _ = seed_basico(session)
+
+    lancamento = criar_lancamento(
+        session,
+        LancamentoCreate(
+            valor=Decimal("120.00"),
+            tipo=TipoLancamento.SEPARAR,
+            categoria_id=categoria.id,
+            subcategoria_id=subcategoria.id,
+            data_lancamento=date(2026, 5, 9),
+            caixinha_nome="IPVA",
+        ),
+    )
+
+    assert lancamento.metodo_pagamento_id is None
+    assert lancamento.conta_id is None
+    caixinhas = listar_caixinhas(session)
+    assert len(caixinhas) == 1
+    assert caixinhas[0].nome == "IPVA"
+    assert caixinhas[0].valor_total == Decimal("120.00")
+    assert calcular_reservado_caixinhas(session) == Decimal("120.00")
+    assert calcular_saldo_livre(session) == Decimal("880.00")
+    assert calcular_gasto_real_mes(session, 2026, 5) == Decimal("120.00")
+    assert conciliacao(session)["diferenca_conciliacao"] == Decimal("0.00")
+
+
+def test_conta_de_investimento_nao_entra_na_conciliacao(session: Session):
+    conta_banco = Conta(
+        nome="Conta corrente",
+        saldo_inicial=Decimal("1000.00"),
+        saldo_atual_informado=Decimal("1000.00"),
+        tipo_conta=TipoConta.CONTA_CORRENTE,
+        conta_gasto=True,
+        entra_no_saldo_em_contas=True,
+    )
+    corretora = Conta(
+        nome="Corretora",
+        saldo_inicial=Decimal("5000.00"),
+        saldo_atual_informado=Decimal("5000.00"),
+        tipo_conta=TipoConta.CORRETORA,
+        conta_gasto=True,
+        entra_no_saldo_em_contas=True,
+    )
+    session.add(conta_banco)
+    session.add(corretora)
+    session.commit()
+
+    assert calcular_saldo_livre(session) == Decimal("1000.00")
+    assert calcular_saldo_em_contas(session) == Decimal("1000.00")
+
+
+def test_usar_caixinha_reduz_reserva_sem_duplicar_gasto(session: Session):
+    conta, categoria, subcategoria, pix, _, _ = seed_basico(session)
+    criar_lancamento(
+        session,
+        LancamentoCreate(
+            valor=Decimal("120.00"),
+            tipo=TipoLancamento.SEPARAR,
+            categoria_id=categoria.id,
+            subcategoria_id=subcategoria.id,
+            metodo_pagamento_id=pix.id,
+            conta_id=conta.id,
+            data_lancamento=date(2026, 5, 9),
+            caixinha_nome="IPVA",
+        ),
+    )
+    caixinha = listar_caixinhas(session)[0]
+
+    usar_caixinha(
+        session,
+        caixinha.id,
+        UsarCaixinha(valor=Decimal("50.00"), data_lancamento=date(2026, 5, 20), metodo_pagamento_id=pix.id),
+    )
+
+    atualizada = listar_caixinhas(session)[0]
+    assert atualizada.valor_total == Decimal("70.00")
+    assert calcular_reservado_caixinhas(session) == Decimal("70.00")
+    assert calcular_saldo_livre(session) == Decimal("880.00")
+    assert calcular_gasto_real_mes(session, 2026, 5) == Decimal("120.00")
+
+
+def test_usar_caixinha_no_cartao_move_reserva_para_fatura(session: Session):
+    _, categoria, subcategoria, _, _, cartao = seed_basico(session)
+    criar_lancamento(
+        session,
+        LancamentoCreate(
+            valor=Decimal("120.00"),
+            tipo=TipoLancamento.SEPARAR,
+            categoria_id=categoria.id,
+            subcategoria_id=subcategoria.id,
+            data_lancamento=date(2026, 5, 9),
+            caixinha_nome="Livros",
+        ),
+    )
+    caixinha = listar_caixinhas(session)[0]
+
+    usar_caixinha(
+        session,
+        caixinha.id,
+        UsarCaixinha(valor=Decimal("50.00"), data_lancamento=date(2026, 5, 20), cartao_id=cartao.id),
+    )
+
+    assert calcular_reservado_caixinhas(session) == Decimal("70.00")
+    assert calcular_reservado_cartao(session, cartao.id) == Decimal("50.00")
+    assert calcular_saldo_livre(session) == Decimal("880.00")
+    assert calcular_gasto_real_mes(session, 2026, 5) == Decimal("120.00")
 
 
 def test_editar_lancamento_comum_atualiza_valor_e_observacao(session: Session):
@@ -218,6 +343,58 @@ def test_conta_futura_aberta_reduz_saldo_livre_e_concilia(session: Session):
     assert calcular_reservado_contas_futuras(session) == Decimal("250.00")
     assert calcular_saldo_livre(session) == Decimal("750.00")
     assert conciliacao(session)["diferenca_nao_explicada"] == Decimal("0.00")
+
+
+def test_conta_futura_aberta_pode_ser_associada_a_uma_conta(session: Session):
+    conta, categoria, subcategoria, pix, *_ = seed_basico(session)
+
+    conta_futura = criar_conta_futura(
+        session,
+        ContaFuturaCreate(
+            descricao="IPVA",
+            valor=Decimal("300.00"),
+            categoria_id=categoria.id,
+            subcategoria_id=subcategoria.id,
+            metodo_pagamento_id=pix.id,
+            conta_id=conta.id,
+            data_vencimento=date(2027, 4, 20),
+        ),
+    )
+
+    assert conta_futura.status == StatusContaFutura.ABERTA
+    assert conta_futura.conta_id == conta.id
+    assert calcular_reservado_contas_futuras(session) == Decimal("300.00")
+
+
+def test_pagar_conta_futura_usa_conta_associada_por_padrao(session: Session):
+    conta, categoria, subcategoria, pix, *_ = seed_basico(session)
+    conta_futura = criar_conta_futura(
+        session,
+        ContaFuturaCreate(
+            descricao="IPVA",
+            valor=Decimal("300.00"),
+            categoria_id=categoria.id,
+            subcategoria_id=subcategoria.id,
+            metodo_pagamento_id=pix.id,
+            conta_id=conta.id,
+            data_vencimento=date(2027, 4, 20),
+        ),
+    )
+
+    pagar_conta_futura(
+        session,
+        conta_futura.id,
+        PagarContaFutura(
+            metodo_pagamento_id=pix.id,
+            data_pagamento=date(2027, 4, 20),
+        ),
+    )
+    session.refresh(conta_futura)
+    lancamento = session.get(Lancamento, conta_futura.lancamento_pagamento_id)
+
+    assert conta_futura.status == StatusContaFutura.PAGA
+    assert lancamento is not None
+    assert lancamento.conta_id == conta.id
 
 
 def test_pagar_conta_futura_vira_gasto_sem_descontar_duas_vezes(session: Session):
@@ -469,6 +646,99 @@ def test_compra_por_ticker_cria_ativo_e_movimenta_dolar_exterior(session: Sessio
     )
 
     assert saldo_teorico_usd(session) == Decimal("207.00")
+
+
+def test_editar_e_excluir_movimento_investimento_brl_sincroniza_lancamento(session: Session):
+    ativo = Ativo(ticker="BBAS3", nome="Banco do Brasil", tipo_ativo=TipoAtivo.ACAO_BR)
+    session.add(ativo)
+    session.commit()
+    session.refresh(ativo)
+
+    compra = comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=ativo.id,
+            quantidade=Decimal("10.00"),
+            preco_unitario=Decimal("10.00"),
+            data_movimento=date(2026, 5, 9),
+        ),
+    )
+    lancamento = session.exec(select(Lancamento).where(Lancamento.referencia_id == compra.id)).one()
+
+    atualizado = atualizar_movimento(
+        session,
+        compra.id,
+        MovimentoInvestimentoUpdate(
+            data_movimento=date(2026, 5, 10),
+            quantidade=Decimal("10.00"),
+            preco_unitario=Decimal("12.00"),
+            corretora="Santander",
+            observacao="preco corrigido",
+        ),
+    )
+    session.refresh(lancamento)
+    session.refresh(ativo)
+
+    assert atualizado["valor_total"] == Decimal("120.0000")
+    assert atualizado["corretora"] == "Santander"
+    assert lancamento.ativo is True
+    assert lancamento.valor == Decimal("120.0000")
+    assert lancamento.data_lancamento == date(2026, 5, 10)
+    assert lancamento.observacao == "preco corrigido"
+    assert listar_movimentos(session)[0]["id"] == compra.id
+
+    excluir_movimento(session, compra.id)
+    session.refresh(lancamento)
+
+    assert lancamento.ativo is False
+    assert calcular_posicao(session, ativo.id)["quantidade_atual"] == Decimal("0.00")
+    assert listar_movimentos(session) == []
+
+
+def test_editar_e_excluir_compra_exterior_sincroniza_extrato_dolar(session: Session):
+    registrar_manual(
+        session,
+        MovimentoDolarCreate(
+            tipo="ENVIO",
+            data_movimento=date(2026, 5, 8),
+            valor_brl=Decimal("5000.00"),
+            valor_usd=Decimal("1000.00"),
+        ),
+    )
+
+    compra = comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ticker="AAPL",
+            nome="Apple",
+            tipo_ativo=TipoAtivo.EXTERIOR,
+            quantidade=Decimal("2.00"),
+            preco_unitario=Decimal("100.00"),
+            data_movimento=date(2026, 5, 9),
+        ),
+    )
+    assert saldo_teorico_usd(session) == Decimal("800.00")
+
+    atualizar_movimento(
+        session,
+        compra.id,
+        MovimentoInvestimentoUpdate(
+            quantidade=Decimal("2.00"),
+            preco_unitario=Decimal("150.00"),
+            observacao="Compra ajustada",
+        ),
+    )
+    extrato_compra = next(item for item in listar_extrato(session) if item["tipo"] == "COMPRA_EXTERIOR")
+
+    assert saldo_teorico_usd(session) == Decimal("700.00")
+    assert extrato_compra["saida_usd"] == Decimal("300.0000")
+    assert extrato_compra["descricao"] == "Compra ajustada"
+
+    excluir_movimento(session, compra.id)
+
+    assert saldo_teorico_usd(session) == Decimal("1000.00")
+    assert calcular_posicao(session, compra.ativo_id)["quantidade_atual"] == Decimal("0.00")
+    assert all(item["tipo"] != "COMPRA_EXTERIOR" for item in listar_extrato(session))
 
 
 def test_compra_exterior_sem_saldo_usd_e_bloqueada(session: Session):
@@ -1271,6 +1541,33 @@ def test_lancamento_investimento_cria_movimento_e_conta_no_planejamento_sem_gast
     assert session.get(Ativo, movimentos[0].ativo_id).ticker == "BBAS3"
 
 
+def test_conciliacao_ignora_lancamento_de_investimento(session: Session):
+    conta = Conta(nome="Conta", saldo_inicial=Decimal("2000.00"), saldo_atual_informado=Decimal("2000.00"))
+    categoria = Categoria(nome="Investimentos", natureza=NaturezaCategoria.INVESTIMENTO)
+    session.add(conta)
+    session.add(categoria)
+    session.flush()
+    subcategoria = Subcategoria(nome="Acoes Brasil", categoria_id=categoria.id, natureza=NaturezaCategoria.INVESTIMENTO)
+    session.add(subcategoria)
+    session.commit()
+
+    criar_lancamento(
+        session,
+        LancamentoCreate(
+            valor=Decimal("1000.00"),
+            tipo=TipoLancamento.INVESTIMENTO,
+            categoria_id=categoria.id,
+            subcategoria_id=subcategoria.id,
+            conta_id=conta.id,
+            data_lancamento=date(2026, 5, 20),
+        ),
+    )
+
+    assert calcular_saldo_livre(session) == Decimal("1000.00")
+    assert conciliacao(session)["saldo_livre"] == Decimal("2000.00")
+    assert conciliacao(session)["diferenca_conciliacao"] == Decimal("0.00")
+
+
 def test_snapshot_preserva_nome_antigo_no_orcamento_apos_renomear(session: Session):
     _, categoria, subcategoria, *_ = seed_basico(session)
     adicionar_item_orcamento(
@@ -1659,7 +1956,7 @@ def test_investimento_planejado_alimenta_painel_e_planejamento_sem_despesa(sessi
 
     painel = resumo_painel(session, 2026, 5)
     planejamento = resumo_planejamento(session, 2026, 5)
-    assert painel["saldo_livre"] == Decimal("1500.00")
+    assert painel["saldo_livre"] == Decimal("2000.00")
     assert painel["investimentos_mes"] == Decimal("500.00")
     assert painel["despesas_mes"] == Decimal("0.00")
     assert planejamento["investimentos_executados"] == Decimal("500.00")
@@ -1682,8 +1979,13 @@ def test_envio_dolar_reduz_saldo_livre_e_compra_exterior_nao_reduz_brl_de_novo(s
     )
 
     assert calcular_saldo_livre(session) == Decimal("5000.00")
+    session.refresh(conta)
+    assert conta.saldo_atual_informado == Decimal("10000.00")
+    assert conciliacao(session)["saldo_livre"] == Decimal("5000.00")
+    assert conciliacao(session)["diferenca_conciliacao"] == Decimal("5000.00")
     assert saldo_teorico_usd(session) == Decimal("1000.00")
     painel = resumo_painel(session, 2026, 5)
+    assert painel["saldo_livre"] == Decimal("5000.00")
     assert painel["investimentos_mes"] == Decimal("5000.00")
     assert painel["saldo_teorico_usd"] == Decimal("1000.00")
 
@@ -1701,7 +2003,79 @@ def test_envio_dolar_reduz_saldo_livre_e_compra_exterior_nao_reduz_brl_de_novo(s
     )
 
     assert calcular_saldo_livre(session) == Decimal("5000.00")
+    assert conciliacao(session)["saldo_livre"] == Decimal("5000.00")
     assert saldo_teorico_usd(session) == Decimal("500.00")
+
+    registrar_manual(
+        session,
+        MovimentoDolarCreate(
+            tipo="RETIRADA",
+            data_movimento=date(2026, 5, 10),
+            valor_brl=Decimal("2500.00"),
+            valor_usd=Decimal("500.00"),
+            descricao="Retirada da corretora exterior",
+        ),
+    )
+
+    session.refresh(conta)
+    assert conta.saldo_atual_informado == Decimal("10000.00")
+    assert saldo_teorico_usd(session) == Decimal("0.00")
+    assert conciliacao(session)["saldo_livre"] == Decimal("7500.00")
+    assert conciliacao(session)["diferenca_conciliacao"] == Decimal("2500.00")
+
+
+def test_editar_e_excluir_movimento_dolar_sincroniza_lancamento_brl(session: Session):
+    conta = Conta(nome="Conta", saldo_inicial=Decimal("10000.00"), saldo_atual_informado=Decimal("10000.00"))
+    session.add(conta)
+    session.commit()
+
+    movimento = registrar_manual(
+        session,
+        MovimentoDolarCreate(
+            tipo="ENVIO",
+            data_movimento=date(2026, 5, 8),
+            valor_brl=Decimal("5000.00"),
+            valor_usd=Decimal("1000.00"),
+            descricao="Envio inicial",
+        ),
+    )
+
+    assert saldo_teorico_usd(session) == Decimal("1000.00")
+    assert conciliacao(session)["saldo_livre"] == Decimal("5000.00")
+
+    atualizado = atualizar_manual(
+        session,
+        movimento.id,
+        MovimentoDolarUpdate(
+            data_movimento=date(2026, 5, 9),
+            valor_brl=Decimal("3000.00"),
+            valor_usd=Decimal("600.00"),
+            descricao="Envio ajustado",
+        ),
+    )
+    lancamento = session.exec(
+        select(Lancamento).where(
+            Lancamento.ativo.is_(True),
+            Lancamento.referencia_id == movimento.id,
+        )
+    ).first()
+
+    assert atualizado.valor_brl == Decimal("3000.00")
+    assert atualizado.cotacao_efetiva == Decimal("5.00")
+    assert saldo_teorico_usd(session) == Decimal("600.00")
+    assert conciliacao(session)["saldo_livre"] == Decimal("7000.00")
+    assert lancamento is not None
+    assert lancamento.tipo == TipoLancamento.INVESTIMENTO
+    assert lancamento.valor == Decimal("3000.00")
+    assert lancamento.observacao == "Envio ajustado"
+
+    excluir_manual(session, movimento.id)
+    session.refresh(lancamento)
+
+    assert saldo_teorico_usd(session) == Decimal("0.00")
+    assert conciliacao(session)["saldo_livre"] == Decimal("10000.00")
+    assert lancamento.ativo is False
+    assert listar_extrato(session) == []
 
 
 def test_busca_cotacao_dolar_atual_salva_configuracao(session: Session, monkeypatch):

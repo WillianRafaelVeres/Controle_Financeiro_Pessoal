@@ -34,10 +34,10 @@ export function DashboardPage() {
   const cotacaoDolar = useQuery({ queryKey: ["dolar-cotacao-atual"], queryFn: api.dolarCotacaoAtual, retry: false });
 
   const criarLancamento = useMutation({ mutationFn: api.criarLancamento, onSuccess: () => queryClient.invalidateQueries() });
+  const criarContaFutura = useMutation({ mutationFn: api.criarContaFutura, onSuccess: () => queryClient.invalidateQueries() });
   const criarCategoria = useMutation({ mutationFn: api.criarCategoria, onSuccess: () => queryClient.invalidateQueries() });
   const criarSubcategoria = useMutation({ mutationFn: api.criarSubcategoria, onSuccess: () => queryClient.invalidateQueries() });
   const criarMetodo = useMutation({ mutationFn: api.criarMetodo, onSuccess: () => queryClient.invalidateQueries() });
-  const criarContaFutura = useMutation({ mutationFn: api.criarContaFutura, onSuccess: () => queryClient.invalidateQueries() });
   const criarDividendo = useMutation({ mutationFn: api.criarDividendo, onSuccess: () => queryClient.invalidateQueries() });
   const movimentoDolar = useMutation({ mutationFn: api.dolarMovimento, onSuccess: () => queryClient.invalidateQueries() });
   const comprarAtivo = useMutation({ mutationFn: api.comprar, onSuccess: () => queryClient.invalidateQueries() });

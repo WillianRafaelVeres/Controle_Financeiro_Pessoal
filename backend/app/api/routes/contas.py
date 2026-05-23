@@ -4,11 +4,22 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from app.core.database import get_session
-from app.models.base import now_utc
+from app.models.base import TipoConta, now_utc
 from app.models.conta import Conta, ContaSaldo
 from app.schemas.conta_schema import ContaCreate, ContaSaldoCreate, ContaUpdate
 
 router = APIRouter(prefix="/contas", tags=["contas"])
+
+
+TIPOS_CONTA_INVESTIMENTO = {TipoConta.CORRETORA, TipoConta.CONTA_EXTERIOR, TipoConta.INVESTIMENTO}
+
+
+def _normalizar_conta_investimento(data: dict) -> dict:
+    tipo = data.get("tipo_conta")
+    if tipo in TIPOS_CONTA_INVESTIMENTO:
+        data["entra_no_saldo_em_contas"] = False
+        data["conta_gasto"] = False
+    return data
 
 
 @router.get("")
@@ -21,7 +32,7 @@ def listar(incluir_inativas: bool = False, session: Session = Depends(get_sessio
 
 @router.post("")
 def criar(payload: ContaCreate, session: Session = Depends(get_session)) -> Conta:
-    data = payload.model_dump()
+    data = _normalizar_conta_investimento(payload.model_dump())
     if data.get("saldo_atual_informado") is None:
         data["saldo_atual_informado"] = data.get("saldo_inicial")
     conta = Conta(**data)
@@ -46,6 +57,10 @@ def atualizar(conta_id: str, payload: ContaUpdate, session: Session = Depends(ge
     if not conta:
         raise HTTPException(status_code=404, detail="Conta nao encontrada.")
     data = payload.model_dump(exclude_unset=True)
+    tipo_resultante = data.get("tipo_conta", conta.tipo_conta)
+    if tipo_resultante in TIPOS_CONTA_INVESTIMENTO:
+        data["entra_no_saldo_em_contas"] = False
+        data["conta_gasto"] = False
     saldo_informado = data.get("saldo_atual_informado")
     for key, value in data.items():
         setattr(conta, key, value)

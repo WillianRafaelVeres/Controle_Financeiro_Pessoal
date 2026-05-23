@@ -26,12 +26,12 @@ export function LancamentosPage() {
   const cartoes = useQuery({ queryKey: ["cartoes"], queryFn: api.cartoes });
   const lancamentos = useQuery({ queryKey: ["lancamentos", month], queryFn: () => api.lancamentos(month.ano, month.mes) });
   const criar = useMutation({ mutationFn: api.criarLancamento, onSuccess: () => queryClient.invalidateQueries() });
+  const criarContaFutura = useMutation({ mutationFn: api.criarContaFutura, onSuccess: () => queryClient.invalidateQueries() });
   const atualizar = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.atualizarLancamento(id, payload),
     onSuccess: () => queryClient.invalidateQueries(),
   });
   const excluir = useMutation({ mutationFn: api.excluirLancamento, onSuccess: () => queryClient.invalidateQueries() });
-  const criarContaFutura = useMutation({ mutationFn: api.criarContaFutura, onSuccess: () => queryClient.invalidateQueries() });
   const criarCategoria = useMutation({ mutationFn: api.criarCategoria, onSuccess: () => queryClient.invalidateQueries() });
   const criarSubcategoria = useMutation({ mutationFn: api.criarSubcategoria, onSuccess: () => queryClient.invalidateQueries() });
   const criarMetodo = useMutation({ mutationFn: api.criarMetodo, onSuccess: () => queryClient.invalidateQueries() });
@@ -60,6 +60,7 @@ export function LancamentosPage() {
             <Select value={tipoFiltro} onChange={(event) => setTipoFiltro(event.target.value)}>
               <option value="">Todos os tipos</option>
               <option value="GASTO">Gasto</option>
+              <option value="SEPARAR">Separar</option>
               <option value="RECEITA">Receita</option>
               <option value="INVESTIMENTO">Investimento</option>
             </Select>

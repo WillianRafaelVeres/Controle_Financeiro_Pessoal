@@ -26,6 +26,12 @@ const tiposConta = [
   ["OUTRO", "Outro"],
 ];
 
+const tiposContaForaConciliacao = new Set(["CORRETORA", "CONTA_EXTERIOR", "INVESTIMENTO"]);
+
+function entraNaConciliacao(conta: Conta) {
+  return Boolean(conta.entra_no_saldo_em_contas && conta.conta_gasto && !tiposContaForaConciliacao.has(conta.tipo_conta ?? ""));
+}
+
 export function ContasPage() {
   const queryClient = useQueryClient();
   const contas = useQuery({ queryKey: ["contas", "todas"], queryFn: () => api.contas(true) });
@@ -52,7 +58,7 @@ export function ContasPage() {
   const lista = contas.data ?? [];
   const ativas = lista.filter((conta) => conta.ativa !== false);
   const total = ativas
-    .filter((conta) => conta.entra_no_saldo_em_contas)
+    .filter(entraNaConciliacao)
     .reduce((acc, conta) => acc + toNumber(conta.saldo_atual_informado), 0);
   const ultimaAtualizacao = useMemo(
     () =>
@@ -85,7 +91,7 @@ export function ContasPage() {
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         <Summary label="Saldo em contas" value={formatMoney(total)} subtitle="Contas que entram na conciliacao" tone="green" icon={<WalletCards className="h-4 w-4" />} />
         <Summary label="Contas ativas" value={String(ativas.length)} subtitle={`${lista.length} cadastrada${lista.length === 1 ? "" : "s"}`} tone="blue" icon={<Landmark className="h-4 w-4" />} />
-        <Summary label="Entram no saldo" value={String(ativas.filter((conta) => conta.entra_no_saldo_em_contas).length)} subtitle="Usadas no saldo em contas" tone="yellow" icon={<RefreshCw className="h-4 w-4" />} />
+        <Summary label="Entram no saldo" value={String(ativas.filter(entraNaConciliacao).length)} subtitle="Usadas na conciliacao" tone="yellow" icon={<RefreshCw className="h-4 w-4" />} />
         <Summary label="Ultima atualizacao" value={ultimaAtualizacao ? formatDate(ultimaAtualizacao) : "-"} subtitle="Base do saldo informado" tone="neutral" icon={<CalendarDays className="h-4 w-4" />} />
       </div>
 
@@ -222,7 +228,7 @@ function ContaCard({
             {conta.instituicao ?? conta.banco ?? "Sem instituicao"}
           </p>
         </div>
-        <Badge tone={conta.entra_no_saldo_em_contas ? "blue" : "yellow"}>{conta.entra_no_saldo_em_contas ? "Entra no saldo" : "Fora do saldo"}</Badge>
+        <Badge tone={entraNaConciliacao(conta) ? "blue" : "yellow"}>{entraNaConciliacao(conta) ? "Entra no saldo" : "Fora do saldo"}</Badge>
       </div>
 
       <div className="mt-4 rounded-md bg-slate-950/50 px-3 py-2">
@@ -283,6 +289,7 @@ function ContaFormDialog({
   const [saldoInicial, setSaldoInicial] = useState("");
   const [saldoAtual, setSaldoAtual] = useState("");
   const [entra, setEntra] = useState(true);
+  const tipoForaConciliacao = tiposContaForaConciliacao.has(tipo);
 
   useEffect(() => {
     if (!open) return;
@@ -305,8 +312,8 @@ function ContaFormDialog({
       moeda,
       saldo_inicial: Number(saldoInicial || 0),
       saldo_atual_informado: Number(saldoAtual || saldoInicial || 0),
-      entra_no_saldo_em_contas: entra,
-      conta_gasto: entra,
+      entra_no_saldo_em_contas: tipoForaConciliacao ? false : entra,
+      conta_gasto: tipoForaConciliacao ? false : entra,
     });
   }
 
@@ -324,7 +331,13 @@ function ContaFormDialog({
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1">
             <span className="text-xs font-medium text-slate-500">Tipo</span>
-            <Select value={tipo} onChange={(event) => setTipo(event.target.value)}>
+            <Select
+              value={tipo}
+              onChange={(event) => {
+                setTipo(event.target.value);
+                if (tiposContaForaConciliacao.has(event.target.value)) setEntra(false);
+              }}
+            >
               {tiposConta.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
@@ -352,8 +365,8 @@ function ContaFormDialog({
             <MoneyInput value={saldoAtual} onChange={(event) => setSaldoAtual(event.target.value)} />
           </label>
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-300">
-          <input type="checkbox" checked={entra} onChange={(event) => setEntra(event.target.checked)} />
+        <label className={`flex items-center gap-2 text-sm ${tipoForaConciliacao ? "text-slate-500" : "text-slate-300"}`}>
+          <input type="checkbox" checked={!tipoForaConciliacao && entra} disabled={tipoForaConciliacao} onChange={(event) => setEntra(event.target.checked)} />
           Entra no saldo em contas
         </label>
         <div className="flex justify-end gap-2">

@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 
 from app.models.base import NaturezaCategoria, StatusContaFutura, TipoLancamento, TipoMetodo, now_utc
 from app.models.categoria import Categoria
+from app.models.conta import Conta
 from app.models.conta_futura import ContaFutura
 from app.models.lancamento import Lancamento
 from app.models.metodo_pagamento import MetodoPagamento
@@ -40,6 +41,13 @@ def _validar_metodo_pagamento(session: Session, metodo_id: str) -> MetodoPagamen
     return metodo
 
 
+def _validar_conta(session: Session, conta_id: str) -> Conta:
+    conta = session.get(Conta, conta_id)
+    if not conta or not conta.ativa:
+        raise HTTPException(status_code=422, detail="Conta invalida ou inativa.")
+    return conta
+
+
 def listar_contas_futuras(session: Session, incluir_pagas: bool = True) -> list[ContaFutura]:
     statement = select(ContaFutura).where(ContaFutura.ativo.is_(True))
     if not incluir_pagas:
@@ -57,6 +65,8 @@ def criar_conta_futura(session: Session, payload: ContaFuturaCreate) -> ContaFut
         raise HTTPException(status_code=422, detail="Valor precisa ser maior que zero.")
     _validar_categoria(session, payload.categoria_id, payload.subcategoria_id)
     _validar_metodo_pagamento(session, payload.metodo_pagamento_id)
+    if payload.conta_id:
+        _validar_conta(session, payload.conta_id)
 
     conta = ContaFutura(
         descricao=descricao,
@@ -64,6 +74,7 @@ def criar_conta_futura(session: Session, payload: ContaFuturaCreate) -> ContaFut
         categoria_id=payload.categoria_id,
         subcategoria_id=payload.subcategoria_id,
         metodo_pagamento_id=payload.metodo_pagamento_id,
+        conta_id=payload.conta_id,
         data_vencimento=payload.data_vencimento,
         observacao=payload.observacao,
     )
@@ -84,6 +95,7 @@ def atualizar_conta_futura(session: Session, conta_id: str, payload: ContaFutura
     categoria_id = data.get("categoria_id", conta.categoria_id)
     subcategoria_id = data.get("subcategoria_id", conta.subcategoria_id)
     metodo_pagamento_id = data.get("metodo_pagamento_id", conta.metodo_pagamento_id)
+    conta_id = data.get("conta_id", conta.conta_id)
     if "valor" in data and data["valor"] <= 0:
         raise HTTPException(status_code=422, detail="Valor precisa ser maior que zero.")
     if "descricao" in data:
@@ -93,6 +105,8 @@ def atualizar_conta_futura(session: Session, conta_id: str, payload: ContaFutura
     _validar_categoria(session, categoria_id, subcategoria_id)
     if metodo_pagamento_id:
         _validar_metodo_pagamento(session, metodo_pagamento_id)
+    if "conta_id" in data and conta_id is not None:
+        _validar_conta(session, conta_id)
 
     for key, value in data.items():
         setattr(conta, key, value)
@@ -115,6 +129,9 @@ def pagar_conta_futura(session: Session, conta_id: str, payload: PagarContaFutur
         raise HTTPException(status_code=422, detail="Informe o metodo de pagamento.")
     metodo = _validar_metodo_pagamento(session, metodo_id)
     categoria, subcategoria = _validar_categoria(session, conta.categoria_id, conta.subcategoria_id)
+    if payload.conta_id:
+        _validar_conta(session, payload.conta_id)
+
     lancamento = Lancamento(
         data_lancamento=payload.data_pagamento or date.today(),
         tipo=TipoLancamento.GASTO,
@@ -125,7 +142,7 @@ def pagar_conta_futura(session: Session, conta_id: str, payload: PagarContaFutur
         categoria_nome_snapshot=categoria.nome,
         subcategoria_nome_snapshot=subcategoria.nome,
         metodo_pagamento_id=metodo.id,
-        conta_id=payload.conta_id,
+        conta_id=payload.conta_id or conta.conta_id,
         observacao=payload.observacao or conta.observacao or conta.descricao,
         afeta_saldo_livre=True,
         afeta_orcamento=True,

@@ -6,11 +6,11 @@ from fastapi import HTTPException
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from app.models.base import TipoLancamento, TipoMovimentoDolar
+from app.models.base import TipoLancamento, TipoMovimentoDolar, now_utc
 from app.models.configuracao import Configuracao
 from app.models.extrato_dolar import ExtratoDolar
 from app.models.lancamento import Lancamento
-from app.schemas.exterior_dolar_schema import MovimentoDolarCreate, SaldoDolarInformado
+from app.schemas.exterior_dolar_schema import MovimentoDolarCreate, MovimentoDolarUpdate, SaldoDolarInformado
 
 
 ENTRADAS = {
@@ -30,6 +30,136 @@ COTACAO_USD_BRL_URL = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
 COTACAO_USD_BRL_HISTORICO_URL = "https://economia.awesomeapi.com.br/json/daily/USD-BRL/7"
 
 
+def saldo_teorico_usd(session: Session, ignorar_movimento_id: str | None = None) -> Decimal:
+    filtros = [ExtratoDolar.ativo.is_(True)]
+    if ignorar_movimento_id:
+        filtros.append(ExtratoDolar.id != ignorar_movimento_id)
+    entradas = session.exec(select(func.sum(ExtratoDolar.entrada_usd)).where(*filtros)).one()
+    saidas = session.exec(select(func.sum(ExtratoDolar.saida_usd)).where(*filtros)).one()
+    return Decimal(str(entradas or "0.00")) - Decimal(str(saidas or "0.00"))
+
+
+def _entrada_saida(tipo: TipoMovimentoDolar, valor_usd: Decimal) -> tuple[Decimal, Decimal]:
+    return (
+        valor_usd if tipo in ENTRADAS else Decimal("0.00"),
+        valor_usd if tipo in SAIDAS else Decimal("0.00"),
+    )
+
+
+def _cotacao_efetiva(valor_usd: Decimal, valor_brl: Decimal) -> Decimal:
+    return Decimal("0.00") if valor_usd == 0 or valor_brl == 0 else valor_brl / valor_usd
+
+
+def _origem_lancamento_dolar(tipo: TipoMovimentoDolar) -> str | None:
+    if tipo == TipoMovimentoDolar.ENVIO:
+        return "DOLAR_ENVIO"
+    if tipo == TipoMovimentoDolar.RETIRADA:
+        return "DOLAR_RETIRADA"
+    return None
+
+
+def _tipo_lancamento_dolar(tipo: TipoMovimentoDolar) -> TipoLancamento | None:
+    if tipo == TipoMovimentoDolar.ENVIO:
+        return TipoLancamento.INVESTIMENTO
+    if tipo == TipoMovimentoDolar.RETIRADA:
+        return TipoLancamento.RECEITA
+    return None
+
+
+def _descricao_padrao_dolar(tipo: TipoMovimentoDolar) -> str:
+    return "Envio de dolar" if tipo == TipoMovimentoDolar.ENVIO else "Retirada de dolar"
+
+
+def _buscar_lancamento_vinculado(session: Session, movimento: ExtratoDolar) -> Lancamento | None:
+    vinculado = session.exec(
+        select(Lancamento).where(
+            Lancamento.ativo.is_(True),
+            Lancamento.referencia_id == movimento.id,
+        )
+    ).first()
+    if vinculado:
+        return vinculado
+
+    origem = _origem_lancamento_dolar(movimento.tipo)
+    tipo_lancamento = _tipo_lancamento_dolar(movimento.tipo)
+    if not origem or not tipo_lancamento or movimento.valor_brl <= 0:
+        return None
+
+    return session.exec(
+        select(Lancamento).where(
+            Lancamento.ativo.is_(True),
+            Lancamento.referencia_id.is_(None),
+            Lancamento.origem_sistema == origem,
+            Lancamento.tipo == tipo_lancamento,
+            Lancamento.data_lancamento == movimento.data_movimento,
+            Lancamento.valor == movimento.valor_brl,
+        )
+    ).first()
+
+
+def _sincronizar_lancamento_brl(
+    session: Session,
+    movimento: ExtratoDolar,
+    lancamento_existente: Lancamento | None = None,
+) -> None:
+    lancamento = lancamento_existente or _buscar_lancamento_vinculado(session, movimento)
+    origem = _origem_lancamento_dolar(movimento.tipo)
+    tipo_lancamento = _tipo_lancamento_dolar(movimento.tipo)
+    if not origem or not tipo_lancamento or movimento.valor_brl <= 0:
+        if lancamento:
+            lancamento.ativo = False
+            lancamento.atualizado_em = now_utc()
+            session.add(lancamento)
+        return
+
+    descricao = movimento.descricao or _descricao_padrao_dolar(movimento.tipo)
+    if not lancamento:
+        lancamento = Lancamento(
+            data_lancamento=movimento.data_movimento,
+            tipo=tipo_lancamento,
+            valor=movimento.valor_brl,
+            valor_original=movimento.valor_brl,
+            observacao=descricao,
+            origem_sistema=origem,
+            referencia_id=movimento.id,
+            afeta_saldo_livre=True,
+            afeta_orcamento=True,
+        )
+    else:
+        lancamento.data_lancamento = movimento.data_movimento
+        lancamento.tipo = tipo_lancamento
+        lancamento.valor = movimento.valor_brl
+        lancamento.valor_original = movimento.valor_brl
+        lancamento.observacao = descricao
+        lancamento.origem_sistema = origem
+        lancamento.referencia_id = movimento.id
+        lancamento.afeta_saldo_livre = True
+        lancamento.afeta_orcamento = True
+        lancamento.ativo = True
+        lancamento.atualizado_em = now_utc()
+    session.add(lancamento)
+
+
+def _garantir_movimento_manual(movimento: ExtratoDolar | None) -> ExtratoDolar:
+    if not movimento or not movimento.ativo:
+        raise HTTPException(status_code=404, detail="Movimento em dolar nao encontrado.")
+    if movimento.origem != "MANUAL":
+        raise HTTPException(
+            status_code=422,
+            detail="Movimentos gerados por investimentos ou dividendos devem ser ajustados na tela de origem.",
+        )
+    return movimento
+
+
+def _validar_movimento(tipo: TipoMovimentoDolar, valor_usd: Decimal, valor_brl: Decimal | None) -> None:
+    if tipo not in ENTRADAS and tipo not in SAIDAS:
+        raise HTTPException(status_code=422, detail="Tipo de movimento manual invalido.")
+    if valor_usd < 0:
+        raise HTTPException(status_code=422, detail="Valor em USD nao pode ser negativo.")
+    if valor_brl is not None and valor_brl < 0:
+        raise HTTPException(status_code=422, detail="Valor em BRL nao pode ser negativo.")
+
+
 def registrar_movimento_dolar(
     session: Session,
     tipo: TipoMovimentoDolar,
@@ -40,22 +170,22 @@ def registrar_movimento_dolar(
     referencia_id: str | None = None,
     data_movimento: date | None = None,
 ) -> ExtratoDolar:
-    if valor_usd < 0:
-        raise HTTPException(status_code=422, detail="Valor em USD nao pode ser negativo.")
-    if valor_brl is not None and valor_brl < 0:
-        raise HTTPException(status_code=422, detail="Valor em BRL nao pode ser negativo.")
+    _validar_movimento(tipo, valor_usd, valor_brl)
     if tipo in SAIDAS and saldo_teorico_usd(session) < valor_usd:
-        raise HTTPException(status_code=422, detail="Saldo USD insuficiente para esta saida.")
+        raise HTTPException(
+            status_code=422,
+            detail="Saldo USD insuficiente para esta operacao. Verifique seu saldo em conta dolar.",
+        )
     brl = valor_brl or Decimal("0.00")
-    cotacao = Decimal("0.00") if valor_usd == 0 or brl == 0 else brl / valor_usd
+    entrada_usd, saida_usd = _entrada_saida(tipo, valor_usd)
     movimento = ExtratoDolar(
         data_movimento=data_movimento or date.today(),
         tipo=tipo,
         descricao=descricao,
-        entrada_usd=valor_usd if tipo in ENTRADAS else Decimal("0.00"),
-        saida_usd=valor_usd if tipo in SAIDAS else Decimal("0.00"),
+        entrada_usd=entrada_usd,
+        saida_usd=saida_usd,
         valor_brl=brl,
-        cotacao_efetiva=cotacao,
+        cotacao_efetiva=_cotacao_efetiva(valor_usd, brl),
         origem=origem,
         referencia_id=referencia_id,
     )
@@ -65,8 +195,7 @@ def registrar_movimento_dolar(
 
 
 def registrar_manual(session: Session, payload: MovimentoDolarCreate) -> ExtratoDolar:
-    if payload.tipo not in ENTRADAS and payload.tipo not in SAIDAS:
-        raise HTTPException(status_code=422, detail="Tipo de movimento manual invalido.")
+    data_movimento = payload.data_movimento or date.today()
     movimento = registrar_movimento_dolar(
         session,
         payload.tipo,
@@ -74,31 +203,59 @@ def registrar_manual(session: Session, payload: MovimentoDolarCreate) -> Extrato
         valor_brl=payload.valor_brl,
         descricao=payload.descricao,
         origem="MANUAL",
-        data_movimento=payload.data_movimento,
+        data_movimento=data_movimento,
     )
     if payload.tipo == TipoMovimentoDolar.ENVIO and payload.valor_brl and payload.valor_brl > 0:
-        session.add(
-            Lancamento(
-                data_lancamento=payload.data_movimento or date.today(),
-                tipo=TipoLancamento.INVESTIMENTO,
-                valor=payload.valor_brl,
-                valor_original=payload.valor_brl,
-                observacao=payload.descricao or "Envio de dolar",
-                afeta_saldo_livre=True,
-                afeta_orcamento=True,
-            )
-        )
+        _sincronizar_lancamento_brl(session, movimento)
+    if payload.tipo == TipoMovimentoDolar.RETIRADA and payload.valor_brl and payload.valor_brl > 0:
+        _sincronizar_lancamento_brl(session, movimento)
     session.commit()
     session.refresh(movimento)
     return movimento
 
 
-def saldo_teorico_usd(session: Session) -> Decimal:
-    entradas = session.exec(
-        select(func.sum(ExtratoDolar.entrada_usd)).where(ExtratoDolar.ativo.is_(True))
-    ).one()
-    saidas = session.exec(select(func.sum(ExtratoDolar.saida_usd)).where(ExtratoDolar.ativo.is_(True))).one()
-    return Decimal(str(entradas or "0.00")) - Decimal(str(saidas or "0.00"))
+def atualizar_manual(session: Session, movimento_id: str, payload: MovimentoDolarUpdate) -> ExtratoDolar:
+    movimento = _garantir_movimento_manual(session.get(ExtratoDolar, movimento_id))
+    lancamento_vinculado = _buscar_lancamento_vinculado(session, movimento)
+    data = payload.model_dump(exclude_unset=True)
+    tipo = data.get("tipo", movimento.tipo)
+    valor_usd = data.get("valor_usd", movimento.entrada_usd if movimento.tipo in ENTRADAS else movimento.saida_usd)
+    valor_brl = data.get("valor_brl", movimento.valor_brl)
+    _validar_movimento(tipo, valor_usd, valor_brl)
+    if tipo in SAIDAS and saldo_teorico_usd(session, ignorar_movimento_id=movimento.id) < valor_usd:
+        raise HTTPException(
+            status_code=422,
+            detail="Saldo USD insuficiente para esta operacao. Verifique seu saldo em conta dolar.",
+        )
+
+    brl = valor_brl or Decimal("0.00")
+    entrada_usd, saida_usd = _entrada_saida(tipo, valor_usd)
+    movimento.tipo = tipo
+    movimento.data_movimento = data.get("data_movimento", movimento.data_movimento)
+    movimento.descricao = data.get("descricao", movimento.descricao)
+    movimento.entrada_usd = entrada_usd
+    movimento.saida_usd = saida_usd
+    movimento.valor_brl = brl
+    movimento.cotacao_efetiva = _cotacao_efetiva(valor_usd, brl)
+    movimento.atualizado_em = now_utc()
+    session.add(movimento)
+    _sincronizar_lancamento_brl(session, movimento, lancamento_vinculado)
+    session.commit()
+    session.refresh(movimento)
+    return movimento
+
+
+def excluir_manual(session: Session, movimento_id: str) -> None:
+    movimento = _garantir_movimento_manual(session.get(ExtratoDolar, movimento_id))
+    lancamento_vinculado = _buscar_lancamento_vinculado(session, movimento)
+    movimento.ativo = False
+    movimento.atualizado_em = now_utc()
+    session.add(movimento)
+    if lancamento_vinculado:
+        lancamento_vinculado.ativo = False
+        lancamento_vinculado.atualizado_em = now_utc()
+        session.add(lancamento_vinculado)
+    session.commit()
 
 
 def _get_config_decimal(session: Session, chave: str) -> Decimal:
@@ -261,6 +418,7 @@ def listar_extrato(session: Session) -> list[dict]:
                 "saldo_acumulado_usd": saldo,
                 "origem": item.origem,
                 "referencia_id": item.referencia_id,
+                "editavel": item.origem == "MANUAL",
             }
         )
     return list(reversed(linhas))

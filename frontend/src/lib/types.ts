@@ -1,4 +1,4 @@
-export type TipoLancamento = "GASTO" | "RECEITA" | "INVESTIMENTO";
+export type TipoLancamento = "GASTO" | "RECEITA" | "INVESTIMENTO" | "SEPARAR";
 export type NaturezaCategoria = "GASTO" | "RECEITA" | "INVESTIMENTO";
 export type TipoItemOrcamento = "CATEGORIA" | "SUBCATEGORIA";
 export type TipoMetodo = "PIX" | "DEBITO" | "DINHEIRO" | "BOLETO" | "CARTAO_CREDITO" | "OUTRO";
@@ -77,10 +77,25 @@ export interface ContaFutura {
   categoria_id: string;
   subcategoria_id: string;
   metodo_pagamento_id?: string | null;
+  conta_id?: string | null;
   valor: string | number;
   status: "ABERTA" | "PAGA" | "CANCELADA";
   lancamento_pagamento_id?: string | null;
   observacao?: string | null;
+}
+
+export interface Caixinha {
+  id: string;
+  nome: string;
+  descricao?: string | null;
+  categoria_id?: string | null;
+  subcategoria_id?: string | null;
+  metodo_pagamento_id?: string | null;
+  conta_id?: string | null;
+  valor_total: string | number;
+  ativo: boolean;
+  criado_em?: string;
+  atualizado_em?: string;
 }
 
 export interface CartaoResumo {
@@ -108,6 +123,7 @@ export interface Lancamento {
   categoria_nome_snapshot?: string;
   subcategoria_nome_snapshot?: string;
   metodo_pagamento_id?: string;
+  caixinha_id?: string;
   cartao_id?: string;
   observacao?: string;
 }
@@ -136,6 +152,7 @@ export interface DashboardResumo {
   saldo_final?: string | number;
   reservado_cartao: string | number;
   reservado_contas_futuras?: string | number;
+  reservado_caixinhas?: string | number;
   compromissos_futuros_cartao: string | number;
   saldo_teorico_usd?: string | number;
   gastos_nao_planejados_mes?: string | number;
@@ -234,6 +251,26 @@ export interface Posicao {
   rentabilidade_com_dividendos_percentual?: string | number;
   data_cotacao?: string | null;
   fonte_cotacao?: string | null;
+}
+
+export interface MovimentoInvestimento {
+  id: string;
+  ativo_id: string;
+  ticker: string;
+  nome: string;
+  tipo_ativo: TipoAtivo;
+  tipo_movimento: "COMPRA" | "VENDA" | "APORTE" | "RESGATE" | "AJUSTE";
+  data_movimento: string;
+  quantidade: string | number;
+  preco_unitario: string | number;
+  valor_total: string | number;
+  taxas: string | number;
+  valor_financeiro: string | number;
+  moeda: string;
+  corretora?: string | null;
+  conta_id?: string | null;
+  observacao?: string | null;
+  origem_dolar?: boolean;
 }
 
 export interface DesempenhoBenchmark {
@@ -366,6 +403,8 @@ export interface ExtratoDolar {
   cotacao_efetiva?: string | number;
   saldo_acumulado_usd: string | number;
   origem: string;
+  referencia_id?: string | null;
+  editavel?: boolean;
 }
 
 export interface ResumoDolar {

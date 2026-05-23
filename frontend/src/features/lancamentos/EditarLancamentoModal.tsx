@@ -37,6 +37,7 @@ export function EditarLancamentoModal({
   const [saving, setSaving] = useState(false);
   const isCartao = Boolean(lancamento?.cartao_id);
   const valorNumber = Number(valor || 0);
+  const naturezaTipo = tipo === "SEPARAR" ? "GASTO" : tipo;
 
   useEffect(() => {
     if (!lancamento) return;
@@ -52,19 +53,19 @@ export function EditarLancamentoModal({
   const categoriaOptions = useMemo(
     () =>
       categorias.filter((item) => {
-        const mesmaNatureza = (item.natureza ?? "GASTO") === tipo;
+        const mesmaNatureza = (item.natureza ?? "GASTO") === naturezaTipo;
         return mesmaNatureza && (item.ativa || item.id === categoriaId);
       }),
-    [categoriaId, categorias, tipo],
+    [categoriaId, categorias, naturezaTipo],
   );
 
   const subcategoriaOptions = useMemo(
     () =>
       subcategorias
-        .filter((item) => (item.natureza ?? "GASTO") === tipo)
+        .filter((item) => (item.natureza ?? "GASTO") === naturezaTipo)
         .filter((item) => !categoriaId || item.categoria_id === categoriaId)
         .filter((item) => item.ativa || item.id === subcategoriaId),
-    [categoriaId, subcategoriaId, subcategorias, tipo],
+    [categoriaId, naturezaTipo, subcategoriaId, subcategorias],
   );
 
   function changeTipo(value: TipoLancamento) {
@@ -89,7 +90,7 @@ export function EditarLancamentoModal({
         tipo,
         categoria_id: categoriaId || null,
         subcategoria_id: subcategoriaId || null,
-        metodo_pagamento_id: isCartao || tipo === "INVESTIMENTO" ? null : metodoId || null,
+        metodo_pagamento_id: isCartao || tipo === "INVESTIMENTO" || tipo === "SEPARAR" ? null : metodoId || null,
         data_lancamento: dataLancamento || null,
         observacao: observacao.trim() || null,
       });
@@ -117,6 +118,7 @@ export function EditarLancamentoModal({
           ) : (
             <Select value={tipo} onChange={(event) => changeTipo(event.target.value as TipoLancamento)}>
               <option value="GASTO">Despesa</option>
+              <option value="SEPARAR">Separar</option>
               <option value="RECEITA">Receita</option>
               <option value="INVESTIMENTO">Investimento</option>
             </Select>
@@ -149,8 +151,10 @@ export function EditarLancamentoModal({
         </label>
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-500">Metodo</span>
-          {isCartao || tipo === "INVESTIMENTO" ? (
-            <div className="flex h-8 items-center rounded-md border border-slate-700 bg-slate-950 px-2.5 text-[13px] text-slate-500">Nao alterado aqui</div>
+          {isCartao || tipo === "INVESTIMENTO" || tipo === "SEPARAR" ? (
+            <div className="flex h-8 items-center rounded-md border border-slate-700 bg-slate-950 px-2.5 text-[13px] text-slate-500">
+              {tipo === "SEPARAR" ? "Nao exigido" : "Nao alterado aqui"}
+            </div>
           ) : (
             <Select value={metodoId} onChange={(event) => setMetodoId(event.target.value)}>
               <option value="">Selecione</option>

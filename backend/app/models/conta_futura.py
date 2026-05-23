@@ -14,6 +14,7 @@ class ContaFutura(IdMixin, TimestampMixin, table=True):
     categoria_id: str = Field(foreign_key="categorias.id", index=True)
     subcategoria_id: str = Field(foreign_key="subcategorias.id", index=True)
     metodo_pagamento_id: str | None = Field(default=None, foreign_key="metodos_pagamento.id", index=True)
+    conta_id: str | None = Field(default=None, foreign_key="contas.id", index=True)
     valor: Decimal = Field(sa_column=money_column())
     status: StatusContaFutura = Field(default=StatusContaFutura.ABERTA, index=True)
     lancamento_pagamento_id: str | None = Field(default=None, foreign_key="lancamentos.id", index=True)

@@ -25,6 +25,8 @@ export function LancamentosTable({ lancamentos, categorias, subcategorias, metod
   const cat = (item: Lancamento) => item.categoria_nome_snapshot ?? catObj(item.categoria_id)?.nome ?? "-";
   const sub = (item: Lancamento) => item.subcategoria_nome_snapshot ?? subObj(item.subcategoria_id)?.nome ?? "-";
   const metodo = (id?: string) => metodos.find((item) => item.id === id);
+  const tipoLabel = (tipo: Lancamento["tipo"]) =>
+    tipo === "GASTO" ? "Despesa" : tipo === "RECEITA" ? "Receita" : tipo === "SEPARAR" ? "Separar" : "Investimento";
 
   return (
     <DataTable
@@ -59,7 +61,9 @@ export function LancamentosTable({ lancamentos, categorias, subcategorias, metod
                 <tr key={item.id}>
                   <Td>{formatDate(item.data_lancamento)}</Td>
                   <Td>
-                    <Badge tone={item.tipo === "GASTO" ? "red" : item.tipo === "RECEITA" ? "green" : "blue"}>{item.tipo}</Badge>
+                    <Badge tone={item.tipo === "GASTO" ? "red" : item.tipo === "RECEITA" ? "green" : item.tipo === "SEPARAR" ? "yellow" : "blue"}>
+                      {tipoLabel(item.tipo)}
+                    </Badge>
                   </Td>
                   <Td className="font-medium text-slate-950">{formatMoney(item.valor)}</Td>
                   <Td>

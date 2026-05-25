@@ -15,6 +15,7 @@ from app.services.saldo_service import (
     calcular_reservado_contas_futuras,
     calcular_saldo_em_contas,
     calcular_saldo_livre_conciliacao,
+    filtro_excluir_categoria_cartao_generica,
 )
 
 
@@ -53,6 +54,9 @@ def _sum_lancamentos_mes_tipos(session: Session, ano: int, mes: int, tipos: list
         Lancamento.data_lancamento >= inicio,
         Lancamento.data_lancamento < fim,
     ]
+    filtro_categoria_generica = filtro_excluir_categoria_cartao_generica(session)
+    if filtro_categoria_generica is not None and any(tipo in {TipoLancamento.GASTO, TipoLancamento.SEPARAR} for tipo in tipos):
+        filtros.append(filtro_categoria_generica)
     value = session.exec(select(func.sum(Lancamento.valor)).where(*filtros)).one()
     return _decimal(value)
 

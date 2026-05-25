@@ -1,6 +1,7 @@
 import { Check, Plus, Search, X } from "lucide-react";
 import type React from "react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
@@ -28,6 +29,13 @@ interface ComboboxCreateProps {
   onUseTemporary?: (name: string) => void;
 }
 
+interface DropdownPosition {
+  left: number;
+  top: number;
+  width: number;
+  maxHeight: number;
+}
+
 export function ComboboxCreate({
   label,
   placeholder = "Pesquisar",
@@ -45,7 +53,10 @@ export function ComboboxCreate({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [pendingName, setPendingName] = useState("");
+  const [dropdownPosition, setDropdownPosition] = useState<DropdownPosition | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const selected = options.find((option) => option.id === valueId);
   const display = selected?.label ?? temporaryValue ?? "";
   const filtered = useMemo(() => {
@@ -55,20 +66,122 @@ export function ComboboxCreate({
   }, [options, query]);
   const canCreate = query.trim().length > 0 && !options.some((option) => option.label.toLowerCase() === query.trim().toLowerCase());
 
+  function closeDropdown() {
+    setOpen(false);
+    setQuery("");
+  }
+
+  function updateDropdownPosition() {
+    const rect = inputRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const viewportPadding = 16;
+    const gap = 6;
+    const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
+    const spaceAbove = rect.top - viewportPadding;
+    const openBelow = spaceBelow >= 220 || spaceBelow >= spaceAbove;
+    const availableSpace = Math.max(140, (openBelow ? spaceBelow : spaceAbove) - gap);
+    const maxHeight = Math.min(360, availableSpace);
+    const width = Math.min(Math.max(rect.width, 260), window.innerWidth - viewportPadding * 2);
+
+    setDropdownPosition({
+      left: Math.max(viewportPadding, Math.min(rect.left, window.innerWidth - width - viewportPadding)),
+      top: openBelow ? rect.bottom + gap : Math.max(viewportPadding, rect.top - gap - maxHeight),
+      width,
+      maxHeight,
+    });
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    updateDropdownPosition();
+    window.addEventListener("resize", updateDropdownPosition);
+    window.addEventListener("scroll", updateDropdownPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateDropdownPosition);
+      window.removeEventListener("scroll", updateDropdownPosition, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (wrapperRef.current?.contains(target) || dropdownRef.current?.contains(target)) return;
+      closeDropdown();
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [open]);
+
   async function persist() {
     const created = await onCreatePersist(pendingName);
     if (created) onSelect(created);
     setPendingName("");
-    setQuery("");
-    setOpen(false);
+    closeDropdown();
   }
 
+  const dropdown =
+    open && dropdownPosition
+      ? createPortal(
+          <div
+            ref={dropdownRef}
+            className="fixed z-[80] overflow-y-auto rounded-lg border border-slate-700/90 bg-slate-950/95 p-1 shadow-2xl shadow-black/50 backdrop-blur-sm"
+            style={{
+              left: dropdownPosition.left,
+              top: dropdownPosition.top,
+              width: dropdownPosition.width,
+              maxHeight: dropdownPosition.maxHeight,
+            }}
+          >
+            {filtered.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={cn(
+                  "flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-[13px] text-slate-200 transition hover:bg-slate-800",
+                  option.id === valueId && "bg-brand-500/15 text-brand-500",
+                )}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  onSelect(option);
+                  closeDropdown();
+                }}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{option.label}</span>
+                  {option.description && <span className="block truncate text-xs text-slate-500">{option.description}</span>}
+                </span>
+                {option.id === valueId && <Check className="h-4 w-4 shrink-0" />}
+              </button>
+            ))}
+            {canCreate && (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[13px] font-medium text-brand-500 transition hover:bg-brand-500/15"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  setPendingName(query.trim());
+                  setOpen(false);
+                }}
+              >
+                <Plus className="h-4 w-4 shrink-0" />
+                <span className="truncate">Criar {createNoun} "{query.trim()}"</span>
+              </button>
+            )}
+            {filtered.length === 0 && !canCreate && <div className="px-3 py-2 text-[13px] text-slate-500">Nenhum item encontrado.</div>}
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
-    <div className="space-y-1" ref={wrapperRef}>
+    <div className="min-w-0 space-y-1" ref={wrapperRef}>
       <span className="text-xs font-medium text-slate-500">{label}</span>
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-slate-500" />
+      <div className="relative min-w-0">
+        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
         <Input
+          ref={inputRef}
           className="pl-9 pr-9"
           disabled={disabled}
           value={open ? query : display}
@@ -80,6 +193,9 @@ export function ComboboxCreate({
           onChange={(event) => {
             setQuery(event.target.value);
             setOpen(true);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") closeDropdown();
           }}
         />
         {(valueId || temporaryValue) && (
@@ -95,48 +211,11 @@ export function ComboboxCreate({
             <X className="h-3.5 w-3.5" />
           </button>
         )}
-        {open && (
-          <div className="absolute z-40 mt-1 max-h-72 w-full overflow-auto rounded-md border border-slate-700 bg-slate-950 p-1">
-            {filtered.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                className={cn(
-                  "flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-[13px] text-slate-200 hover:bg-slate-800",
-                  option.id === valueId && "bg-brand-500/15 text-brand-500",
-                )}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  onSelect(option);
-                  setOpen(false);
-                  setQuery("");
-                }}
-              >
-                <span>
-                  <span className="block font-medium">{option.label}</span>
-                  {option.description && <span className="block text-xs text-slate-500">{option.description}</span>}
-                </span>
-                {option.id === valueId && <Check className="h-4 w-4" />}
-              </button>
-            ))}
-            {canCreate && (
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] font-medium text-brand-500 hover:bg-brand-500/15"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => setPendingName(query.trim())}
-              >
-                <Plus className="h-4 w-4" />
-                Criar {createNoun} "{query.trim()}"
-              </button>
-            )}
-            {filtered.length === 0 && !canCreate && <div className="px-2.5 py-1.5 text-[13px] text-slate-500">Nenhum item encontrado.</div>}
-          </div>
-        )}
       </div>
-      <Dialog open={pendingName.length > 0} title={`${capitalize(createNoun)} ainda não existe`} onClose={() => setPendingName("")}>
+      {dropdown}
+      <Dialog open={pendingName.length > 0} title={`${capitalize(createNoun)} ainda nao existe`} onClose={() => setPendingName("")}>
         <p className="text-sm text-slate-400">
-          {`${dialogArticle} ${createNoun} "${pendingName}" ainda não existe. Deseja adicionar à lista para lançamentos futuros?`}
+          {`${dialogArticle} ${createNoun} "${pendingName}" ainda nao existe. Deseja adicionar a lista para lancamentos futuros?`}
         </p>
         {createExtra && <div className="mt-4">{createExtra}</div>}
         <div className="mt-6 flex flex-wrap justify-end gap-2">
@@ -149,10 +228,10 @@ export function ComboboxCreate({
               onClick={() => {
                 onUseTemporary(pendingName);
                 setPendingName("");
-                setOpen(false);
+                closeDropdown();
               }}
             >
-              Usar só neste lançamento
+              Usar so neste lancamento
             </Button>
           )}
           <Button onClick={persist}>Adicionar</Button>

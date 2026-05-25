@@ -237,38 +237,40 @@ function ResumoMes({
         <PlanningCard kind="investimento" title="Investimentos" planned={investimentosPlanejados} actual={investimentosRealizados} />
         <PlanningCard kind="saldo" title="Saldo operacional" planned={saldoPrevisto} actual={saldoAtual} />
       </div>
-      <div className="overflow-hidden rounded-md border border-slate-800 text-[12px]">
-        <div className="grid grid-cols-[1fr_repeat(4,minmax(72px,auto))] gap-2 bg-slate-900 px-2 py-1.5 text-[11px] font-semibold uppercase text-slate-500">
-          <span>Tipo</span>
-          <span className="text-right">Planejado</span>
-          <span className="text-right">Planejado exec.</span>
-          <span className="text-right">Nao planejado</span>
-          <span className="text-right">Total</span>
+      <div className="overflow-x-auto rounded-xl border border-slate-800 text-[12px]">
+        <div className="min-w-[520px]">
+          <div className="grid grid-cols-[1fr_repeat(4,minmax(72px,auto))] gap-2 bg-slate-900 px-3 py-2 text-[11px] font-semibold uppercase text-slate-500">
+            <span>Tipo</span>
+            <span className="text-right">Planejado</span>
+            <span className="text-right">Dentro</span>
+            <span className="text-right">Fora</span>
+            <span className="text-right">Total</span>
+          </div>
+          <ExecutionBreakdown
+            label="Recebimentos"
+            natureza="RECEITA"
+            planned={receitasPlanejadas}
+            inside={receitasPlanejadasRealizadas}
+            outside={receitasNaoPlanejadasTotal}
+            total={receitasRealizadas}
+          />
+          <ExecutionBreakdown
+            label="Gastos"
+            natureza="GASTO"
+            planned={gastosPlanejados}
+            inside={gastosPlanejadosRealizados}
+            outside={gastosNaoPlanejadosTotal}
+            total={gastosRealizados}
+          />
+          <ExecutionBreakdown
+            label="Investimentos"
+            natureza="INVESTIMENTO"
+            planned={investimentosPlanejados}
+            inside={investimentosPlanejadosRealizados}
+            outside={investimentosNaoPlanejadosTotal}
+            total={investimentosRealizados}
+          />
         </div>
-        <ExecutionBreakdown
-          label="Recebimentos"
-          natureza="RECEITA"
-          planned={receitasPlanejadas}
-          inside={receitasPlanejadasRealizadas}
-          outside={receitasNaoPlanejadasTotal}
-          total={receitasRealizadas}
-        />
-        <ExecutionBreakdown
-          label="Gastos"
-          natureza="GASTO"
-          planned={gastosPlanejados}
-          inside={gastosPlanejadosRealizados}
-          outside={gastosNaoPlanejadosTotal}
-          total={gastosRealizados}
-        />
-        <ExecutionBreakdown
-          label="Investimentos"
-          natureza="INVESTIMENTO"
-          planned={investimentosPlanejados}
-          inside={investimentosPlanejadosRealizados}
-          outside={investimentosNaoPlanejadosTotal}
-          total={investimentosRealizados}
-        />
       </div>
     </div>
   );
@@ -289,7 +291,7 @@ function PlanningCard({ kind, title, planned, actual }: { kind: PlanningKind; ti
   const barClass = status.bad ? "bg-danger-600" : status.good ? "bg-brand-500" : "bg-amber-500";
 
   return (
-    <section className={`rounded-md border p-3 ${toneClass}`}>
+    <section className={`rounded-xl border p-3 ${toneClass}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase text-slate-500">{title}</p>
@@ -342,7 +344,7 @@ function ExecutionBreakdown({ label, natureza, planned, inside, outside, total }
   total: number;
 }) {
   return (
-    <div className="grid grid-cols-[1fr_repeat(4,minmax(72px,auto))] gap-2 border-t border-slate-800 px-2 py-1.5">
+    <div className="grid grid-cols-[1fr_repeat(4,minmax(72px,auto))] gap-2 border-t border-slate-800 px-3 py-2">
       <span className="font-medium text-slate-300">{label}</span>
       <Value value={planned} />
       <Value value={inside} />

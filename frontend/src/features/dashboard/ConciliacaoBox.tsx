@@ -14,16 +14,16 @@ export function ConciliacaoBox({ data }: { data?: Record<string, string | number
       : `Existem ${formatMoney(Math.abs(diferenca))} a menos na conta.`;
 
   return (
-    <SectionCard title="Conciliacao" description="Conferencia entre o saldo real informado e os valores do sistema.">
+    <SectionCard title="Conciliação" description="Confere se o saldo informado nas contas bate com o saldo explicado pelo app.">
       <div className="space-y-2 text-[13px]">
         <Line label="Saldo em contas" value={data?.saldo_em_contas_informado ?? data?.saldo_em_contas} />
         <Line label="Saldo livre" value={data?.saldo_livre} highlight />
-        <Line label="Reservado cartao" value={data?.reservado_cartao} />
+        <Line label="Reservado cartão" value={data?.reservado_cartao} />
         <Line label="Contas futuras" value={data?.reservado_contas_futuras} />
         <Line label="Dinheiro separado" value={data?.reservado_caixinhas} />
         <Line label="Saldo final" value={saldoFinal} />
         <div className="border-t border-slate-800 pt-2">
-          <Line label="Diferenca" value={data?.diferenca_nao_explicada ?? data?.diferenca_conciliacao} strong />
+          <Line label="Diferença" value={data?.diferenca_nao_explicada ?? data?.diferenca_conciliacao} strong />
         </div>
         <div
           className={
@@ -33,7 +33,7 @@ export function ConciliacaoBox({ data }: { data?: Record<string, string | number
           }
         >
           {ok ? <CheckCircle2 className="h-4 w-4" /> : <TriangleAlert className="h-4 w-4" />}
-          <span className="font-medium">{alerta}</span>
+          <span className="font-medium leading-5">{alerta}</span>
         </div>
       </div>
     </SectionCard>
@@ -52,7 +52,7 @@ function Line({
   highlight?: boolean;
 }) {
   return (
-    <div className={highlight ? "flex items-center justify-between gap-4 rounded-md bg-brand-500/10 px-2 py-1.5" : "flex items-center justify-between gap-4"}>
+    <div className={highlight ? "flex items-center justify-between gap-4 rounded-lg bg-brand-500/10 px-3 py-2" : "flex items-center justify-between gap-4 px-1 py-0.5"}>
       <span className={strong || highlight ? "font-semibold text-slate-100" : "text-slate-400"}>{label}</span>
       <span className={strong || highlight ? "font-semibold text-slate-100" : "text-slate-200"}>{formatMoney(value)}</span>
     </div>

@@ -288,7 +288,11 @@ export function LancamentoForm({
 
   return (
     <>
-      <form className="grid gap-2 md:grid-cols-2 xl:grid-cols-4" onSubmit={submit}>
+      <form className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" onSubmit={submit}>
+        <div className="md:col-span-2 xl:col-span-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Essencial</p>
+          <p className="mt-0.5 text-[11px] text-slate-500">Valor, tipo, finalidade e forma de pagamento.</p>
+        </div>
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-500">Valor</span>
           <MoneyInput value={valor} onChange={(event) => setValor(event.target.value)} required />
@@ -402,7 +406,7 @@ export function LancamentoForm({
         </div>
 
         {tipo === "INVESTIMENTO" && (
-          <div className="grid gap-3 rounded-md border border-slate-800 bg-slate-950/50 p-3 xl:col-span-4 xl:grid-cols-4">
+          <div className="grid gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3 md:col-span-2 xl:col-span-4 xl:grid-cols-4">
             <label className="space-y-1">
               <span className="text-xs font-medium text-slate-500">Destino</span>
               <Select value={destinoInvestimento} onChange={(event) => setDestinoInvestimento(event.target.value)}>
@@ -449,7 +453,7 @@ export function LancamentoForm({
           </div>
         )}
 
-        <div className="xl:col-span-4">
+        <div className="md:col-span-2 xl:col-span-4">
           <button
             type="button"
             className="inline-flex items-center gap-2 text-xs font-medium text-slate-500 hover:text-slate-200"

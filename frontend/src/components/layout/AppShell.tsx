@@ -25,7 +25,9 @@ export function AppShell({
       <Sidebar current={current} onNavigate={onNavigate} />
       <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden lg:pl-0">
         <Topbar title={title} backendStatus={backendStatus} onNewLancamento={onNewLancamento} />
-        <main className="min-w-0 max-w-full flex-1 overflow-x-hidden px-2.5 py-2.5 sm:px-3 lg:px-4">{children}</main>
+        <main className="min-w-0 max-w-full flex-1 overflow-x-hidden px-3 py-3 sm:px-4 lg:px-5">
+          <div className="app-page">{children}</div>
+        </main>
       </div>
     </div>
   );

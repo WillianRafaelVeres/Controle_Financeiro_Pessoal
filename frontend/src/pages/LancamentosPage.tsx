@@ -4,15 +4,16 @@ import { useState } from "react";
 
 import { MonthSelector } from "../components/finance/MonthSelector";
 import { SectionCard } from "../components/finance/SectionCard";
+import { PageHeader } from "../components/layout/PageHeader";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { Select } from "../components/ui/select";
 import { EditarLancamentoModal } from "../features/lancamentos/EditarLancamentoModal";
+import { LancamentoForm } from "../features/lancamentos/LancamentoForm";
+import { LancamentosTable } from "../features/lancamentos/LancamentosTable";
 import { api } from "../lib/api";
 import type { Lancamento } from "../lib/types";
 import { currentMonth } from "../lib/utils";
-import { LancamentoForm } from "../features/lancamentos/LancamentoForm";
-import { LancamentosTable } from "../features/lancamentos/LancamentosTable";
 
 export function LancamentosPage() {
   const queryClient = useQueryClient();
@@ -39,24 +40,25 @@ export function LancamentosPage() {
   const filtrados = (lancamentos.data ?? []).filter((item) => !tipoFiltro || item.tipo === tipoFiltro);
 
   return (
-    <div className="space-y-2">
-      <SectionCard
-        title="Operação"
-        description="Lançamentos usam filtros locais. A data é automática e pode ser alterada dentro do formulário."
-        action={
+    <div className="space-y-3">
+      <PageHeader
+        title="Lançamentos"
+        description="Registre receitas, despesas, reservas e movimentos do mes."
+        actions={
           <Button onClick={() => setOpen(true)}>
             <Plus className="h-4 w-4" />
             Novo lançamento
           </Button>
         }
-      >
-        <div className="flex flex-wrap items-center gap-3">
+      />
+      <SectionCard title="Filtros" description="Escolha o mes e filtre o historico sem alterar os dados." compact>
+        <div className="flex flex-wrap items-center gap-2">
           <MonthSelector ano={month.ano} mes={month.mes} onChange={setMonth} />
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <Filter className="h-4 w-4" />
-            Filtros
+            Tipo
           </div>
-          <div className="w-44">
+          <div className="w-full sm:w-44">
             <Select value={tipoFiltro} onChange={(event) => setTipoFiltro(event.target.value)}>
               <option value="">Todos os tipos</option>
               <option value="GASTO">Gasto</option>
@@ -67,12 +69,13 @@ export function LancamentosPage() {
           </div>
         </div>
       </SectionCard>
-      <SectionCard title="Histórico do período">
+      <SectionCard title="Histórico do período" description="Todos os lançamentos do mes selecionado.">
         <LancamentosTable
           lancamentos={filtrados}
           categorias={categorias.data ?? []}
           subcategorias={subcategorias.data ?? []}
           metodos={metodos.data ?? []}
+          cartoes={cartoes.data ?? []}
           onEdit={setEditing}
           onDelete={(lancamento) => {
             if (window.confirm("Excluir este lancamento?")) excluir.mutate(lancamento.id);
@@ -89,7 +92,7 @@ export function LancamentosPage() {
           await atualizar.mutateAsync({ id, payload });
         }}
       />
-      <Dialog open={open} title="Novo lançamento" onClose={() => setOpen(false)} className="max-w-6xl">
+      <Dialog open={open} title="Novo lançamento" onClose={() => setOpen(false)} className="max-w-5xl">
         <LancamentoForm
           categorias={categorias.data ?? []}
           subcategorias={subcategorias.data ?? []}

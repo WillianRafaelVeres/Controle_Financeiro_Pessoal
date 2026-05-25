@@ -110,16 +110,16 @@ export function ContasFuturasPage() {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <PageHeader title="Contas futuras" description="Valores separados agora para contas que serao pagas depois." />
 
-      <div className="grid gap-2 lg:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Resumo label="Reservado" value={formatMoney(totalAberto)} detail="Sai do saldo livre" />
         <Resumo label="Abertas" value={String(abertas.length)} detail="Aguardando pagamento" />
       </div>
 
       <SectionCard title="Separar conta" description="Informe item e subitem para o gasto entrar no orcamento quando for pago.">
-        <form className="grid gap-2 lg:grid-cols-[1.2fr_130px_140px_1fr_1fr_1fr_auto]" onSubmit={submit}>
+        <form className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_140px_150px_1fr_1fr_1fr_1fr_auto]" onSubmit={submit}>
           <label className="space-y-1">
             <span className="text-xs font-medium text-slate-500">Conta</span>
             <Input value={form.descricao} onChange={(event) => setForm({ ...form, descricao: event.target.value })} placeholder="Ex.: Energia" required />
@@ -189,7 +189,7 @@ export function ContasFuturasPage() {
               ))}
             </Select>
           </label>
-          <div className="flex items-end">
+          <div className="flex items-end md:col-span-2 xl:col-span-1">
             <Button className="w-full" type="submit" disabled={criar.isPending}>
               <Plus className="h-4 w-4" />
               Separar

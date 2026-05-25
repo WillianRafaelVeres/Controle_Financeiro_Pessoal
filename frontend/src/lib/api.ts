@@ -184,7 +184,7 @@ export const api = {
 
   relGastosCategoria: (ano: number, mes: number) => apiFetch<Array<Record<string, string | number>>>("/relatorios/gastos-por-categoria", {}, { ano, mes }),
   relOrcadoRealizado: (ano: number, mes: number) => apiFetch<OrcamentoLinha[]>("/relatorios/orcado-vs-realizado", {}, { ano, mes }),
-  relGastosMetodo: (ano: number, mes: number) => apiFetch<Array<{ metodo: string; valor: number; percentual: number }>>("/relatorios/gastos-por-metodo", {}, { ano, mes }),
+  relGastosMetodo: (ano: number, mes: number) => apiFetch<Array<{ metodo: string; tipo?: "METODO" | "CARTAO"; valor: number; percentual: number }>>("/relatorios/gastos-por-metodo", {}, { ano, mes }),
   relEvolucaoMensal: (anoInicio: number, mesInicio: number, anoFim: number, mesFim: number) =>
     apiFetch<Array<{ ano: number; mes: number; receita: number; gasto: number; investimento: number; saldo: number }>>("/relatorios/evolucao-mensal", {}, { ano_inicio: anoInicio, mes_inicio: mesInicio, ano_fim: anoFim, mes_fim: mesFim }),
   relInsights: (ano: number, mes: number) =>

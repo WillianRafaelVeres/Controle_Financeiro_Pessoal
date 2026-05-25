@@ -38,7 +38,7 @@ const pageTitles: Record<PageKey, string> = {
   dinheiro_separado: "Dinheiro separado",
   orcamento: "Orçamento",
   cartoes: "Cartões",
-  patrimonio: "Meu patrimonio",
+  patrimonio: "Meu patrimônio",
   investimentos: "Investimentos",
   desempenho: "Desempenho",
   dividendos: "Dividendos",

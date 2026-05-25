@@ -22,35 +22,37 @@ import { useState } from "react";
 import { cn } from "../../lib/utils";
 import type { PageKey } from "../../pages/pageTypes";
 
+const APP_LOGO_SRC = "/app-icon.png";
+
 const groups: Array<{ title: string; items: Array<{ key: PageKey; label: string; icon: typeof Gauge }> }> = [
   {
     title: "Financeiro geral",
     items: [
       { key: "dashboard", label: "Painel", icon: Gauge },
-      { key: "lancamentos", label: "Lancamentos", icon: ReceiptText },
+      { key: "lancamentos", label: "Lançamentos", icon: ReceiptText },
       { key: "contas", label: "Contas", icon: Landmark },
       { key: "contas_futuras", label: "Contas futuras", icon: CalendarClock },
       { key: "dinheiro_separado", label: "Dinheiro separado", icon: Archive },
-      { key: "orcamento", label: "Orcamento", icon: Target },
-      { key: "cartoes", label: "Cartoes", icon: CreditCard },
+      { key: "orcamento", label: "Orçamento", icon: Target },
+      { key: "cartoes", label: "Cartões", icon: CreditCard },
     ],
   },
   {
     title: "Investimentos",
     items: [
-      { key: "patrimonio", label: "Meu patrimonio", icon: WalletCards },
+      { key: "patrimonio", label: "Meu patrimônio", icon: WalletCards },
       { key: "investimentos", label: "Investimentos", icon: BarChart3 },
       { key: "desempenho", label: "Desempenho", icon: LineChart },
       { key: "dividendos", label: "Dividendos", icon: Banknote },
-      { key: "exterior", label: "Exterior/Dolar", icon: DollarSign },
+      { key: "exterior", label: "Exterior/Dólar", icon: DollarSign },
     ],
   },
   {
     title: "Sistema",
     items: [
-      { key: "relatorios", label: "Relatorios", icon: FileBarChart },
-      { key: "configuracoes", label: "Configuracoes", icon: Settings },
-      { key: "integracoes", label: "Integracoes", icon: Plug },
+      { key: "relatorios", label: "Relatórios", icon: FileBarChart },
+      { key: "configuracoes", label: "Configurações", icon: Settings },
+      { key: "integracoes", label: "Integrações", icon: Plug },
     ],
   },
 ];
@@ -61,12 +63,12 @@ export function Sidebar({ current, onNavigate }: { current: PageKey; onNavigate:
     <aside
       className={cn(
         "sticky top-0 hidden h-screen shrink-0 border-r border-slate-800/90 bg-[#0a1017]/98 shadow-[12px_0_26px_rgba(0,0,0,0.14)] transition-all duration-200 lg:flex lg:flex-col",
-        collapsed ? "w-16" : "w-60",
+        collapsed ? "w-[68px]" : "w-60",
       )}
     >
-      <div className="flex h-12 items-center gap-2.5 border-b border-slate-800/90 px-3">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-brand-400 to-cyan-500 text-white shadow-[0_8px_20px_rgba(34,197,94,0.18)]">
-          <Landmark className="h-4 w-4" />
+      <div className={cn("flex h-14 items-center gap-2.5 border-b border-slate-800/90 px-3", collapsed && "justify-center px-2")}>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-slate-950 shadow-[0_8px_20px_rgba(34,197,94,0.18)]">
+          <img src={APP_LOGO_SRC} alt="" className="h-full w-full object-cover" draggable={false} />
         </div>
         <div className={cn("min-w-0", collapsed && "hidden")}>
           <p className="truncate text-sm font-semibold text-slate-100">Central Financeira</p>
@@ -80,7 +82,7 @@ export function Sidebar({ current, onNavigate }: { current: PageKey; onNavigate:
           {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
         </button>
       </div>
-      <nav className="flex-1 space-y-3 overflow-y-auto p-2">
+      <nav className="flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-2">
         {groups.map((group) => (
           <div key={group.title} className="space-y-1">
             <div
@@ -100,7 +102,7 @@ export function Sidebar({ current, onNavigate }: { current: PageKey; onNavigate:
                   <button
                     key={item.key}
                     className={cn(
-                      "flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-[13px] font-medium transition duration-150",
+                      "flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] font-medium transition duration-150",
                       active
                         ? "bg-brand-500/15 text-brand-500 ring-1 ring-brand-500/25"
                         : "text-slate-400 hover:bg-slate-800/80 hover:text-slate-100",
@@ -108,6 +110,7 @@ export function Sidebar({ current, onNavigate }: { current: PageKey; onNavigate:
                     )}
                     onClick={() => onNavigate(item.key)}
                     title={item.label}
+                    aria-label={accessibleLabel(item.label)}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
                     <span className={cn("truncate", collapsed && "hidden")}>{item.label}</span>
@@ -126,4 +129,8 @@ export function Sidebar({ current, onNavigate }: { current: PageKey; onNavigate:
       </div>
     </aside>
   );
+}
+
+function accessibleLabel(label: string) {
+  return label.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }

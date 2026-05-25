@@ -64,7 +64,7 @@ export function CartaoResumoCard({ cartao, onInformarLimite, onPagarFatura }: Ca
     <>
       <SectionCard
         title={cartao.nome}
-        description={cartao.instituicao || "Cartao cadastrado"}
+        description={cartao.instituicao || "Cartão cadastrado"}
         action={<CreditCard className="h-5 w-5 text-brand-600" />}
       >
         <div className="grid gap-2 sm:grid-cols-2">
@@ -95,12 +95,12 @@ export function CartaoResumoCard({ cartao, onInformarLimite, onPagarFatura }: Ca
               </Button>
             </div>
           </label>
-          <p className="text-xs text-slate-500">Conferencia: limite utilizado = a vista + parcelado.</p>
+          <p className="text-xs leading-4 text-slate-500">Conferencia: limite utilizado = a vista + parcelado.</p>
         </form>
       </SectionCard>
       <Dialog open={pagamentoAberto} title="Pagar fatura" onClose={() => setPagamentoAberto(false)}>
         <form className="grid gap-3" onSubmit={pagarFatura}>
-          <div className="rounded-md border border-slate-800 bg-slate-950/60 p-3">
+          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
             <p className="text-xs font-medium text-slate-500">Disponivel a vista</p>
             <p className="mt-1 text-lg font-semibold text-slate-100">{formatMoney(cartao.reservado_para_pagar)}</p>
           </div>
@@ -129,10 +129,10 @@ export function CartaoResumoCard({ cartao, onInformarLimite, onPagarFatura }: Ca
 
 function Metric({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: "green" | "red" }) {
   return (
-    <div className={tone === "green" ? "rounded-md bg-brand-500/15 p-2" : "rounded-md bg-red-500/15 p-2"}>
+    <div className={tone === "green" ? "rounded-xl bg-brand-500/15 p-3" : "rounded-xl bg-red-500/15 p-3"}>
       <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="text-base font-semibold text-slate-100">{value}</p>
-      <p className="text-xs text-slate-500">{detail}</p>
+      <p className="mt-1 break-words text-base font-semibold text-slate-100">{value}</p>
+      <p className="mt-0.5 text-xs leading-4 text-slate-500">{detail}</p>
     </div>
   );
 }

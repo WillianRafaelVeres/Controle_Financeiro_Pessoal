@@ -48,12 +48,12 @@ export function CompromissosCartaoTable({ compromissos, cartoes, categorias, sub
             <Td>{subcategoria(item.subcategoria_id)}</Td>
             <Td>{formatMoney(item.valor_original)}</Td>
             <Td>{formatMoney(item.valor_separado)}</Td>
-            <Td className="font-medium text-slate-950">{formatMoney(item.valor_em_aberto)}</Td>
+            <Td className="font-semibold text-slate-100">{formatMoney(item.valor_em_aberto)}</Td>
             <Td>
               <Badge tone={item.status === "QUITADO" ? "green" : item.status === "PARCIAL" ? "yellow" : "red"}>{item.status}</Badge>
             </Td>
             <Td>
-              <div className="flex min-w-56 items-center gap-2">
+              <div className="flex min-w-[220px] items-center gap-2">
                 <MoneyInput
                   className="w-28"
                   value={drafts[item.id] ?? ""}

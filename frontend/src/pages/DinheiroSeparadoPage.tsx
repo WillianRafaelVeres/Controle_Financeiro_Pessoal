@@ -77,17 +77,17 @@ export function DinheiroSeparadoPage() {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <PageHeader title="Dinheiro separado" description="Caixinhas que ja sairam do saldo livre e continuam dentro das contas." />
 
-      <div className="grid gap-2 md:grid-cols-[1.3fr_1fr]">
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4 shadow-sm">
+      <div className="grid gap-3 md:grid-cols-[1.3fr_1fr]">
+        <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 shadow-sm">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-xs font-medium uppercase text-slate-500">Total reservado</p>
               <p className="mt-1 text-2xl font-semibold text-slate-100">{formatMoney(total)}</p>
             </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-amber-500/15 text-amber-300">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-300">
               <Archive className="h-5 w-5" />
             </div>
           </div>
@@ -95,7 +95,7 @@ export function DinheiroSeparadoPage() {
             {lista.length === 1 ? "1 caixinha com saldo" : `${lista.length} caixinhas com saldo`}
           </p>
         </div>
-        <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-4">
+        <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
           <p className="text-xs font-medium uppercase text-slate-500">Maior caixinha</p>
           <p className="mt-1 truncate text-lg font-semibold text-slate-100">{maiorCaixinha?.nome ?? "-"}</p>
           <p className="mt-1 text-sm text-slate-500">{formatMoney(maiorCaixinha?.valor_total ?? 0)}</p>
@@ -116,7 +116,7 @@ export function DinheiroSeparadoPage() {
                 <Th>Caixinha</Th>
                 <Th className="w-[160px]">Categoria</Th>
                 <Th className="w-[170px]">Subcategoria</Th>
-            <Th className="w-[130px]">Conta</Th>
+                <Th className="w-[130px]">Conta</Th>
                 <Th className="w-[130px] text-right">Saldo</Th>
                 <Th className="w-[88px] text-center">Acao</Th>
               </tr>

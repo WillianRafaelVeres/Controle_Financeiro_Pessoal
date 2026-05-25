@@ -14,10 +14,10 @@ export function Topbar({
 }) {
   const queryClient = useQueryClient();
   return (
-    <header className="sticky top-0 z-20 flex h-12 items-center justify-between gap-3 border-b border-slate-800/90 bg-[#0f151d]/92 px-3 shadow-[0_10px_24px_rgba(0,0,0,0.16)] backdrop-blur sm:px-4 lg:px-5">
+    <header className="sticky top-0 z-20 flex min-h-14 items-center justify-between gap-3 border-b border-slate-800/90 bg-[#0f151d]/92 px-3 shadow-[0_10px_24px_rgba(0,0,0,0.16)] backdrop-blur sm:px-4 lg:px-5">
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-slate-100">{title}</p>
-        <p className="hidden text-[11px] text-slate-500 sm:block">{backendStatus}</p>
+        <p className="hidden truncate text-[11px] text-slate-500 sm:block">{backendStatus}</p>
       </div>
       <div className="flex items-center gap-2">
         <Button variant="secondary" size="icon" onClick={() => queryClient.invalidateQueries()} aria-label="Atualizar dados">

@@ -308,7 +308,7 @@ export function InvestimentosPage() {
                       </div>
                       <p className="mt-0.5 text-[11px] text-slate-500">{itens.length} posicao{itens.length === 1 ? "" : "es"}</p>
                     </div>
-                    <div className={mostraDividendos ? "grid gap-2 sm:grid-cols-3 xl:min-w-[720px] xl:grid-cols-6" : "grid gap-2 sm:grid-cols-2 xl:min-w-[520px] xl:grid-cols-4"}>
+                    <div className={mostraDividendos ? "grid gap-2 sm:grid-cols-3 xl:grid-cols-6" : "grid gap-2 sm:grid-cols-2 xl:grid-cols-4"}>
                       <GroupMetric label="Aportado">{formatMoney(aportadoBrl)}</GroupMetric>
                       <GroupMetric label="Atual">{formatMoney(totalBrl)}</GroupMetric>
                       <GroupMetric label={resultadoBrl < 0 ? "Prejuizo" : "Lucro"} tone={resultadoBrl < 0 ? "red" : "green"}>{formatMoney(resultadoBrl)}</GroupMetric>

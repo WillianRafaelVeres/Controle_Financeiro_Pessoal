@@ -8,30 +8,39 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Td, Th } from "../../components/ui/table";
 import { formatDate, formatMoney } from "../../lib/formatters";
-import type { Categoria, Lancamento, MetodoPagamento, Subcategoria } from "../../lib/types";
+import type { CartaoResumo, Categoria, Lancamento, MetodoPagamento, Subcategoria } from "../../lib/types";
 
 interface LancamentosTableProps {
   lancamentos: Lancamento[];
   categorias: Categoria[];
   subcategorias: Subcategoria[];
   metodos: MetodoPagamento[];
+  cartoes?: CartaoResumo[];
   onEdit?: (lancamento: Lancamento) => void;
   onDelete?: (lancamento: Lancamento) => void;
 }
 
-export function LancamentosTable({ lancamentos, categorias, subcategorias, metodos, onEdit, onDelete }: LancamentosTableProps) {
+export function LancamentosTable({ lancamentos, categorias, subcategorias, metodos, cartoes = [], onEdit, onDelete }: LancamentosTableProps) {
   const catObj = (id?: string) => categorias.find((item) => item.id === id);
   const subObj = (id?: string) => subcategorias.find((item) => item.id === id);
   const cat = (item: Lancamento) => item.categoria_nome_snapshot ?? catObj(item.categoria_id)?.nome ?? "-";
   const sub = (item: Lancamento) => item.subcategoria_nome_snapshot ?? subObj(item.subcategoria_id)?.nome ?? "-";
   const metodo = (id?: string) => metodos.find((item) => item.id === id);
+  const cartao = (id?: string) => cartoes.find((item) => item.id === id);
+  const metodoDisplay = (item: Lancamento) => {
+    const method = metodo(item.metodo_pagamento_id);
+    if (method) return <PaymentMethodBadge nome={method.nome} tipo={method.tipo_metodo} />;
+    const card = cartao(item.cartao_id);
+    if (card) return <PaymentMethodBadge nome={card.nome} tipo="CARTAO_CREDITO" />;
+    return "-";
+  };
   const tipoLabel = (tipo: Lancamento["tipo"]) =>
     tipo === "GASTO" ? "Despesa" : tipo === "RECEITA" ? "Receita" : tipo === "SEPARAR" ? "Separar" : "Investimento";
 
   return (
     <DataTable
       data={lancamentos}
-      searchText={(item) => `${item.tipo} ${item.observacao ?? ""} ${cat(item)}`}
+      searchText={(item) => `${item.tipo} ${item.observacao ?? ""} ${cat(item)} ${sub(item)} ${metodo(item.metodo_pagamento_id)?.nome ?? ""} ${cartao(item.cartao_id)?.nome ?? ""}`}
       empty={
         <EmptyState
           icon={<ReceiptText className="h-6 w-6" />}
@@ -55,9 +64,7 @@ export function LancamentosTable({ lancamentos, categorias, subcategorias, metod
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => {
-              const method = metodo(item.metodo_pagamento_id);
-              return (
+            {items.map((item) => (
                 <tr key={item.id}>
                   <Td>{formatDate(item.data_lancamento)}</Td>
                   <Td>
@@ -78,7 +85,7 @@ export function LancamentosTable({ lancamentos, categorias, subcategorias, metod
                       {subObj(item.subcategoria_id)?.ativa === false && <Badge tone="neutral">inativa</Badge>}
                     </div>
                   </Td>
-                  <Td>{method ? <PaymentMethodBadge nome={method.nome} tipo={method.tipo_metodo} /> : "-"}</Td>
+                  <Td>{metodoDisplay(item)}</Td>
                   <Td className="max-w-64 truncate">{item.observacao ?? "-"}</Td>
                   {(onEdit || onDelete) && (
                     <Td className="text-center">
@@ -97,8 +104,7 @@ export function LancamentosTable({ lancamentos, categorias, subcategorias, metod
                     </Td>
                   )}
                 </tr>
-              );
-            })}
+            ))}
           </tbody>
         </>
       )}

@@ -12,9 +12,9 @@ export function IntegracoesPage() {
       <SectionCard title="Status das integrações">
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {["Open Finance", "Brapi", "Alpha Vantage", "CoinGecko"].map((item) => (
-            <div key={item} className="rounded-md border border-slate-800 p-3">
+            <div key={item} className="rounded-xl border border-slate-800 bg-slate-950/30 p-3">
               <div className="flex items-center justify-between gap-3">
-                <span className="font-medium text-slate-950">{item}</span>
+                <span className="truncate font-medium text-slate-100">{item}</span>
                 <Badge>Desativado</Badge>
               </div>
               <p className="mt-2 text-sm text-slate-500">Nenhuma API externa é chamada sem configuração explícita.</p>

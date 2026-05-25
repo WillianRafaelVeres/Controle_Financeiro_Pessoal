@@ -10,7 +10,7 @@ from app.models.lancamento import Lancamento
 from app.models.orcamento import OrcamentoItem, OrcamentoItemPadrao, OrcamentoMensal, OrcamentoPadrao
 from app.models.subcategoria import Subcategoria
 from app.schemas.orcamento_schema import OrcamentoAlterar, OrcamentoCreate, OrcamentoItemCreate
-from app.services.saldo_service import calcular_gasto_real_mes
+from app.services.saldo_service import calcular_gasto_real_mes, filtro_excluir_categoria_cartao_generica
 
 
 def _decimal(value: object) -> Decimal:
@@ -362,6 +362,10 @@ def _realizado_item(session: Session, item: OrcamentoItem, ano: int, mes: int) -
         Lancamento.data_lancamento >= inicio,
         Lancamento.data_lancamento < fim,
     ]
+    if item.natureza == NaturezaCategoria.GASTO:
+        filtro_categoria_generica = filtro_excluir_categoria_cartao_generica(session)
+        if filtro_categoria_generica is not None:
+            filtros.append(filtro_categoria_generica)
     if item.tipo_item == TipoItemOrcamento.SUBCATEGORIA and item.subcategoria_id:
         filtros.append(Lancamento.subcategoria_id == item.subcategoria_id)
     else:
@@ -519,15 +523,19 @@ def listar_nao_planejados_mes(session: Session, ano: int, mes: int) -> list[dict
     ]
 
     inicio, fim = month_bounds(ano, mes)
+    filtros_lancamentos = [
+        Lancamento.ativo.is_(True),
+        Lancamento.afeta_orcamento.is_(True),
+        Lancamento.transferencia_interna.is_(False),
+        Lancamento.tipo.in_([TipoLancamento.GASTO, TipoLancamento.SEPARAR, TipoLancamento.INVESTIMENTO, TipoLancamento.RECEITA]),
+        Lancamento.data_lancamento >= inicio,
+        Lancamento.data_lancamento < fim,
+    ]
+    filtro_categoria_generica = filtro_excluir_categoria_cartao_generica(session)
+    if filtro_categoria_generica is not None:
+        filtros_lancamentos.append(filtro_categoria_generica)
     lancamentos = session.exec(
-        select(Lancamento).where(
-            Lancamento.ativo.is_(True),
-            Lancamento.afeta_orcamento.is_(True),
-            Lancamento.transferencia_interna.is_(False),
-            Lancamento.tipo.in_([TipoLancamento.GASTO, TipoLancamento.SEPARAR, TipoLancamento.INVESTIMENTO, TipoLancamento.RECEITA]),
-            Lancamento.data_lancamento >= inicio,
-            Lancamento.data_lancamento < fim,
-        )
+        select(Lancamento).where(*filtros_lancamentos)
     ).all()
 
     def natureza_lancamento(lancamento: Lancamento) -> NaturezaCategoria:

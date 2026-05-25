@@ -50,34 +50,32 @@ export function DashboardPage() {
   const initialType: TipoLancamento = "GASTO";
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <DashboardCards resumo={resumo.data} />
-      <div className="grid items-start gap-2 xl:grid-cols-[minmax(320px,1fr)_minmax(320px,1fr)]">
+      <div className="grid items-start gap-3 xl:grid-cols-[minmax(320px,1fr)_minmax(280px,0.82fr)]">
         <ConciliacaoBox data={conciliacao.data} />
-        <SectionCard title="Acoes rapidas" description="Atalhos operacionais para o dia a dia." className="self-start">
-          <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
-            <Button className="h-8 whitespace-nowrap px-2.5" aria-label="Novo lancamento" onClick={() => setQuickLaunch("novo")}>
+        <SectionCard title="Ações rápidas" description="Registre as movimentações mais comuns." className="self-start">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button className="justify-center" aria-label="Novo lancamento" onClick={() => setQuickLaunch("novo")}>
               <Plus className="h-4 w-4" />
-              Lancamento
+              Lançamento
             </Button>
-            <Button className="h-8 whitespace-nowrap px-2.5" variant="secondary" aria-label="Registrar investimento" onClick={() => setCompraAtivoOpen(true)}>
+            <Button variant="secondary" aria-label="Registrar investimento" onClick={() => setCompraAtivoOpen(true)}>
               <TrendingUp className="h-4 w-4" />
               Investimento
             </Button>
-            <Button className="h-8 whitespace-nowrap px-2.5" variant="secondary" aria-label="Registrar dividendo" onClick={() => setDividendoOpen(true)}>
+            <Button variant="secondary" aria-label="Registrar dividendo" onClick={() => setDividendoOpen(true)}>
               <Banknote className="h-4 w-4" />
               Dividendo
             </Button>
-            <Button className="h-8 whitespace-nowrap px-2.5" variant="secondary" aria-label="Enviar dolar" onClick={() => setDolarAction("ENVIO")}>
+            <Button variant="secondary" aria-label="Enviar dolar" onClick={() => setDolarAction("ENVIO")}>
               <DollarSign className="h-4 w-4" />
-              Dolar
+              Dólar
             </Button>
           </div>
         </SectionCard>
       </div>
-      <SectionCard title="Resumo do mes atual" description="Este bloco usa o mes corrente automaticamente e nao controla o restante do app.">
-        <GraficosResumo data={graficos.data} />
-      </SectionCard>
+      <GraficosResumo data={graficos.data} />
 
       <Dialog open={quickLaunch !== null} title="Novo lancamento" onClose={() => setQuickLaunch(null)} className="max-w-6xl">
         {quickLaunch && (

@@ -22,6 +22,8 @@ const AUTO_QUOTE_TYPES = new Set<TipoAtivo>(["ACAO_BR", "FII", "ETF_BR", "CRIPTO
 export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, dolarCotacao = 0, showDividendos = false }: AtivosTableProps) {
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
+  const headClass = "px-2 py-2";
+  const cellClass = "px-2 py-2";
 
   useEffect(() => {
     setPrices(
@@ -61,17 +63,17 @@ export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, dol
   }
 
   return (
-    <Table className={showDividendos ? "min-w-[1120px]" : "min-w-[860px]"}>
+    <Table className={showDividendos ? "min-w-[960px] text-[12px]" : "min-w-[760px] text-[12px]"}>
       <thead>
         <tr>
-          <Th>Ativo</Th>
-          <Th className="text-right">Quantidade</Th>
-          <Th className="text-right">Cotacao</Th>
-          <Th className="text-right">Valor atual</Th>
-          <Th className="text-right">Resultado</Th>
-          {showDividendos && <Th className="text-right">Dividendos</Th>}
-          {showDividendos && <Th className="text-right">Retorno total</Th>}
-          <Th className="w-[48px] text-center">Acoes</Th>
+          <Th className={`${headClass} w-[190px]`}>Ativo</Th>
+          <Th className={`${headClass} w-[110px] text-right`}>Quantidade</Th>
+          <Th className={`${headClass} w-[120px] text-right`}>Cotacao</Th>
+          <Th className={`${headClass} w-[120px] text-right`}>Valor atual</Th>
+          <Th className={`${headClass} w-[118px] text-right`}>Resultado</Th>
+          {showDividendos && <Th className={`${headClass} w-[110px] text-right`}>Dividendos</Th>}
+          {showDividendos && <Th className={`${headClass} w-[122px] text-right`}>Retorno</Th>}
+          <Th className={`${headClass} w-[44px] text-center`}>Acoes</Th>
         </tr>
       </thead>
       <tbody>
@@ -99,19 +101,19 @@ export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, dol
 
           return (
             <tr key={item.ativo_id} className="bg-slate-950/20 transition-colors duration-200 hover:bg-slate-900/60">
-              <Td className="align-middle">
-                <div className="font-semibold text-slate-100">{tickerVisivel ? item.ticker : item.nome}</div>
-                <div className="mt-0.5 text-[11px] text-slate-500">
+              <Td className={`${cellClass} align-middle`}>
+                <div className="truncate font-semibold text-slate-100">{tickerVisivel ? item.ticker : item.nome}</div>
+                <div className="mt-0.5 truncate text-[11px] text-slate-500">
                   {[tickerVisivel ? item.nome : null, item.corretora, moeda].filter(Boolean).join(" | ") || "-"}
                 </div>
               </Td>
-              <Td className="align-middle text-right">
+              <Td className={`${cellClass} align-middle text-right`}>
                 <div className="font-semibold text-slate-100">{investimentoConta ? "Saldo" : toNumber(item.quantidade_atual).toLocaleString("pt-BR")}</div>
                 <div className="text-[11px] text-slate-500">{investimentoConta ? "Aportes" : "PM"} {formatMoney(investimentoConta ? item.valor_total_aportado : item.preco_medio, moeda)}</div>
               </Td>
-              <Td className="align-middle text-right">
+              <Td className={`${cellClass} align-middle text-right`}>
                 {automatico ? (
-                  <div className="flex items-center justify-end gap-1.5">
+                  <div className="flex items-center justify-end gap-1">
                     <div className="text-right">
                       <div className="font-semibold text-slate-100">{formatMoney(item.preco_atual ?? item.preco_medio, moeda)}</div>
                     </div>
@@ -122,10 +124,10 @@ export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, dol
                     )}
                   </div>
                 ) : (
-                  <div className="flex items-center justify-end gap-1.5">
+                  <div className="flex items-center justify-end gap-1">
                     <div>
                       <Input
-                        className="h-7 w-24 text-right"
+                        className="h-7 w-20 text-right"
                         inputMode="decimal"
                         min="0"
                         step="0.01"
@@ -142,24 +144,24 @@ export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, dol
                   </div>
                 )}
               </Td>
-              <Td className="align-middle text-right">
+              <Td className={`${cellClass} align-middle text-right`}>
                 <div className="font-semibold text-slate-100">{formatMoney(item.valor_atual, moeda)}</div>
                 {valorAtualBrl !== null && <div className="text-[11px] text-slate-500">{formatMoney(valorAtualBrl)}</div>}
               </Td>
-              <Td className="align-middle text-right">
+              <Td className={`${cellClass} align-middle text-right`}>
                 <div className={resultClass}>{resultadoLabel}</div>
                 <div className="text-slate-300">{formatMoney(item.lucro_prejuizo, moeda)}</div>
                 <div className={resultado < 0 ? "text-[11px] text-danger-600" : "text-[11px] text-brand-400"}>{formatPercent(rentabilidade)}</div>
                 {lucroBrl !== null && <div className="text-[11px] text-slate-500">{formatMoney(lucroBrl)}</div>}
               </Td>
               {showDividendos && (
-                <Td className="align-middle text-right">
+                <Td className={`${cellClass} align-middle text-right`}>
                   <div className="font-semibold text-slate-100">{formatMoney(dividendos, moeda)}</div>
                   {dividendosBrl !== null && <div className="text-[11px] text-slate-500">{formatMoney(dividendosBrl)}</div>}
                 </Td>
               )}
               {showDividendos && (
-                <Td className="align-middle text-right">
+                <Td className={`${cellClass} align-middle text-right`}>
                   <div className={totalResultClass}>{resultadoTotalLabel}</div>
                   <div className="text-slate-300">{formatMoney(resultadoComDividendos, moeda)}</div>
                   <div className={resultadoComDividendos < 0 ? "text-[11px] text-danger-600" : "text-[11px] text-brand-400"}>
@@ -168,7 +170,7 @@ export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, dol
                   {resultadoComDividendosBrl !== null && <div className="text-[11px] text-slate-500">{formatMoney(resultadoComDividendosBrl)}</div>}
                 </Td>
               )}
-              <Td className="align-middle text-center">
+              <Td className={`${cellClass} align-middle text-center`}>
                 {onSell ? (
                   <Button size="icon" variant="secondary" title="Vender" aria-label="Vender" onClick={() => onSell(item)}>
                     <CircleDollarSign className="h-4 w-4" />

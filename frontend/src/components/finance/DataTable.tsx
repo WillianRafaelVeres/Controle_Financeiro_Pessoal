@@ -22,8 +22,8 @@ export function DataTable<T>({ data, searchText, empty, children }: DataTablePro
 
   return (
     <div className="space-y-2">
-      <div className="relative max-w-xs">
-        <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-slate-500" />
+      <div className="relative w-full max-w-sm">
+        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
         <Input className="pl-9" placeholder="Buscar" value={query} onChange={(event) => setQuery(event.target.value)} />
       </div>
       {filtered.length === 0 ? empty : <Table>{children(filtered)}</Table>}

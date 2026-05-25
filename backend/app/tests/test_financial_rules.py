@@ -62,6 +62,7 @@ from app.services.investimento_service import (
 )
 from app.services.lancamento_service import atualizar_lancamento, criar_lancamento
 from app.services.financeiro_service import resumo_painel, resumo_planejamento
+from app.services.relatorio_service import gastos_por_metodo
 from app.services.orcamento_service import (
     adicionar_item_orcamento,
     alterar_orcamento,
@@ -530,6 +531,51 @@ def test_pagamento_de_fatura_nao_afeta_orcamento(session: Session):
     assert calcular_saldo_em_contas(session) == Decimal("1000.00")
     assert calcular_reservado_cartao(session, cartao.id) == Decimal("300.00")
     assert calcular_gasto_real_mes(session, 2026, 5) == Decimal("400.00")
+
+
+def test_categoria_generica_de_cartao_nao_conta_como_finalidade(session: Session):
+    conta, categoria, subcategoria, _, cartao_metodo, cartao = seed_basico(session)
+    categoria_generica = Categoria(nome="Compras no Cartão")
+    session.add(categoria_generica)
+    session.flush()
+    sub_generica = Subcategoria(nome="Compras", categoria_id=categoria_generica.id)
+    session.add(sub_generica)
+    session.flush()
+    session.add(
+        Lancamento(
+            data_lancamento=date(2026, 5, 22),
+            tipo=TipoLancamento.GASTO,
+            valor=Decimal("500.00"),
+            valor_original=Decimal("500.00"),
+            categoria_id=categoria_generica.id,
+            subcategoria_id=sub_generica.id,
+            cartao_id=cartao.id,
+            afeta_saldo_livre=True,
+            afeta_orcamento=True,
+        )
+    )
+    criar_lancamento(
+        session,
+        LancamentoCreate(
+            valor=Decimal("100.00"),
+            tipo=TipoLancamento.GASTO,
+            categoria_id=categoria.id,
+            subcategoria_id=subcategoria.id,
+            metodo_pagamento_id=cartao_metodo.id,
+            conta_id=conta.id,
+            data_lancamento=date(2026, 5, 23),
+            cartao=CartaoLancamentoInput(cartao_id=cartao.id, valor_separado_agora=Decimal("100.00")),
+        ),
+    )
+
+    assert calcular_gasto_real_mes(session, 2026, 5) == Decimal("100.00")
+    assert calcular_gasto_real_mes(session, 2026, 5, categoria_generica.id) == Decimal("0.00")
+    assert resumo_painel(session, 2026, 5)["gasto_mes"] == Decimal("100.00")
+
+    metodos = gastos_por_metodo(session, 2026, 5)
+    assert metodos[0]["metodo"] == "XP"
+    assert metodos[0]["tipo"] == "CARTAO"
+    assert metodos[0]["valor"] == Decimal("600.00")
 
 
 def test_orcamento_de_meses_anteriores_nao_muda(session: Session):

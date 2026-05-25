@@ -1,11 +1,13 @@
 from datetime import date
 from decimal import Decimal
+import unicodedata
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, not_, or_
 from sqlmodel import Session, select
 
 from app.models.base import NaturezaCategoria, StatusContaFutura, TipoConta, TipoLancamento, TipoMovimentoInvestimento, month_bounds
 from app.models.cartao import Cartao
+from app.models.categoria import Categoria
 from app.models.compromisso_cartao import CompromissoCartao
 from app.models.conta import Conta
 from app.models.conta_futura import ContaFutura
@@ -22,6 +24,7 @@ def _decimal(value: object) -> Decimal:
 
 
 TIPOS_CONTA_FORA_CONCILIACAO = (TipoConta.CORRETORA, TipoConta.CONTA_EXTERIOR, TipoConta.INVESTIMENTO)
+NOMES_CATEGORIA_CARTAO_GENERICA = {"compras no cartao", "compra no cartao", "cartao", "cartao de credito"}
 
 
 def _filtros_contas_saldo_livre():
@@ -54,6 +57,30 @@ def _filtro_envio_dolar_lancamento():
                 Lancamento.observacao.ilike("%exterior%"),
             ),
         ),
+    )
+
+
+def _normalizar_nome(value: str | None) -> str:
+    if not value:
+        return ""
+    sem_acento = unicodedata.normalize("NFKD", value)
+    return "".join(char for char in sem_acento if not unicodedata.combining(char)).strip().lower()
+
+
+def ids_categorias_cartao_genericas(session: Session) -> list[str]:
+    categorias = session.exec(select(Categoria).where(Categoria.natureza == NaturezaCategoria.GASTO)).all()
+    return [categoria.id for categoria in categorias if _normalizar_nome(categoria.nome) in NOMES_CATEGORIA_CARTAO_GENERICA]
+
+
+def filtro_excluir_categoria_cartao_generica(session: Session):
+    categoria_ids = ids_categorias_cartao_genericas(session)
+    if not categoria_ids:
+        return None
+    return not_(
+        and_(
+            Lancamento.cartao_id.is_not(None),
+            Lancamento.categoria_id.in_(categoria_ids),
+        )
     )
 
 
@@ -206,6 +233,9 @@ def calcular_gasto_real_mes(session: Session, ano: int, mes: int, categoria_id: 
         Lancamento.data_lancamento >= inicio,
         Lancamento.data_lancamento < fim,
     ]
+    filtro_categoria_generica = filtro_excluir_categoria_cartao_generica(session)
+    if filtro_categoria_generica is not None:
+        filtros.append(filtro_categoria_generica)
     if categoria_id:
         filtros.append(Lancamento.categoria_id == categoria_id)
     value = session.exec(select(func.sum(Lancamento.valor)).where(*filtros)).one()

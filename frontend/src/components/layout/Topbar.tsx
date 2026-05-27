@@ -1,5 +1,5 @@
-import { Plus, RefreshCcw } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Plus, RefreshCcw } from "lucide-react";
 
 import { Button } from "../ui/button";
 
@@ -23,7 +23,7 @@ export function Topbar({
         <Button variant="secondary" size="icon" onClick={() => queryClient.invalidateQueries()} aria-label="Atualizar dados">
           <RefreshCcw className="h-4 w-4" />
         </Button>
-        <Button onClick={onNewLancamento} className="hidden sm:inline-flex">
+        <Button onClick={onNewLancamento} className="hidden sm:inline-flex" aria-label="Novo lancamento">
           <Plus className="h-4 w-4" />
           Novo lançamento
         </Button>

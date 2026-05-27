@@ -11,54 +11,42 @@ import { DashboardCards } from "../features/dashboard/DashboardCards";
 import { GraficosResumo } from "../features/dashboard/GraficosResumo";
 import { CompraAtivoModal } from "../features/investimentos/CompraAtivoModal";
 import { DividendosForm } from "../features/investimentos/DividendosForm";
-import { LancamentoForm } from "../features/lancamentos/LancamentoForm";
+import { NovoLancamentoModal } from "../features/lancamentos/NovoLancamentoModal";
 import { api } from "../lib/api";
 import { toNumber } from "../lib/formatters";
-import type { TipoLancamento } from "../lib/types";
 import { currentMonth } from "../lib/utils";
 import { DolarActionDialog, type ActionType } from "./ExteriorDolarPage";
 
-type QuickLaunch = "novo";
-
-export function DashboardPage() {
+export function DashboardPage({ onNewLancamento }: { onNewLancamento?: () => void }) {
   const queryClient = useQueryClient();
   const month = currentMonth();
   const resumo = useQuery({ queryKey: ["painel", "resumo", month], queryFn: () => api.painelResumo(month.ano, month.mes) });
   const conciliacao = useQuery({ queryKey: ["dashboard", "conciliacao"], queryFn: api.conciliacao });
   const graficos = useQuery({ queryKey: ["dashboard", "graficos", month], queryFn: () => api.dashboardGraficos(month.ano, month.mes) });
-  const categorias = useQuery({ queryKey: ["categorias", "dashboard"], queryFn: () => api.categorias(undefined, true) });
-  const subcategorias = useQuery({ queryKey: ["subcategorias", "dashboard"], queryFn: () => api.subcategorias(undefined, true) });
-  const metodos = useQuery({ queryKey: ["metodos", "dashboard"], queryFn: api.metodos });
-  const cartoes = useQuery({ queryKey: ["cartoes", "dashboard"], queryFn: api.cartoes });
   const ativosDividendos = useQuery({ queryKey: ["ativos-dividendos", "dashboard"], queryFn: api.ativosDividendos });
   const cotacaoDolar = useQuery({ queryKey: ["dolar-cotacao-atual"], queryFn: api.dolarCotacaoAtual, retry: false });
 
-  const criarLancamento = useMutation({ mutationFn: api.criarLancamento, onSuccess: () => queryClient.invalidateQueries() });
-  const criarContaFutura = useMutation({ mutationFn: api.criarContaFutura, onSuccess: () => queryClient.invalidateQueries() });
-  const criarCategoria = useMutation({ mutationFn: api.criarCategoria, onSuccess: () => queryClient.invalidateQueries() });
-  const criarSubcategoria = useMutation({ mutationFn: api.criarSubcategoria, onSuccess: () => queryClient.invalidateQueries() });
-  const criarMetodo = useMutation({ mutationFn: api.criarMetodo, onSuccess: () => queryClient.invalidateQueries() });
   const criarDividendo = useMutation({ mutationFn: api.criarDividendo, onSuccess: () => queryClient.invalidateQueries() });
   const movimentoDolar = useMutation({ mutationFn: api.dolarMovimento, onSuccess: () => queryClient.invalidateQueries() });
   const comprarAtivo = useMutation({ mutationFn: api.comprar, onSuccess: () => queryClient.invalidateQueries() });
 
-  const [quickLaunch, setQuickLaunch] = useState<QuickLaunch | null>(null);
+  const [localLancamentoOpen, setLocalLancamentoOpen] = useState(false);
   const [compraAtivoOpen, setCompraAtivoOpen] = useState(false);
   const [dividendoOpen, setDividendoOpen] = useState(false);
   const [dolarAction, setDolarAction] = useState<ActionType | null>(null);
-
-  const initialType: TipoLancamento = "GASTO";
+  const abrirLancamento = onNewLancamento ?? (() => setLocalLancamentoOpen(true));
 
   return (
     <div className="space-y-3">
       <DashboardCards resumo={resumo.data} />
+
       <div className="grid items-start gap-3 xl:grid-cols-[minmax(320px,1fr)_minmax(280px,0.82fr)]">
         <ConciliacaoBox data={conciliacao.data} />
         <SectionCard title="Ações rápidas" description="Registre as movimentações mais comuns." className="self-start">
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button className="justify-center" aria-label="Novo lancamento" onClick={() => setQuickLaunch("novo")}>
+            <Button className="justify-center" aria-label="Novo lancamento" onClick={abrirLancamento}>
               <Plus className="h-4 w-4" />
-              Lançamento
+              Novo lançamento
             </Button>
             <Button variant="secondary" aria-label="Registrar investimento" onClick={() => setCompraAtivoOpen(true)}>
               <TrendingUp className="h-4 w-4" />
@@ -75,40 +63,10 @@ export function DashboardPage() {
           </div>
         </SectionCard>
       </div>
+
       <GraficosResumo data={graficos.data} />
 
-      <Dialog open={quickLaunch !== null} title="Novo lancamento" onClose={() => setQuickLaunch(null)} className="max-w-6xl">
-        {quickLaunch && (
-          <LancamentoForm
-            key={quickLaunch}
-            categorias={categorias.data ?? []}
-            subcategorias={subcategorias.data ?? []}
-            metodos={metodos.data ?? []}
-            cartoes={cartoes.data ?? []}
-            initialType={initialType}
-            onSubmit={async (payload) => {
-              await criarLancamento.mutateAsync(payload);
-              setQuickLaunch(null);
-            }}
-            onCreateContaFutura={async (payload) => {
-              await criarContaFutura.mutateAsync(payload);
-              setQuickLaunch(null);
-            }}
-            onCreateCategoria={async (nome, natureza) => {
-              const categoria = await criarCategoria.mutateAsync({ nome, natureza });
-              return { id: categoria.id, label: categoria.nome };
-            }}
-            onCreateSubcategoria={async (nome, categoria_id) => {
-              const subcategoria = await criarSubcategoria.mutateAsync({ nome, categoria_id });
-              return { id: subcategoria.id, label: subcategoria.nome };
-            }}
-            onCreateMetodo={async (nome) => {
-              const metodo = await criarMetodo.mutateAsync({ nome });
-              return { id: metodo.id, label: metodo.nome };
-            }}
-          />
-        )}
-      </Dialog>
+      <NovoLancamentoModal open={localLancamentoOpen} onClose={() => setLocalLancamentoOpen(false)} />
 
       <CompraAtivoModal open={compraAtivoOpen} onClose={() => setCompraAtivoOpen(false)} onSubmit={(payload) => comprarAtivo.mutateAsync(payload).then(() => undefined)} />
 

@@ -32,7 +32,7 @@ export function GraficosResumo({ data }: { data?: Record<string, Array<Record<st
           </div>
         )}
       </SectionCard>
-      <SectionCard title="Receitas x gastos" description="Comparacao simples entre entradas e saidas do periodo.">
+      <SectionCard title="Receitas x despesas" description="Comparacao simples entre entradas e saidas do periodo.">
         <div className="h-[280px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={receitas} style={{ outline: "none" }}>

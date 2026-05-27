@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 
 import { AppShell } from "./components/layout/AppShell";
 import { BackendBootGate } from "./components/layout/BackendBootGate";
+import { NovoLancamentoModal } from "./features/lancamentos/NovoLancamentoModal";
 import type { BackendBootResult } from "./lib/apiBase";
 import { CartoesPage } from "./pages/CartoesPage";
 import { ConfiguracoesPage } from "./pages/ConfiguracoesPage";
@@ -48,7 +49,7 @@ const pageTitles: Record<PageKey, string> = {
   integracoes: "Integrações",
 };
 
-function CurrentPage({ page }: { page: PageKey }) {
+function CurrentPage({ page, onNewLancamento }: { page: PageKey; onNewLancamento: () => void }) {
   switch (page) {
     case "lancamentos":
       return <LancamentosPage />;
@@ -80,14 +81,16 @@ function CurrentPage({ page }: { page: PageKey }) {
       return <IntegracoesPage />;
     case "dashboard":
     default:
-      return <DashboardPage />;
+      return <DashboardPage onNewLancamento={onNewLancamento} />;
   }
 }
 
 export default function App() {
   const [page, setPage] = useState<PageKey>("dashboard");
   const [boot, setBoot] = useState<BackendBootResult | null>(null);
+  const [novoLancamentoOpen, setNovoLancamentoOpen] = useState(false);
   const handleReady = useCallback((result: BackendBootResult) => setBoot(result), []);
+  const abrirNovoLancamento = useCallback(() => setNovoLancamentoOpen(true), []);
   const backendStatus = boot?.port ? `Serviço local em 127.0.0.1:${boot.port}` : "SQLite local";
 
   return (
@@ -98,10 +101,11 @@ export default function App() {
           onNavigate={setPage}
           title={pageTitles[page]}
           backendStatus={backendStatus}
-          onNewLancamento={() => setPage("lancamentos")}
+          onNewLancamento={abrirNovoLancamento}
         >
-          <CurrentPage key={page} page={page} />
+          <CurrentPage key={page} page={page} onNewLancamento={abrirNovoLancamento} />
         </AppShell>
+        <NovoLancamentoModal open={novoLancamentoOpen} onClose={() => setNovoLancamentoOpen(false)} />
       </QueryClientProvider>
     </BackendBootGate>
   );

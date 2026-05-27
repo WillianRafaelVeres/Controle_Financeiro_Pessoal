@@ -6,11 +6,10 @@ import { MonthSelector } from "../components/finance/MonthSelector";
 import { SectionCard } from "../components/finance/SectionCard";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Button } from "../components/ui/button";
-import { Dialog } from "../components/ui/dialog";
 import { Select } from "../components/ui/select";
 import { EditarLancamentoModal } from "../features/lancamentos/EditarLancamentoModal";
-import { LancamentoForm } from "../features/lancamentos/LancamentoForm";
 import { LancamentosTable } from "../features/lancamentos/LancamentosTable";
+import { NovoLancamentoModal } from "../features/lancamentos/NovoLancamentoModal";
 import { api } from "../lib/api";
 import type { Lancamento } from "../lib/types";
 import { currentMonth } from "../lib/utils";
@@ -26,16 +25,11 @@ export function LancamentosPage() {
   const metodos = useQuery({ queryKey: ["metodos"], queryFn: api.metodos });
   const cartoes = useQuery({ queryKey: ["cartoes"], queryFn: api.cartoes });
   const lancamentos = useQuery({ queryKey: ["lancamentos", month], queryFn: () => api.lancamentos(month.ano, month.mes) });
-  const criar = useMutation({ mutationFn: api.criarLancamento, onSuccess: () => queryClient.invalidateQueries() });
-  const criarContaFutura = useMutation({ mutationFn: api.criarContaFutura, onSuccess: () => queryClient.invalidateQueries() });
   const atualizar = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.atualizarLancamento(id, payload),
     onSuccess: () => queryClient.invalidateQueries(),
   });
   const excluir = useMutation({ mutationFn: api.excluirLancamento, onSuccess: () => queryClient.invalidateQueries() });
-  const criarCategoria = useMutation({ mutationFn: api.criarCategoria, onSuccess: () => queryClient.invalidateQueries() });
-  const criarSubcategoria = useMutation({ mutationFn: api.criarSubcategoria, onSuccess: () => queryClient.invalidateQueries() });
-  const criarMetodo = useMutation({ mutationFn: api.criarMetodo, onSuccess: () => queryClient.invalidateQueries() });
 
   const filtrados = (lancamentos.data ?? []).filter((item) => !tipoFiltro || item.tipo === tipoFiltro);
 
@@ -43,15 +37,15 @@ export function LancamentosPage() {
     <div className="space-y-3">
       <PageHeader
         title="Lançamentos"
-        description="Registre receitas, despesas, reservas e movimentos do mes."
+        description="Registre receitas, despesas, reservas e movimentos do mês."
         actions={
-          <Button onClick={() => setOpen(true)}>
+          <Button onClick={() => setOpen(true)} aria-label="Novo lancamento">
             <Plus className="h-4 w-4" />
             Novo lançamento
           </Button>
         }
       />
-      <SectionCard title="Filtros" description="Escolha o mes e filtre o historico sem alterar os dados." compact>
+      <SectionCard title="Filtros" description="Escolha o mês e filtre o histórico sem alterar os dados." compact>
         <div className="flex flex-wrap items-center gap-2">
           <MonthSelector ano={month.ano} mes={month.mes} onChange={setMonth} />
           <div className="flex items-center gap-2 text-sm text-slate-500">
@@ -69,7 +63,7 @@ export function LancamentosPage() {
           </div>
         </div>
       </SectionCard>
-      <SectionCard title="Histórico do período" description="Todos os lançamentos do mes selecionado.">
+      <SectionCard title="Histórico do período" description="Todos os lançamentos do mês selecionado.">
         <LancamentosTable
           lancamentos={filtrados}
           categorias={categorias.data ?? []}
@@ -78,7 +72,7 @@ export function LancamentosPage() {
           cartoes={cartoes.data ?? []}
           onEdit={setEditing}
           onDelete={(lancamento) => {
-            if (window.confirm("Excluir este lancamento?")) excluir.mutate(lancamento.id);
+            if (window.confirm("Excluir este lançamento?")) excluir.mutate(lancamento.id);
           }}
         />
       </SectionCard>
@@ -92,34 +86,7 @@ export function LancamentosPage() {
           await atualizar.mutateAsync({ id, payload });
         }}
       />
-      <Dialog open={open} title="Novo lançamento" onClose={() => setOpen(false)} className="max-w-5xl">
-        <LancamentoForm
-          categorias={categorias.data ?? []}
-          subcategorias={subcategorias.data ?? []}
-          metodos={metodos.data ?? []}
-          cartoes={cartoes.data ?? []}
-          onSubmit={async (payload) => {
-            await criar.mutateAsync(payload);
-            setOpen(false);
-          }}
-          onCreateContaFutura={async (payload) => {
-            await criarContaFutura.mutateAsync(payload);
-            setOpen(false);
-          }}
-          onCreateCategoria={async (nome, natureza) => {
-            const categoria = await criarCategoria.mutateAsync({ nome, natureza });
-            return { id: categoria.id, label: categoria.nome };
-          }}
-          onCreateSubcategoria={async (nome, categoria_id) => {
-            const subcategoria = await criarSubcategoria.mutateAsync({ nome, categoria_id });
-            return { id: subcategoria.id, label: subcategoria.nome };
-          }}
-          onCreateMetodo={async (nome) => {
-            const metodo = await criarMetodo.mutateAsync({ nome });
-            return { id: metodo.id, label: metodo.nome };
-          }}
-        />
-      </Dialog>
+      <NovoLancamentoModal open={open} onClose={() => setOpen(false)} />
     </div>
   );
 }

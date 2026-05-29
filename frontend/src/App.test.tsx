@@ -7,6 +7,6 @@ describe("App", () => {
   it("renderiza o painel inicial", async () => {
     render(<App />);
     expect((await screen.findAllByText("Painel"))[0]).toBeInTheDocument();
-    expect(await screen.findByText("Saldo livre para gastar")).toBeInTheDocument();
+    expect((await screen.findAllByText("Saldo livre para gastar"))[0]).toBeInTheDocument();
   });
 });

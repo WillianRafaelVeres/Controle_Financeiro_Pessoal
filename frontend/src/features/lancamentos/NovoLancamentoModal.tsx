@@ -40,6 +40,7 @@ export function NovoLancamentoModal({ open, onClose, initialType = "GASTO" }: No
       queryClient.invalidateQueries({ queryKey: ["planejamento"] }),
       queryClient.invalidateQueries({ queryKey: ["orcamentos"] }),
       queryClient.invalidateQueries({ queryKey: ["cartoes"] }),
+      queryClient.invalidateQueries({ queryKey: ["contas"] }),
       queryClient.invalidateQueries({ queryKey: ["compromissos"] }),
       queryClient.invalidateQueries({ queryKey: ["contas_futuras"] }),
       queryClient.invalidateQueries({ queryKey: ["caixinhas"] }),

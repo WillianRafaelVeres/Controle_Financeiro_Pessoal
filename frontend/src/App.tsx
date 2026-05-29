@@ -31,24 +31,6 @@ const queryClient = new QueryClient({
   },
 });
 
-const pageTitles: Record<PageKey, string> = {
-  dashboard: "Painel",
-  lancamentos: "Lançamentos",
-  contas: "Contas",
-  contas_futuras: "Contas futuras",
-  dinheiro_separado: "Dinheiro separado",
-  orcamento: "Orçamento",
-  cartoes: "Cartões",
-  patrimonio: "Meu patrimônio",
-  investimentos: "Investimentos",
-  desempenho: "Desempenho",
-  dividendos: "Dividendos",
-  exterior: "Exterior/Dólar",
-  relatorios: "Relatórios",
-  configuracoes: "Configurações",
-  integracoes: "Integrações",
-};
-
 function CurrentPage({ page, onNewLancamento }: { page: PageKey; onNewLancamento: () => void }) {
   switch (page) {
     case "lancamentos":
@@ -99,7 +81,6 @@ export default function App() {
         <AppShell
           current={page}
           onNavigate={setPage}
-          title={pageTitles[page]}
           backendStatus={backendStatus}
           onNewLancamento={abrirNovoLancamento}
         >

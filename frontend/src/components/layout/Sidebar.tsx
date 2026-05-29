@@ -62,7 +62,7 @@ export function Sidebar({ current, onNavigate }: { current: PageKey; onNavigate:
   return (
     <aside
       className={cn(
-        "sticky top-0 hidden h-screen shrink-0 border-r border-slate-800/90 bg-[#0a1017]/98 shadow-[12px_0_26px_rgba(0,0,0,0.14)] transition-all duration-200 lg:flex lg:flex-col",
+        "sticky top-0 z-30 hidden h-screen max-h-screen shrink-0 self-start overflow-hidden border-r border-slate-800/90 bg-[#0a1017]/98 shadow-[12px_0_26px_rgba(0,0,0,0.14)] transition-all duration-200 lg:flex lg:flex-col",
         collapsed ? "w-[68px]" : "w-60",
       )}
     >

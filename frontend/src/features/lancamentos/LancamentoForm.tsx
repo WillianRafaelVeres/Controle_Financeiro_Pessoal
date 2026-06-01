@@ -85,13 +85,14 @@ export function LancamentoForm({
   const categoriaOptions = categorias
     .filter((item) => item.ativa && (item.natureza ?? "GASTO") === naturezaTipo)
     .map((item) => ({ id: item.id, label: item.nome }));
+  const categoriaById = useMemo(() => new Map(categorias.map((item) => [item.id, item])), [categorias]);
   const subcategoriaOptions = useMemo(
     () =>
       subcategorias
         .filter((item) => item.ativa && (item.natureza ?? "GASTO") === naturezaTipo)
         .filter((item) => !categoriaId || item.categoria_id === categoriaId)
-        .map((item) => ({ id: item.id, label: item.nome })),
-    [categoriaId, naturezaTipo, subcategorias],
+        .map((item) => ({ id: item.id, label: item.nome, description: categoriaById.get(item.categoria_id)?.nome })),
+    [categoriaById, categoriaId, naturezaTipo, subcategorias],
   );
   const firstCartaoId = cartoes[0]?.id ? `cartao:${cartoes[0].id}` : null;
   const metodoOptions = [
@@ -313,8 +314,9 @@ export function LancamentoForm({
           )}
         </label>
         <ComboboxCreate
-          label="Categoria"
-          createNoun="categoria"
+          label="Item"
+          placeholder="Buscar item"
+          createNoun="item"
           valueId={categoriaId}
           temporaryValue={tempCategoria}
           options={categoriaOptions}
@@ -330,21 +332,35 @@ export function LancamentoForm({
           }}
         />
         <ComboboxCreate
-          label="Subcategoria"
-          createNoun="subcategoria"
+          label="Sub-item"
+          placeholder="Buscar sub-item"
+          createNoun="sub-item"
           valueId={subcategoriaId}
           temporaryValue={tempSubcategoria}
           options={subcategoriaOptions}
-          disabled={!categoriaId && !tempCategoria}
           onSelect={(option) => {
-            setSubcategoriaId(option?.id ?? null);
+            if (!option) {
+              setSubcategoriaId(null);
+              setTempSubcategoria("");
+              return;
+            }
+            const subcategoria = subcategorias.find((item) => item.id === option.id);
+            if (subcategoria) {
+              setCategoriaId(subcategoria.categoria_id);
+              setTempCategoria("");
+            }
+            setSubcategoriaId(option.id);
             setTempSubcategoria("");
           }}
           onCreatePersist={async (nome) => {
-            if (!categoriaId) throw new Error("Selecione uma categoria salva antes de criar subcategoria.");
+            if (!categoriaId) throw new Error("Selecione ou crie um item salvo antes de criar sub-item.");
             return onCreateSubcategoria(nome, categoriaId);
           }}
           onUseTemporary={(nome) => {
+            if (!categoriaId && !tempCategoria) {
+              alert("Selecione ou crie o item correspondente antes de usar um sub-item.");
+              return;
+            }
             setSubcategoriaId(null);
             setTempSubcategoria(nome);
           }}

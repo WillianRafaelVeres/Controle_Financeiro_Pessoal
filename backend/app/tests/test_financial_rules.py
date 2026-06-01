@@ -14,9 +14,11 @@ from app.models.base import (
     StatusContaFutura,
     TipoConta,
     TipoAtivo,
+    TipoControleInvestimento,
     TipoItemOrcamento,
     TipoLancamento,
     TipoMetodo,
+    TipoMovimentoInvestimento,
     TipoProvento,
 )
 from app.models.cartao import Cartao
@@ -58,6 +60,7 @@ from app.services.investimento_service import (
     listar_movimentos,
     listar_posicoes,
     registrar_cotacao,
+    sincronizar_lancamentos_investimentos_brl_pendentes,
     vender,
 )
 from app.services.lancamento_service import atualizar_lancamento, criar_lancamento
@@ -695,7 +698,9 @@ def test_compra_por_ticker_cria_ativo_e_movimenta_dolar_exterior(session: Sessio
 
 
 def test_editar_e_excluir_movimento_investimento_brl_sincroniza_lancamento(session: Session):
+    conta = Conta(nome="Conta", saldo_inicial=Decimal("1000.00"), saldo_atual_informado=Decimal("1000.00"))
     ativo = Ativo(ticker="BBAS3", nome="Banco do Brasil", tipo_ativo=TipoAtivo.ACAO_BR)
+    session.add(conta)
     session.add(ativo)
     session.commit()
     session.refresh(ativo)
@@ -706,6 +711,7 @@ def test_editar_e_excluir_movimento_investimento_brl_sincroniza_lancamento(sessi
             ativo_id=ativo.id,
             quantidade=Decimal("10.00"),
             preco_unitario=Decimal("10.00"),
+            conta_id=conta.id,
             data_movimento=date(2026, 5, 9),
         ),
     )
@@ -871,6 +877,50 @@ def test_preco_medio_ponderado_considera_compras_e_venda_parcial(session: Sessio
     assert posicao["preco_medio"] == Decimal("15.0000")
 
 
+def test_venda_investimento_nacional_por_quantidade_aumenta_saldo_livre(session: Session):
+    conta, *_ = seed_basico(session)
+    ativo = Ativo(ticker="BBAS3", nome="Banco do Brasil", tipo_ativo=TipoAtivo.ACAO_BR)
+    session.add(ativo)
+    session.commit()
+    session.refresh(ativo)
+
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=ativo.id,
+            quantidade=Decimal("2.00"),
+            preco_unitario=Decimal("100.00"),
+            conta_id=conta.id,
+            data_movimento=date(2026, 5, 1),
+        ),
+    )
+    assert calcular_saldo_livre(session) == Decimal("800.00")
+    session.refresh(conta)
+    assert conta.saldo_atual_informado == Decimal("800.00")
+
+    venda = vender(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=ativo.id,
+            quantidade=Decimal("1.00"),
+            preco_unitario=Decimal("120.00"),
+            taxas=Decimal("5.00"),
+            conta_id=conta.id,
+            data_movimento=date(2026, 5, 2),
+        ),
+    )
+    lancamento_venda = session.exec(
+        select(Lancamento).where(Lancamento.referencia_id == venda.id, Lancamento.origem_sistema == "INVESTIMENTO_RESGATE")
+    ).one()
+
+    assert calcular_saldo_livre(session) == Decimal("915.00")
+    session.refresh(conta)
+    assert conta.saldo_atual_informado == Decimal("915.00")
+    assert lancamento_venda.tipo == TipoLancamento.AJUSTE
+    assert lancamento_venda.valor == Decimal("115.00")
+    assert lancamento_venda.afeta_orcamento is False
+
+
 def test_posicao_inclui_dividendos_e_retorno_total(session: Session):
     ativo = Ativo(ticker="BBAS3", nome="Banco do Brasil", tipo_ativo=TipoAtivo.ACAO_BR)
     session.add(ativo)
@@ -1030,8 +1080,7 @@ def test_tipos_manuais_nao_usam_cotacao_automatica(session: Session):
         session,
         MovimentoInvestimentoCreate(
             ativo_id=ativo.id,
-            quantidade=Decimal("1.00"),
-            preco_unitario=Decimal("100.00"),
+            valor_total=Decimal("100.00"),
         ),
     )
     cotacao = registrar_cotacao(session, ativo.id, Decimal("120.00"))
@@ -1123,16 +1172,15 @@ def test_caixinha_cdb_usa_saldo_atual_como_valor_da_posicao(session: Session):
         MovimentoInvestimentoCreate(
             tipo_ativo=TipoAtivo.CAIXINHA_CDB,
             corretora="Banco",
-            quantidade=Decimal("1.00"),
-            preco_unitario=Decimal("500.00"),
+            nome="CDB Banco",
+            valor_total=Decimal("500.00"),
         ),
     )
     comprar(
         session,
         MovimentoInvestimentoCreate(
             ativo_id=primeira.ativo_id,
-            quantidade=Decimal("1.00"),
-            preco_unitario=Decimal("300.00"),
+            valor_total=Decimal("300.00"),
         ),
     )
     registrar_cotacao(session, primeira.ativo_id, Decimal("850.00"))
@@ -1140,6 +1188,8 @@ def test_caixinha_cdb_usa_saldo_atual_como_valor_da_posicao(session: Session):
     posicao = calcular_posicao(session, primeira.ativo_id)
 
     assert posicao["valor_total_aportado"] == Decimal("800.0000")
+    assert posicao["tipo_controle"] == TipoControleInvestimento.VALOR
+    assert posicao["quantidade_atual"] is None
     assert posicao["valor_atual"] == Decimal("850.00")
     assert posicao["lucro_prejuizo"] == Decimal("50.0000")
 
@@ -1150,16 +1200,15 @@ def test_reserva_emergencia_funciona_como_conta_de_investimento(session: Session
         MovimentoInvestimentoCreate(
             tipo_ativo=TipoAtivo.RESERVA_EMERGENCIA,
             corretora="Reserva",
-            quantidade=Decimal("1.00"),
-            preco_unitario=Decimal("1000.00"),
+            nome="Reserva",
+            valor_total=Decimal("1000.00"),
         ),
     )
     comprar(
         session,
         MovimentoInvestimentoCreate(
             ativo_id=primeira.ativo_id,
-            quantidade=Decimal("1.00"),
-            preco_unitario=Decimal("500.00"),
+            valor_total=Decimal("500.00"),
         ),
     )
     registrar_cotacao(session, primeira.ativo_id, Decimal("1525.00"))
@@ -1169,9 +1218,174 @@ def test_reserva_emergencia_funciona_como_conta_de_investimento(session: Session
 
     assert ativo is not None
     assert ativo.ticker == "RESERVA_EMERGENCIA_RESERVA"
+    assert ativo.tipo_controle == TipoControleInvestimento.VALOR
     assert posicao["valor_total_aportado"] == Decimal("1500.0000")
     assert posicao["valor_atual"] == Decimal("1525.00")
     assert posicao["lucro_prejuizo"] == Decimal("25.0000")
+
+
+def test_investimento_por_valor_nao_exige_quantidade_e_resgate_aumenta_saldo_livre(session: Session):
+    conta, *_ = seed_basico(session)
+
+    aporte = comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            tipo_ativo=TipoAtivo.RENDA_FIXA,
+            nome="CDB Banco X",
+            corretora="Banco X",
+            valor_total=Decimal("1000.00"),
+            conta_id=conta.id,
+            data_movimento=date(2026, 5, 9),
+        ),
+    )
+
+    movimento_aporte = session.get(MovimentoInvestimento, aporte.id)
+    ativo = session.get(Ativo, aporte.ativo_id)
+    assert movimento_aporte is not None
+    assert ativo is not None
+    assert ativo.tipo_controle == TipoControleInvestimento.VALOR
+    assert movimento_aporte.tipo_movimento.value == "APORTE"
+    assert movimento_aporte.quantidade is None
+    assert movimento_aporte.preco_unitario is None
+    assert calcular_saldo_livre(session) == Decimal("0.00")
+    session.refresh(conta)
+    assert conta.saldo_atual_informado == Decimal("0.00")
+
+    resgate = vender(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=aporte.ativo_id,
+            valor_total=Decimal("400.00"),
+            taxas=Decimal("10.00"),
+            conta_id=conta.id,
+            data_movimento=date(2026, 5, 10),
+        ),
+    )
+
+    posicao = calcular_posicao(session, aporte.ativo_id)
+    lancamento_resgate = session.exec(
+        select(Lancamento).where(Lancamento.referencia_id == resgate.id, Lancamento.origem_sistema == "INVESTIMENTO_RESGATE")
+    ).one()
+
+    assert resgate.tipo_movimento.value == "RESGATE"
+    assert posicao["valor_total_aportado"] == Decimal("600.00")
+    assert posicao["valor_atual"] == Decimal("600.00")
+    assert calcular_saldo_livre(session) == Decimal("390.00")
+    assert lancamento_resgate.tipo == TipoLancamento.AJUSTE
+    assert lancamento_resgate.valor == Decimal("390.00")
+    assert lancamento_resgate.afeta_orcamento is False
+    session.refresh(conta)
+    assert conta.saldo_atual_informado == Decimal("390.00")
+
+
+def test_sincronizacao_corrige_movimento_brl_antigo_sem_lancamento(session: Session):
+    conta = Conta(nome="Conta", saldo_inicial=Decimal("1000.00"), saldo_atual_informado=Decimal("900.00"))
+    ativo = Ativo(
+        ticker="PREVIDENCIA_GRAO",
+        nome="Previdencia Grao",
+        tipo_ativo=TipoAtivo.PREVIDENCIA,
+        tipo_controle=TipoControleInvestimento.VALOR,
+    )
+    session.add(conta)
+    session.add(ativo)
+    session.flush()
+    movimento = MovimentoInvestimento(
+        ativo_id=ativo.id,
+        tipo_movimento=TipoMovimentoInvestimento.APORTE,
+        data_movimento=date(2026, 6, 1),
+        quantidade=None,
+        preco_unitario=None,
+        valor_total=Decimal("100.00"),
+        conta_id=conta.id,
+    )
+    session.add(movimento)
+    session.commit()
+
+    assert session.exec(select(Lancamento).where(Lancamento.referencia_id == movimento.id)).first() is None
+
+    assert sincronizar_lancamentos_investimentos_brl_pendentes(session) == 1
+    session.commit()
+
+    lancamento = session.exec(select(Lancamento).where(Lancamento.referencia_id == movimento.id)).one()
+    resumo = resumo_painel(session, 2026, 6)
+
+    assert lancamento.tipo == TipoLancamento.INVESTIMENTO
+    assert lancamento.valor == Decimal("100.00")
+    assert lancamento.afeta_saldo_livre is True
+    assert resumo["saldo_livre"] == Decimal("900.00")
+    assert resumo["investimentos_mes"] == Decimal("100.00")
+    assert resumo["diferenca_conciliacao"] == Decimal("0.00")
+
+
+def test_aporte_nacional_sem_conta_origem_e_neutro_no_saldo_livre(session: Session):
+    """Posicao registrada sem conta de origem nao mexe no saldo livre nem nas contas."""
+    conta, *_ = seed_basico(session)
+
+    aporte = comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            tipo_ativo=TipoAtivo.PREVIDENCIA,
+            nome="Previdencia Grao",
+            corretora="Grao",
+            valor_total=Decimal("100.00"),
+            data_movimento=date(2026, 6, 1),
+        ),
+    )
+
+    lancamento = session.exec(select(Lancamento).where(Lancamento.referencia_id == aporte.id)).first()
+
+    assert lancamento is None
+    assert calcular_saldo_livre(session) == Decimal("1000.00")
+    session.refresh(conta)
+    assert conta.saldo_atual_informado == Decimal("1000.00")
+    assert conciliacao(session)["diferenca_conciliacao"] == Decimal("0.00")
+    # a posicao continua existindo no patrimonio
+    assert calcular_posicao(session, aporte.ativo_id)["valor_total_aportado"] == Decimal("100.00")
+
+
+def test_sincronizacao_desativa_lancamento_de_posicao_sem_conta(session: Session):
+    """Posicoes antigas sem conta de origem devem ficar neutras apos a sincronizacao."""
+    conta = Conta(nome="Conta", saldo_inicial=Decimal("1000.00"), saldo_atual_informado=Decimal("1000.00"))
+    ativo = Ativo(
+        ticker="CAIXINHA_BANCO",
+        nome="Caixinha Banco",
+        tipo_ativo=TipoAtivo.CAIXINHA_CDB,
+        tipo_controle=TipoControleInvestimento.VALOR,
+    )
+    session.add(conta)
+    session.add(ativo)
+    session.flush()
+    movimento = MovimentoInvestimento(
+        ativo_id=ativo.id,
+        tipo_movimento=TipoMovimentoInvestimento.APORTE,
+        data_movimento=date(2026, 5, 1),
+        valor_total=Decimal("500.00"),
+        conta_id=None,
+    )
+    # lancamento antigo (modelo anterior) que reduzia indevidamente o saldo livre
+    lancamento_antigo = Lancamento(
+        data_lancamento=date(2026, 5, 1),
+        tipo=TipoLancamento.INVESTIMENTO,
+        valor=Decimal("500.00"),
+        valor_original=Decimal("500.00"),
+        observacao="Compra CAIXINHA_BANCO",
+        origem_sistema="INVESTIMENTO_COMPRA",
+        referencia_id=movimento.id,
+        afeta_saldo_livre=True,
+        afeta_orcamento=True,
+    )
+    session.add(movimento)
+    session.add(lancamento_antigo)
+    session.commit()
+
+    assert calcular_saldo_livre(session) == Decimal("500.00")
+
+    sincronizar_lancamentos_investimentos_brl_pendentes(session)
+    session.commit()
+    session.refresh(lancamento_antigo)
+
+    assert lancamento_antigo.ativo is False
+    assert calcular_saldo_livre(session) == Decimal("1000.00")
 
 
 def test_desempenho_converte_posicao_usd_por_dolar_atual(session: Session, monkeypatch):
@@ -1264,8 +1478,8 @@ def test_compra_sem_ticker_agrupa_por_tipo_e_corretora(session: Session):
         MovimentoInvestimentoCreate(
             tipo_ativo=TipoAtivo.PREVIDENCIA,
             corretora="XP",
-            quantidade=Decimal("1.00"),
-            preco_unitario=Decimal("500.00"),
+            nome="Previdencia XP",
+            valor_total=Decimal("500.00"),
         ),
     )
     segunda = comprar(
@@ -1273,8 +1487,7 @@ def test_compra_sem_ticker_agrupa_por_tipo_e_corretora(session: Session):
         MovimentoInvestimentoCreate(
             tipo_ativo=TipoAtivo.PREVIDENCIA,
             corretora="XP",
-            quantidade=Decimal("2.00"),
-            preco_unitario=Decimal("250.00"),
+            valor_total=Decimal("500.00"),
         ),
     )
 
@@ -1284,10 +1497,12 @@ def test_compra_sem_ticker_agrupa_por_tipo_e_corretora(session: Session):
     assert ativo.ticker == "PREVIDENCIA_XP"
     assert ativo.moeda == "BRL"
     assert ativo.corretora == "XP"
+    assert ativo.tipo_controle == TipoControleInvestimento.VALOR
 
     posicoes = listar_posicoes(session)
     assert len(posicoes) == 1
-    assert posicoes[0]["quantidade_atual"] == Decimal("3.00")
+    assert posicoes[0]["quantidade_atual"] is None
+    assert posicoes[0]["valor_total_aportado"] == Decimal("1000.0000")
     assert posicoes[0]["corretora"] == "XP"
 
 
@@ -1587,8 +1802,8 @@ def test_lancamento_investimento_cria_movimento_e_conta_no_planejamento_sem_gast
     assert session.get(Ativo, movimentos[0].ativo_id).ticker == "BBAS3"
 
 
-def test_conciliacao_ignora_lancamento_de_investimento(session: Session):
-    conta = Conta(nome="Conta", saldo_inicial=Decimal("2000.00"), saldo_atual_informado=Decimal("2000.00"))
+def test_conciliacao_considera_lancamento_de_investimento(session: Session):
+    conta = Conta(nome="Conta", saldo_inicial=Decimal("2000.00"), saldo_atual_informado=Decimal("1000.00"))
     categoria = Categoria(nome="Investimentos", natureza=NaturezaCategoria.INVESTIMENTO)
     session.add(conta)
     session.add(categoria)
@@ -1610,7 +1825,7 @@ def test_conciliacao_ignora_lancamento_de_investimento(session: Session):
     )
 
     assert calcular_saldo_livre(session) == Decimal("1000.00")
-    assert conciliacao(session)["saldo_livre"] == Decimal("2000.00")
+    assert conciliacao(session)["saldo_livre"] == Decimal("1000.00")
     assert conciliacao(session)["diferenca_conciliacao"] == Decimal("0.00")
 
 
@@ -1968,7 +2183,7 @@ def test_planejamento_integrado_mostra_despesa_planejada_e_nao_planejada(session
 
 
 def test_investimento_planejado_alimenta_painel_e_planejamento_sem_despesa(session: Session):
-    conta = Conta(nome="Conta", saldo_inicial=Decimal("2000.00"), saldo_atual_informado=Decimal("2000.00"))
+    conta = Conta(nome="Conta", saldo_inicial=Decimal("2000.00"), saldo_atual_informado=Decimal("1500.00"))
     categoria = Categoria(nome="Investimentos", natureza=NaturezaCategoria.INVESTIMENTO)
     session.add(conta)
     session.add(categoria)
@@ -2002,9 +2217,10 @@ def test_investimento_planejado_alimenta_painel_e_planejamento_sem_despesa(sessi
 
     painel = resumo_painel(session, 2026, 5)
     planejamento = resumo_planejamento(session, 2026, 5)
-    assert painel["saldo_livre"] == Decimal("2000.00")
+    assert painel["saldo_livre"] == Decimal("1500.00")
     assert painel["investimentos_mes"] == Decimal("500.00")
     assert painel["despesas_mes"] == Decimal("0.00")
+    assert painel["diferenca_conciliacao"] == Decimal("0.00")
     assert planejamento["investimentos_executados"] == Decimal("500.00")
 
 

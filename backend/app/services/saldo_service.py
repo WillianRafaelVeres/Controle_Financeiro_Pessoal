@@ -152,7 +152,7 @@ def calcular_saldo_livre(session: Session) -> Decimal:
 def calcular_saldo_livre_conciliacao(session: Session) -> Decimal:
     return (
         soma_saldo_inicial_contas_gasto(session)
-        + soma_lancamentos_contas_gasto(session, incluir_investimentos=False, incluir_envios_dolar=True)
+        + soma_lancamentos_contas_gasto(session)
         - calcular_reservado_contas_futuras(session)
     )
 

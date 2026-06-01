@@ -53,6 +53,7 @@ export function ComboboxCreate({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [pendingName, setPendingName] = useState("");
+  const [error, setError] = useState("");
   const [dropdownPosition, setDropdownPosition] = useState<DropdownPosition | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -115,10 +116,15 @@ export function ComboboxCreate({
   }, [open]);
 
   async function persist() {
-    const created = await onCreatePersist(pendingName);
-    if (created) onSelect(created);
-    setPendingName("");
-    closeDropdown();
+    setError("");
+    try {
+      const created = await onCreatePersist(pendingName);
+      if (created) onSelect(created);
+      setPendingName("");
+      closeDropdown();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Nao foi possivel criar o item.");
+    }
   }
 
   const dropdown =
@@ -161,6 +167,7 @@ export function ComboboxCreate({
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[13px] font-medium text-brand-500 transition hover:bg-brand-500/15"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
+                  setError("");
                   setPendingName(query.trim());
                   setOpen(false);
                 }}
@@ -184,6 +191,7 @@ export function ComboboxCreate({
           ref={inputRef}
           className="pl-9 pr-9"
           disabled={disabled}
+          aria-label={label}
           value={open ? query : display}
           placeholder={placeholder}
           onFocus={() => {
@@ -217,6 +225,7 @@ export function ComboboxCreate({
         <p className="text-sm text-slate-400">
           {`${dialogArticle} ${createNoun} "${pendingName}" ainda nao existe. Deseja adicionar a lista para lancamentos futuros?`}
         </p>
+        {error && <div className="mt-3 rounded-md border border-red-500/30 bg-red-500/10 p-2 text-xs font-medium text-red-300">{error}</div>}
         {createExtra && <div className="mt-4">{createExtra}</div>}
         <div className="mt-6 flex flex-wrap justify-end gap-2">
           <Button variant="secondary" onClick={() => setPendingName("")}>

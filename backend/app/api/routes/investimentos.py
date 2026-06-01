@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 from decimal import Decimal
 
 from app.core.database import get_session
-from app.models.base import TipoAtivo, TipoProvento
+from app.models.base import TipoAtivo, TipoControleInvestimento, TipoProvento
 from app.models.investimento import Ativo, MovimentoInvestimento
 from app.schemas.investimento_schema import (
     AtivoCreate,
@@ -30,12 +30,20 @@ from app.services.investimento_service import (
 
 router = APIRouter(prefix="/investimentos", tags=["investimentos"])
 
+TIPOS_CONTROLE_VALOR = {
+    TipoAtivo.CAIXINHA_CDB,
+    TipoAtivo.RESERVA_EMERGENCIA,
+    TipoAtivo.RENDA_FIXA,
+    TipoAtivo.PREVIDENCIA,
+    TipoAtivo.OUTRO,
+}
+
 
 @router.get("/ativos")
 def listar_ativos(session: Session = Depends(get_session)) -> list[Ativo]:
     return session.exec(
         select(Ativo)
-        .where(Ativo.ativo.is_(True), Ativo.tipo_ativo.notin_([TipoAtivo.DOLAR_CAIXA, TipoAtivo.OUTRO]))
+        .where(Ativo.ativo.is_(True), Ativo.tipo_ativo != TipoAtivo.DOLAR_CAIXA)
         .order_by(Ativo.ticker)
     ).all()
 
@@ -43,6 +51,12 @@ def listar_ativos(session: Session = Depends(get_session)) -> list[Ativo]:
 @router.post("/ativos")
 def criar_ativo(payload: AtivoCreate, session: Session = Depends(get_session)) -> Ativo:
     ativo = Ativo(**payload.model_dump())
+    if payload.tipo_controle is None:
+        ativo.tipo_controle = (
+            TipoControleInvestimento.VALOR
+            if ativo.tipo_ativo in TIPOS_CONTROLE_VALOR
+            else TipoControleInvestimento.QUANTIDADE
+        )
     ativo.ticker = ativo.ticker.upper()
     session.add(ativo)
     session.commit()

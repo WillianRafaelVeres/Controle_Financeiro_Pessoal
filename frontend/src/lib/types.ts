@@ -16,6 +16,7 @@ export type TipoAtivo =
   | "DOLAR_CAIXA"
   | "PREVIDENCIA"
   | "OUTRO";
+export type TipoControleInvestimento = "QUANTIDADE" | "VALOR";
 export type TipoProvento = "DIVIDENDO" | "JCP" | "RENDIMENTO_FII" | "DIVIDENDO_EXTERIOR" | "JUROS_RENDA_FIXA" | "OUTRO";
 
 export interface Categoria {
@@ -227,6 +228,7 @@ export interface Ativo {
   ticker: string;
   nome: string;
   tipo_ativo: TipoAtivo;
+  tipo_controle?: TipoControleInvestimento;
   moeda: string;
   corretora?: string;
 }
@@ -236,10 +238,11 @@ export interface Posicao {
   ticker: string;
   nome: string;
   tipo_ativo: TipoAtivo;
+  tipo_controle?: TipoControleInvestimento;
   moeda: string;
   corretora?: string | null;
-  quantidade_atual: string | number;
-  preco_medio: string | number;
+  quantidade_atual?: string | number | null;
+  preco_medio?: string | number | null;
   preco_atual?: string | number;
   valor_total_aportado: string | number;
   valor_atual: string | number;
@@ -259,16 +262,18 @@ export interface MovimentoInvestimento {
   ticker: string;
   nome: string;
   tipo_ativo: TipoAtivo;
+  tipo_controle?: TipoControleInvestimento;
   tipo_movimento: "COMPRA" | "VENDA" | "APORTE" | "RESGATE" | "AJUSTE";
   data_movimento: string;
-  quantidade: string | number;
-  preco_unitario: string | number;
+  quantidade?: string | number | null;
+  preco_unitario?: string | number | null;
   valor_total: string | number;
   taxas: string | number;
   valor_financeiro: string | number;
   moeda: string;
   corretora?: string | null;
   conta_id?: string | null;
+  conta_nome?: string | null;
   observacao?: string | null;
   origem_dolar?: boolean;
 }
@@ -294,6 +299,7 @@ export interface DesempenhoAtivo {
   ticker: string;
   nome: string;
   tipo_ativo: TipoAtivo;
+  tipo_controle?: TipoControleInvestimento;
   tipo_label: string;
   moeda: string;
   corretora?: string | null;

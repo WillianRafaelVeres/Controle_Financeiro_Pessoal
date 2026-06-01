@@ -20,6 +20,7 @@ def create_db_and_tables() -> None:
     SQLModel.metadata.create_all(engine)
     _ensure_schema_compatibility()
     _seed_system_categories()
+    _sync_investment_entries()
 
 
 def _ensure_schema_compatibility() -> None:
@@ -75,6 +76,7 @@ def _ensure_schema_compatibility() -> None:
 
     if "ativos" in tables:
         add_column_if_missing("ativos", "corretora", "VARCHAR(120)")
+        add_column_if_missing("ativos", "tipo_controle", "VARCHAR DEFAULT 'QUANTIDADE' NOT NULL")
 
     for table in ["lancamentos", "orcamento_itens", "orcamento_itens_padrao"]:
         add_column_if_missing(table, "categoria_nome_snapshot", "VARCHAR(120)")
@@ -160,6 +162,31 @@ def _ensure_schema_compatibility() -> None:
                     """
                 )
             )
+        if "ativos" in tables:
+            conn.execute(
+                text(
+                    """
+                    UPDATE ativos
+                    SET tipo_controle = 'VALOR'
+                    WHERE tipo_ativo IN (
+                        'CAIXINHA_CDB',
+                        'RESERVA_EMERGENCIA',
+                        'RENDA_FIXA',
+                        'PREVIDENCIA',
+                        'OUTRO'
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE ativos
+                    SET tipo_controle = 'QUANTIDADE'
+                    WHERE tipo_controle IS NULL
+                    """
+                )
+            )
             conn.execute(
                 text(
                     """
@@ -196,6 +223,14 @@ def _seed_system_categories() -> None:
             categoria.inativado_em = None
             categoria.motivo_inativacao = None
             session.add(categoria)
+        session.commit()
+
+
+def _sync_investment_entries() -> None:
+    from app.services.investimento_service import sincronizar_lancamentos_investimentos_brl_pendentes
+
+    with Session(engine) as session:
+        sincronizar_lancamentos_investimentos_brl_pendentes(session)
         session.commit()
 
 

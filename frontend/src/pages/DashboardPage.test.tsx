@@ -89,7 +89,7 @@ describe("Dashboard quick actions", () => {
   it("abre fluxo de registrar investimento", async () => {
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: /registrar investimento/i }));
-    expect(await screen.findByRole("heading", { name: "Comprar ativo" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Registrar investimento" })).toBeInTheDocument();
   });
 
   it("abre modal de dividendos", async () => {

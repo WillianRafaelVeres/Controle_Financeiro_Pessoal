@@ -17,7 +17,7 @@ import { CompraAtivoModal } from "../features/investimentos/CompraAtivoModal";
 import { VendaAtivoModal } from "../features/investimentos/VendaAtivoModal";
 import { api } from "../lib/api";
 import { formatDate, formatMoney, formatPercent, toNumber } from "../lib/formatters";
-import { INVESTMENT_TYPE_LABELS, INVESTMENT_TYPE_OPTIONS, isAccountLikeInvestment } from "../lib/investmentProfiles";
+import { INVESTMENT_TYPE_LABELS, INVESTMENT_TYPE_OPTIONS } from "../lib/investmentProfiles";
 import type { MovimentoInvestimento, Posicao, TipoAtivo } from "../lib/types";
 import { currentMonth } from "../lib/utils";
 
@@ -206,7 +206,7 @@ export function InvestimentosPage() {
           <>
             <Button onClick={() => abrirCompra()}>
               <TrendingUp className="h-4 w-4" />
-              Comprar
+              Comprar/Aportar
             </Button>
             <Button
               variant="secondary"
@@ -216,7 +216,7 @@ export function InvestimentosPage() {
               }}
             >
               <TrendingDown className="h-4 w-4" />
-              Vender
+              Vender/Resgatar
             </Button>
             <Button
               variant="secondary"
@@ -283,7 +283,7 @@ export function InvestimentosPage() {
           <EmptyState
             icon={<BarChart3 className="h-6 w-6" />}
             title="Nenhum ativo em carteira"
-            description="Use Comprar ativo para criar o ticker automaticamente e registrar a primeira posição."
+            description="Use Registrar investimento para criar a primeira posicao."
           />
         ) : (
           <div className="space-y-2">
@@ -385,9 +385,9 @@ export function InvestimentosPage() {
                       <p className="text-xs text-slate-500">{movimento.nome}</p>
                     </Td>
                     <Td>{INVESTMENT_TYPE_LABELS[movimento.tipo_ativo] ?? movimento.tipo_ativo}</Td>
-                    <Td>{movimento.corretora || "-"}</Td>
-                    <Td className="text-right">{isAccountLikeInvestment(movimento.tipo_ativo) ? "-" : formatQuantity(movimento.quantidade)}</Td>
-                    <Td className="text-right">{formatMoney(movimento.preco_unitario, movimento.moeda)}</Td>
+                    <Td>{[movimento.conta_nome, movimento.corretora].filter(Boolean).join(" / ") || "-"}</Td>
+                    <Td className="text-right">{movimento.tipo_controle === "VALOR" ? "-" : formatQuantity(movimento.quantidade ?? 0)}</Td>
+                    <Td className="text-right">{movimento.tipo_controle === "VALOR" ? "-" : formatMoney(movimento.preco_unitario, movimento.moeda)}</Td>
                     <Td className="text-right font-semibold text-slate-100">{formatMoney(movimento.valor_financeiro, movimento.moeda)}</Td>
                     <Td className="text-center">
                       <div className="inline-flex items-center gap-1">
@@ -483,7 +483,7 @@ function MovimentoInvestimentoDialog({
     setForm({
       data_movimento: movimento.data_movimento,
       quantidade: String(toNumber(movimento.quantidade)),
-      preco_unitario: String(toNumber(movimento.preco_unitario)),
+      preco_unitario: String(toNumber(movimento.tipo_controle === "VALOR" ? movimento.valor_total : movimento.preco_unitario)),
       taxas: String(toNumber(movimento.taxas)),
       corretora: movimento.corretora || "",
       observacao: movimento.observacao || "",
@@ -494,27 +494,35 @@ function MovimentoInvestimentoDialog({
 
   if (!movimento) return null;
 
-  const investimentoConta = isAccountLikeInvestment(movimento.tipo_ativo);
+  const controleValor = movimento.tipo_controle === "VALOR";
   const moeda = movimento.moeda || "BRL";
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setErro("");
     if (!movimento) return;
-    if (!investimentoConta && toNumber(form.quantidade) <= 0) {
+    if (!controleValor && toNumber(form.quantidade) <= 0) {
       setErro("Informe uma quantidade maior que zero.");
       return;
     }
     if (toNumber(form.preco_unitario) <= 0) {
-      setErro("Informe um preco maior que zero.");
+      setErro(controleValor ? "Informe um valor maior que zero." : "Informe um preco maior que zero.");
       return;
     }
     setSalvando(true);
     try {
       await onSubmit(movimento.id, {
         data_movimento: form.data_movimento || null,
-        quantidade: investimentoConta ? toNumber(movimento.quantidade) : toNumber(form.quantidade),
-        preco_unitario: toNumber(form.preco_unitario),
+        ...(controleValor
+          ? {
+              quantidade: null,
+              preco_unitario: null,
+              valor_total: toNumber(form.preco_unitario),
+            }
+          : {
+              quantidade: toNumber(form.quantidade),
+              preco_unitario: toNumber(form.preco_unitario),
+            }),
         taxas: toNumber(form.taxas),
         corretora: form.corretora.trim() || null,
         observacao: form.observacao.trim() || null,
@@ -532,7 +540,7 @@ function MovimentoInvestimentoDialog({
       <form className="grid gap-3 sm:grid-cols-2" onSubmit={submit}>
         <div className="rounded-md border border-slate-800 bg-slate-950/45 p-3 sm:col-span-2">
           <p className="text-sm font-semibold text-slate-100">
-            {movimentoLabel(movimento.tipo_movimento)} {movimento.ticker}
+            {movimentoLabel(movimento.tipo_movimento)} {controleValor ? movimento.nome : movimento.ticker}
           </p>
           <p className="mt-1 text-xs text-slate-500">
             {INVESTMENT_TYPE_LABELS[movimento.tipo_ativo] ?? movimento.tipo_ativo} · valores em {moeda}
@@ -546,14 +554,14 @@ function MovimentoInvestimentoDialog({
           <span className="text-xs font-medium text-slate-500">Conta/corretora</span>
           <Input value={form.corretora} onChange={(event) => setForm({ ...form, corretora: event.target.value })} />
         </label>
-        {!investimentoConta && (
+        {!controleValor && (
           <label className="space-y-1">
             <span className="text-xs font-medium text-slate-500">Quantidade</span>
             <MoneyInput currency={false} decimals={6} preview={false} value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} required />
           </label>
         )}
         <label className="space-y-1">
-          <span className="text-xs font-medium text-slate-500">{investimentoConta ? `Valor aportado (${moeda})` : `Preco unitario (${moeda})`}</span>
+          <span className="text-xs font-medium text-slate-500">{controleValor ? `Valor (${moeda})` : `Preco unitario (${moeda})`}</span>
           <MoneyInput currency={moeda} value={form.preco_unitario} onChange={(event) => setForm({ ...form, preco_unitario: event.target.value })} required />
         </label>
         <label className="space-y-1">

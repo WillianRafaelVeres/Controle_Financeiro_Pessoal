@@ -90,6 +90,11 @@ class TipoAtivo(str, Enum):
     OUTRO = "OUTRO"
 
 
+class TipoControleInvestimento(str, Enum):
+    QUANTIDADE = "QUANTIDADE"
+    VALOR = "VALOR"
+
+
 class Moeda(str, Enum):
     BRL = "BRL"
     USD = "USD"

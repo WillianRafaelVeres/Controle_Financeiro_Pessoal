@@ -1,4 +1,4 @@
-import type { TipoAtivo } from "./types";
+import type { TipoAtivo, TipoControleInvestimento } from "./types";
 
 export const INVESTMENT_TYPE_LABELS: Record<TipoAtivo, string> = {
   ACAO_BR: "Acao BR",
@@ -11,7 +11,7 @@ export const INVESTMENT_TYPE_LABELS: Record<TipoAtivo, string> = {
   ETF_EXTERIOR: "Exterior",
   EXTERIOR: "Exterior",
   FII: "FII",
-  OUTRO: "Outro legado",
+  OUTRO: "Outro investimento",
   PREVIDENCIA: "Previdencia",
   RENDA_FIXA: "Renda fixa/Tesouro",
 };
@@ -26,17 +26,26 @@ export const INVESTMENT_TYPE_OPTIONS: Array<{ value: TipoAtivo; label: string }>
   { value: "CAIXINHA_CDB", label: "Caixinhas CDB" },
   { value: "RENDA_FIXA", label: "Renda fixa/Tesouro" },
   { value: "PREVIDENCIA", label: "Previdencia" },
+  { value: "OUTRO", label: "Outro investimento" },
 ];
 
-const TICKER_TYPES = new Set<TipoAtivo>(["ACAO_BR", "FII", "ETF_BR", "EXTERIOR", "ACAO_EXTERIOR", "ETF_EXTERIOR", "CRIPTO", "RENDA_FIXA"]);
-const ACCOUNT_LIKE_TYPES = new Set<TipoAtivo>(["CAIXINHA_CDB", "RESERVA_EMERGENCIA", "PREVIDENCIA"]);
+const TICKER_TYPES = new Set<TipoAtivo>(["ACAO_BR", "FII", "ETF_BR", "EXTERIOR", "ACAO_EXTERIOR", "ETF_EXTERIOR", "CRIPTO"]);
+const VALUE_CONTROL_TYPES = new Set<TipoAtivo>(["CAIXINHA_CDB", "RESERVA_EMERGENCIA", "RENDA_FIXA", "PREVIDENCIA", "OUTRO"]);
 
 export function needsTicker(tipo: TipoAtivo) {
   return TICKER_TYPES.has(tipo);
 }
 
 export function isAccountLikeInvestment(tipo: TipoAtivo) {
-  return ACCOUNT_LIKE_TYPES.has(tipo);
+  return VALUE_CONTROL_TYPES.has(tipo);
+}
+
+export function isValueControlledInvestment(tipo: TipoAtivo) {
+  return VALUE_CONTROL_TYPES.has(tipo);
+}
+
+export function controlTypeForInvestment(tipo: TipoAtivo): TipoControleInvestimento {
+  return isValueControlledInvestment(tipo) ? "VALOR" : "QUANTIDADE";
 }
 
 export function defaultCurrencyForInvestment(tipo: TipoAtivo) {
@@ -47,7 +56,7 @@ export function defaultCurrencyForInvestment(tipo: TipoAtivo) {
 export function tickerPlaceholder(tipo: TipoAtivo) {
   if (tipo === "EXTERIOR" || tipo === "ACAO_EXTERIOR" || tipo === "ETF_EXTERIOR") return "AAPL";
   if (tipo === "CRIPTO") return "BTC";
-  if (tipo === "RENDA_FIXA") return "TESOURO-IPCA-2035";
+  if (tipo === "RENDA_FIXA") return "CDB-BANCO-X";
   if (tipo === "FII" || tipo === "ETF_BR") return "HGLG11";
   return "BBAS3";
 }

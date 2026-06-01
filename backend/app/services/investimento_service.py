@@ -6,25 +6,51 @@ import httpx
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from app.models.base import Moeda, TipoAtivo, TipoLancamento, TipoMovimentoDolar, TipoMovimentoInvestimento, now_utc
+from app.models.base import (
+    Moeda,
+    TipoAtivo,
+    TipoControleInvestimento,
+    TipoLancamento,
+    TipoMovimentoDolar,
+    TipoMovimentoInvestimento,
+    now_utc,
+)
 from app.models.cotacao import Cotacao
 from app.models.dividendo import Dividendo
 from app.models.extrato_dolar import ExtratoDolar
 from app.models.historico_investimento import HistoricoInvestimentoMensal
 from app.models.investimento import Ativo, MovimentoInvestimento
 from app.models.lancamento import Lancamento
+from app.models.conta import Conta, ContaSaldo
 from app.schemas.investimento_schema import MovimentoInvestimentoCreate, MovimentoInvestimentoUpdate
 from app.services.dividendo_service import dividendos_recebidos_brl
 from app.services.exterior_dolar_service import buscar_cotacao_dolar_atual, registrar_movimento_dolar, resumo_dolar, saldo_teorico_usd
 
 
 TIPOS_EXTERIOR = {TipoAtivo.EXTERIOR, TipoAtivo.ACAO_EXTERIOR, TipoAtivo.ETF_EXTERIOR}
+TIPOS_CONTROLE_VALOR = {
+    TipoAtivo.CAIXINHA_CDB,
+    TipoAtivo.RESERVA_EMERGENCIA,
+    TipoAtivo.RENDA_FIXA,
+    TipoAtivo.PREVIDENCIA,
+    TipoAtivo.OUTRO,
+}
 TIPOS_CONTA_INVESTIMENTO = {TipoAtivo.CAIXINHA_CDB, TipoAtivo.RESERVA_EMERGENCIA, TipoAtivo.PREVIDENCIA}
-TIPOS_SEM_TICKER = TIPOS_CONTA_INVESTIMENTO | {TipoAtivo.OUTRO}
-TIPOS_OCULTOS_POSICAO = {TipoAtivo.DOLAR_CAIXA, TipoAtivo.OUTRO}
+TIPOS_SEM_TICKER = TIPOS_CONTROLE_VALOR
+TIPOS_OCULTOS_POSICAO = {TipoAtivo.DOLAR_CAIXA}
 TIPOS_COTACAO_AUTOMATICA_BR = {TipoAtivo.ACAO_BR, TipoAtivo.FII, TipoAtivo.ETF_BR}
 TIPOS_COTACAO_AUTOMATICA = TIPOS_COTACAO_AUTOMATICA_BR | TIPOS_EXTERIOR | {TipoAtivo.CRIPTO}
 TIPOS_COM_DIVIDENDOS = {TipoAtivo.ACAO_BR, TipoAtivo.FII, TipoAtivo.ETF_BR} | TIPOS_EXTERIOR
+TIPOS_CONTA_SALDO_BRL = {
+    "CONTA_CORRENTE",
+    "CARTEIRA_DIGITAL",
+    "DINHEIRO_FISICO",
+    "GASTO",
+    "RESERVA",
+    "OUTRO",
+    "OUTRA",
+}
+CONTA_SALDO_INVESTIMENTO_PREFIX = "AUTO_INVESTIMENTO"
 
 COINGECKO_IDS = {
     "BTC": "bitcoin",
@@ -63,6 +89,45 @@ def _moeda_padrao(tipo_ativo: TipoAtivo) -> Moeda:
     if tipo_ativo in TIPOS_EXTERIOR:
         return Moeda.USD
     return Moeda.BRL
+
+
+def _decimal(value: Decimal | None) -> Decimal:
+    return value if value is not None else Decimal("0.00")
+
+
+def _tipo_controle_padrao(tipo_ativo: TipoAtivo) -> TipoControleInvestimento:
+    if tipo_ativo in TIPOS_CONTROLE_VALOR:
+        return TipoControleInvestimento.VALOR
+    return TipoControleInvestimento.QUANTIDADE
+
+
+def _controle_por_valor(ativo: Ativo) -> bool:
+    return (
+        getattr(ativo, "tipo_controle", None) == TipoControleInvestimento.VALOR
+        or ativo.tipo_ativo in TIPOS_CONTROLE_VALOR
+    )
+
+
+def _tipo_controle_efetivo(ativo: Ativo) -> TipoControleInvestimento:
+    return TipoControleInvestimento.VALOR if _controle_por_valor(ativo) else TipoControleInvestimento.QUANTIDADE
+
+
+def _permite_null_quantidade(session: Session) -> bool:
+    try:
+        from sqlalchemy import inspect
+
+        inspector = inspect(session.connection())
+        columns = {item["name"]: item for item in inspector.get_columns("movimentos_investimento")}
+        quantidade = columns.get("quantidade")
+        preco_unitario = columns.get("preco_unitario")
+        return bool(
+            quantidade
+            and preco_unitario
+            and quantidade.get("nullable")
+            and preco_unitario.get("nullable")
+        )
+    except Exception:
+        return False
 
 
 def _normalizar_texto(valor: str | None) -> str:
@@ -308,7 +373,13 @@ def _obter_ou_criar_ativo(session: Session, payload: MovimentoInvestimentoCreate
         corretora = _normalizar_texto(payload.corretora)
         if corretora:
             ativo.corretora = corretora
-            session.add(ativo)
+        if payload.tipo_controle:
+            ativo.tipo_controle = payload.tipo_controle
+        elif ativo.tipo_ativo in TIPOS_CONTROLE_VALOR:
+            ativo.tipo_controle = TipoControleInvestimento.VALOR
+        elif not getattr(ativo, "tipo_controle", None):
+            ativo.tipo_controle = _tipo_controle_padrao(ativo.tipo_ativo)
+        session.add(ativo)
         return ativo
     if not payload.tipo_ativo:
         ativo_existente = session.exec(select(Ativo).where(Ativo.ticker == payload.ticker.upper().strip())).first() if payload.ticker else None
@@ -323,13 +394,20 @@ def _obter_ou_criar_ativo(session: Session, payload: MovimentoInvestimentoCreate
     if ativo:
         if corretora:
             ativo.corretora = corretora
-            session.add(ativo)
+        if payload.tipo_controle:
+            ativo.tipo_controle = payload.tipo_controle
+        elif ativo.tipo_ativo in TIPOS_CONTROLE_VALOR:
+            ativo.tipo_controle = TipoControleInvestimento.VALOR
+        elif not getattr(ativo, "tipo_controle", None):
+            ativo.tipo_controle = _tipo_controle_padrao(ativo.tipo_ativo)
+        session.add(ativo)
         return ativo
     moeda = _moeda_padrao(payload.tipo_ativo)
     ativo = Ativo(
         ticker=ticker,
         nome=_normalizar_texto(payload.nome) or _normalizar_texto(corretora) or payload.tipo_ativo.value.replace("_", " ").title(),
         tipo_ativo=payload.tipo_ativo,
+        tipo_controle=payload.tipo_controle or _tipo_controle_padrao(payload.tipo_ativo),
         moeda=moeda,
         corretora=corretora or None,
     )
@@ -351,11 +429,119 @@ def _movimento_saida(tipo_movimento: TipoMovimentoInvestimento) -> bool:
 
 
 def _valor_financeiro_compra(movimento: MovimentoInvestimento) -> Decimal:
-    return movimento.valor_total + movimento.taxas
+    return _decimal(movimento.valor_total) + _decimal(movimento.taxas)
 
 
 def _valor_financeiro_venda(movimento: MovimentoInvestimento) -> Decimal:
-    return max(movimento.valor_total - movimento.taxas, Decimal("0.00"))
+    return max(_decimal(movimento.valor_total) - _decimal(movimento.taxas), Decimal("0.00"))
+
+
+def _efeito_conta_brl(
+    tipo_movimento: TipoMovimentoInvestimento,
+    valor_total: Decimal | None,
+    taxas: Decimal | None,
+) -> Decimal:
+    if _movimento_entrada(tipo_movimento):
+        return -(_decimal(valor_total) + _decimal(taxas))
+    if _movimento_saida(tipo_movimento):
+        return max(_decimal(valor_total) - _decimal(taxas), Decimal("0.00"))
+    return Decimal("0.00")
+
+
+def _marcador_conta_investimento(movimento_id: str) -> str:
+    return f"{CONTA_SALDO_INVESTIMENTO_PREFIX}:{movimento_id}"
+
+
+def _conta_saldo_aplicada(session: Session, movimento_id: str) -> bool:
+    marcador = f"%{_marcador_conta_investimento(movimento_id)}%"
+    return bool(session.exec(select(ContaSaldo).where(ContaSaldo.observacao.ilike(marcador))).first())
+
+
+def _validar_conta_saldo_brl(conta: Conta) -> None:
+    tipo_conta = conta.tipo_conta.value if hasattr(conta.tipo_conta, "value") else str(conta.tipo_conta)
+    moeda = conta.moeda.value if hasattr(conta.moeda, "value") else str(conta.moeda)
+    if not conta.ativa:
+        raise HTTPException(status_code=422, detail="A conta selecionada esta inativa.")
+    if moeda != Moeda.BRL.value:
+        raise HTTPException(status_code=422, detail="Investimento nacional precisa usar uma conta em BRL.")
+    if not conta.conta_gasto or not conta.entra_no_saldo_em_contas or tipo_conta not in TIPOS_CONTA_SALDO_BRL:
+        raise HTTPException(
+            status_code=422,
+            detail="Selecione uma conta que entra no saldo em contas para movimentar investimento nacional.",
+        )
+
+
+def _aplicar_delta_saldo_conta(
+    session: Session,
+    conta_id: str | None,
+    delta: Decimal,
+    movimento: MovimentoInvestimento,
+    descricao: str,
+) -> None:
+    if not conta_id or delta == Decimal("0.00"):
+        return
+    conta = session.get(Conta, conta_id)
+    if not conta:
+        raise HTTPException(status_code=404, detail="Conta do investimento nao encontrada.")
+    _validar_conta_saldo_brl(conta)
+    conta.saldo_atual_informado = _decimal(conta.saldo_atual_informado) + delta
+    conta.atualizado_em = now_utc()
+    session.add(conta)
+    session.add(
+        ContaSaldo(
+            conta_id=conta.id,
+            data_referencia=movimento.data_movimento,
+            saldo_informado=conta.saldo_atual_informado,
+            observacao=f"{_marcador_conta_investimento(movimento.id)} {descricao}",
+        )
+    )
+
+
+def _aplicar_saldo_conta_criacao(session: Session, movimento: MovimentoInvestimento, descricao: str) -> None:
+    if _conta_saldo_aplicada(session, movimento.id):
+        return
+    _aplicar_delta_saldo_conta(
+        session,
+        movimento.conta_id,
+        _efeito_conta_brl(movimento.tipo_movimento, movimento.valor_total, movimento.taxas),
+        movimento,
+        descricao,
+    )
+
+
+def _reconciliar_saldo_conta_atualizacao(
+    session: Session,
+    movimento: MovimentoInvestimento,
+    conta_id_anterior: str | None,
+    efeito_anterior: Decimal,
+) -> None:
+    if _conta_saldo_aplicada(session, movimento.id):
+        _aplicar_delta_saldo_conta(
+            session,
+            conta_id_anterior,
+            -efeito_anterior,
+            movimento,
+            "Estorno do estado anterior.",
+        )
+    _aplicar_delta_saldo_conta(
+        session,
+        movimento.conta_id,
+        _efeito_conta_brl(movimento.tipo_movimento, movimento.valor_total, movimento.taxas),
+        movimento,
+        "Atualizacao de movimento.",
+    )
+
+
+def _estornar_saldo_conta_exclusao(session: Session, movimento: MovimentoInvestimento) -> None:
+    if not _conta_saldo_aplicada(session, movimento.id):
+        return
+    _aplicar_delta_saldo_conta(
+        session,
+        movimento.conta_id,
+        -_efeito_conta_brl(movimento.tipo_movimento, movimento.valor_total, movimento.taxas),
+        movimento,
+        "Exclusao de movimento.",
+    )
 
 
 def _buscar_extrato_vinculado(session: Session, movimento_id: str) -> ExtratoDolar | None:
@@ -377,7 +563,7 @@ def _buscar_lancamento_investimento_vinculado(
         select(Lancamento).where(
             Lancamento.ativo.is_(True),
             Lancamento.referencia_id == movimento.id,
-            Lancamento.origem_sistema == "INVESTIMENTO_COMPRA",
+            Lancamento.origem_sistema.in_(["INVESTIMENTO_COMPRA", "INVESTIMENTO_RESGATE"]),
         )
     ).first()
     if vinculado:
@@ -397,25 +583,85 @@ def _buscar_lancamento_investimento_vinculado(
 
 
 def _validar_fluxo_quantidade(session: Session, ativo_id: str, ignorar_movimento_id: str | None = None) -> None:
+    ativo = session.get(Ativo, ativo_id)
+    if not ativo:
+        raise HTTPException(status_code=404, detail="Ativo nao encontrado.")
     movimentos = session.exec(
         select(MovimentoInvestimento)
         .where(MovimentoInvestimento.ativo_id == ativo_id)
         .order_by(MovimentoInvestimento.data_movimento, MovimentoInvestimento.criado_em)
     ).all()
+    if _controle_por_valor(ativo):
+        saldo = Decimal("0.00")
+        for movimento in movimentos:
+            if movimento.id == ignorar_movimento_id:
+                continue
+            if _movimento_entrada(movimento.tipo_movimento):
+                saldo += _decimal(movimento.valor_total)
+                continue
+            if _movimento_saida(movimento.tipo_movimento):
+                saldo -= _decimal(movimento.valor_total)
+                if saldo < Decimal("0.00"):
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Esta alteracao deixaria o investimento negativo. Ajuste ou remova resgates posteriores primeiro.",
+                    )
+        return
+
     quantidade = Decimal("0.00")
     for movimento in movimentos:
         if movimento.id == ignorar_movimento_id:
             continue
         if _movimento_entrada(movimento.tipo_movimento):
-            quantidade += movimento.quantidade
+            quantidade += _decimal(movimento.quantidade)
             continue
         if _movimento_saida(movimento.tipo_movimento):
-            quantidade -= movimento.quantidade
+            quantidade -= _decimal(movimento.quantidade)
             if quantidade < Decimal("0.00"):
                 raise HTTPException(
                     status_code=422,
                     detail="Esta alteracao deixaria a posicao negativa. Ajuste ou remova vendas posteriores primeiro.",
                 )
+
+
+def _valor_total_por_valor(payload: MovimentoInvestimentoCreate | MovimentoInvestimentoUpdate) -> Decimal:
+    valor_total = getattr(payload, "valor_total", None)
+    if valor_total is not None:
+        return valor_total
+
+    preco_unitario = getattr(payload, "preco_unitario", None)
+    quantidade = getattr(payload, "quantidade", None)
+    if preco_unitario is not None and preco_unitario > 0:
+        if quantidade is not None and quantidade > 0 and quantidade != Decimal("1.00"):
+            return quantidade * preco_unitario
+        return preco_unitario
+    return Decimal("0.00")
+
+
+def _normalizar_movimento(
+    session: Session,
+    ativo: Ativo,
+    payload: MovimentoInvestimentoCreate | MovimentoInvestimentoUpdate,
+) -> tuple[Decimal | None, Decimal | None, Decimal, Decimal]:
+    taxas = _decimal(getattr(payload, "taxas", None))
+    if taxas < 0:
+        raise HTTPException(status_code=422, detail="Taxas nao podem ser negativas.")
+
+    if _controle_por_valor(ativo):
+        valor_total = _valor_total_por_valor(payload)
+        if valor_total <= 0:
+            raise HTTPException(status_code=422, detail="Valor deve ser maior que zero.")
+        if _permite_null_quantidade(session):
+            return None, None, valor_total, taxas
+        return Decimal("0.00"), Decimal("0.00"), valor_total, taxas
+
+    quantidade = getattr(payload, "quantidade", None)
+    preco_unitario = getattr(payload, "preco_unitario", None)
+    if quantidade is None or quantidade <= 0:
+        raise HTTPException(status_code=422, detail="Quantidade deve ser maior que zero.")
+    if preco_unitario is None or preco_unitario <= 0:
+        raise HTTPException(status_code=422, detail="Preco unitario deve ser maior que zero.")
+    return quantidade, preco_unitario, quantidade * preco_unitario, taxas
 
 
 def _sincronizar_lancamento_investimento_brl(
@@ -425,39 +671,53 @@ def _sincronizar_lancamento_investimento_brl(
     lancamento_existente: Lancamento | None = None,
 ) -> None:
     lancamento = lancamento_existente
-    if not _movimento_entrada(movimento.tipo_movimento):
+    # Um investimento nacional so afeta o saldo livre / saldo em contas quando o
+    # usuario indica a conta de caixa de onde o dinheiro saiu (aporte) ou para
+    # onde voltou (resgate). Posicoes ja existentes sem conta de origem ficam
+    # neutras: nao reduzem nem aumentam o saldo livre.
+    afeta_saldo = (
+        _movimento_entrada(movimento.tipo_movimento) or _movimento_saida(movimento.tipo_movimento)
+    ) and movimento.conta_id is not None
+    if not afeta_saldo:
         if lancamento:
             lancamento.ativo = False
             lancamento.atualizado_em = now_utc()
             session.add(lancamento)
         return
 
-    valor_financeiro = _valor_financeiro_compra(movimento)
-    descricao = movimento.observacao or f"Compra {ativo.ticker}"
+    entrada = _movimento_entrada(movimento.tipo_movimento)
+    valor_financeiro = _valor_financeiro_compra(movimento) if entrada else _valor_financeiro_venda(movimento)
+    descricao_padrao = f"{'Aporte' if _controle_por_valor(ativo) and entrada else 'Compra'} {ativo.ticker}"
+    if not entrada:
+        descricao_padrao = f"{'Resgate' if _controle_por_valor(ativo) else 'Venda'} {ativo.ticker}"
+    descricao = movimento.observacao or descricao_padrao
+    tipo_lancamento = TipoLancamento.INVESTIMENTO if entrada else TipoLancamento.AJUSTE
+    origem_sistema = "INVESTIMENTO_COMPRA" if entrada else "INVESTIMENTO_RESGATE"
+    afeta_orcamento = entrada
     if not lancamento:
         lancamento = Lancamento(
             data_lancamento=movimento.data_movimento,
-            tipo=TipoLancamento.INVESTIMENTO,
+            tipo=tipo_lancamento,
             valor=valor_financeiro,
             valor_original=valor_financeiro,
             conta_id=movimento.conta_id,
             observacao=descricao,
-            origem_sistema="INVESTIMENTO_COMPRA",
+            origem_sistema=origem_sistema,
             referencia_id=movimento.id,
             afeta_saldo_livre=True,
-            afeta_orcamento=True,
+            afeta_orcamento=afeta_orcamento,
         )
     else:
         lancamento.data_lancamento = movimento.data_movimento
-        lancamento.tipo = TipoLancamento.INVESTIMENTO
+        lancamento.tipo = tipo_lancamento
         lancamento.valor = valor_financeiro
         lancamento.valor_original = valor_financeiro
         lancamento.conta_id = movimento.conta_id
         lancamento.observacao = descricao
-        lancamento.origem_sistema = "INVESTIMENTO_COMPRA"
+        lancamento.origem_sistema = origem_sistema
         lancamento.referencia_id = movimento.id
         lancamento.afeta_saldo_livre = True
-        lancamento.afeta_orcamento = True
+        lancamento.afeta_orcamento = afeta_orcamento
         lancamento.ativo = True
         lancamento.atualizado_em = now_utc()
     session.add(lancamento)
@@ -521,6 +781,7 @@ def _movimento_to_dict(session: Session, movimento: MovimentoInvestimento) -> di
     ativo = session.get(Ativo, movimento.ativo_id)
     if not ativo:
         raise HTTPException(status_code=404, detail="Ativo nao encontrado para movimento.")
+    conta = session.get(Conta, movimento.conta_id) if movimento.conta_id else None
     valor_financeiro = _valor_financeiro_compra(movimento) if _movimento_entrada(movimento.tipo_movimento) else _valor_financeiro_venda(movimento)
     return {
         "id": movimento.id,
@@ -528,6 +789,7 @@ def _movimento_to_dict(session: Session, movimento: MovimentoInvestimento) -> di
         "ticker": ativo.ticker,
         "nome": ativo.nome,
         "tipo_ativo": ativo.tipo_ativo,
+        "tipo_controle": _tipo_controle_efetivo(ativo),
         "tipo_movimento": movimento.tipo_movimento,
         "data_movimento": movimento.data_movimento,
         "quantidade": movimento.quantidade,
@@ -538,6 +800,7 @@ def _movimento_to_dict(session: Session, movimento: MovimentoInvestimento) -> di
         "moeda": movimento.moeda,
         "corretora": ativo.corretora,
         "conta_id": movimento.conta_id,
+        "conta_nome": conta.nome if conta else None,
         "observacao": movimento.observacao,
         "origem_dolar": ativo.tipo_ativo in TIPOS_EXTERIOR,
     }
@@ -548,6 +811,28 @@ def listar_movimentos(session: Session) -> list[dict]:
         select(MovimentoInvestimento).order_by(MovimentoInvestimento.data_movimento.desc(), MovimentoInvestimento.criado_em.desc())
     ).all()
     return [_movimento_to_dict(session, movimento) for movimento in movimentos if session.get(Ativo, movimento.ativo_id)]
+
+
+def sincronizar_lancamentos_investimentos_brl_pendentes(session: Session) -> int:
+    movimentos = session.exec(
+        select(MovimentoInvestimento).order_by(MovimentoInvestimento.data_movimento, MovimentoInvestimento.criado_em)
+    ).all()
+    sincronizados = 0
+    for movimento in movimentos:
+        ativo = session.get(Ativo, movimento.ativo_id)
+        if (
+            not ativo
+            or not ativo.ativo
+            or ativo.tipo_ativo in TIPOS_EXTERIOR
+            or ativo.tipo_ativo in TIPOS_OCULTOS_POSICAO
+        ):
+            continue
+        lancamento = _buscar_lancamento_investimento_vinculado(session, movimento, ativo)
+        _sincronizar_lancamento_investimento_brl(session, ativo, movimento, lancamento)
+        sincronizados += 1
+    if sincronizados:
+        session.flush()
+    return sincronizados
 
 
 def atualizar_movimento(
@@ -568,22 +853,41 @@ def atualizar_movimento(
         if ativo.tipo_ativo not in TIPOS_EXTERIOR
         else None
     )
+    conta_id_anterior = movimento.conta_id
+    efeito_conta_anterior = _efeito_conta_brl(movimento.tipo_movimento, movimento.valor_total, movimento.taxas)
     data = payload.model_dump(exclude_unset=True)
-    quantidade = data.get("quantidade", movimento.quantidade)
-    preco_unitario = data.get("preco_unitario", movimento.preco_unitario)
-    taxas = data.get("taxas", movimento.taxas)
-    if quantidade <= 0:
-        raise HTTPException(status_code=422, detail="Quantidade deve ser maior que zero.")
-    if preco_unitario <= 0:
-        raise HTTPException(status_code=422, detail="Preco unitario deve ser maior que zero.")
+    taxas = _decimal(data.get("taxas", movimento.taxas))
     if taxas < 0:
         raise HTTPException(status_code=422, detail="Taxas nao podem ser negativas.")
+    if _controle_por_valor(ativo):
+        valor_total = data.get("valor_total")
+        if valor_total is None and "preco_unitario" in data:
+            valor_total = data.get("preco_unitario")
+        if valor_total is None:
+            valor_total = movimento.valor_total
+        if valor_total <= 0:
+            raise HTTPException(status_code=422, detail="Valor deve ser maior que zero.")
+        if _permite_null_quantidade(session):
+            quantidade = None
+            preco_unitario = None
+        else:
+            quantidade = Decimal("0.00")
+            preco_unitario = Decimal("0.00")
+    else:
+        quantidade = data.get("quantidade", movimento.quantidade)
+        preco_unitario = data.get("preco_unitario", movimento.preco_unitario)
+        if quantidade is None or quantidade <= 0:
+            raise HTTPException(status_code=422, detail="Quantidade deve ser maior que zero.")
+        if preco_unitario is None or preco_unitario <= 0:
+            raise HTTPException(status_code=422, detail="Preco unitario deve ser maior que zero.")
+        valor_total = quantidade * preco_unitario
 
     movimento.data_movimento = data.get("data_movimento", movimento.data_movimento)
     movimento.quantidade = quantidade
     movimento.preco_unitario = preco_unitario
     movimento.taxas = taxas
-    movimento.valor_total = quantidade * preco_unitario
+    movimento.valor_total = valor_total
+    movimento.conta_id = data.get("conta_id", movimento.conta_id)
     movimento.observacao = data.get("observacao", movimento.observacao)
     movimento.atualizado_em = now_utc()
     if "corretora" in data:
@@ -595,6 +899,7 @@ def atualizar_movimento(
     if ativo.tipo_ativo in TIPOS_EXTERIOR:
         _sincronizar_extrato_investimento_usd(session, ativo, movimento, extrato_vinculado)
     else:
+        _reconciliar_saldo_conta_atualizacao(session, movimento, conta_id_anterior, efeito_conta_anterior)
         _sincronizar_lancamento_investimento_brl(session, ativo, movimento, lancamento_vinculado)
     session.commit()
     session.refresh(movimento)
@@ -631,6 +936,8 @@ def excluir_movimento(session: Session, movimento_id: str) -> None:
         lancamento_vinculado.ativo = False
         lancamento_vinculado.atualizado_em = now_utc()
         session.add(lancamento_vinculado)
+    if ativo.tipo_ativo not in TIPOS_EXTERIOR:
+        _estornar_saldo_conta_exclusao(session, movimento)
     session.delete(movimento)
     session.commit()
 
@@ -643,29 +950,48 @@ def calcular_posicao(session: Session, ativo_id: str) -> dict:
         select(MovimentoInvestimento).where(MovimentoInvestimento.ativo_id == ativo_id)
         .order_by(MovimentoInvestimento.data_movimento, MovimentoInvestimento.criado_em)
     ).all()
+    cotacao = _ultima_cotacao(session, ativo_id)
+    if _controle_por_valor(ativo):
+        saldo_valor = Decimal("0.00")
+        for movimento in movimentos:
+            if _movimento_entrada(movimento.tipo_movimento):
+                saldo_valor += _decimal(movimento.valor_total)
+            elif _movimento_saida(movimento.tipo_movimento):
+                saldo_valor -= _decimal(movimento.valor_total)
+        valor_aplicado = max(saldo_valor, Decimal("0.00"))
+        valor_atual = cotacao.preco if cotacao and valor_aplicado > 0 else valor_aplicado
+        return {
+            "ativo_id": ativo_id,
+            "tipo_controle": _tipo_controle_efetivo(ativo),
+            "quantidade_atual": None,
+            "preco_medio": None,
+            "preco_atual": valor_atual,
+            "valor_total_aportado": valor_aplicado,
+            "valor_atual": valor_atual,
+            "lucro_prejuizo": valor_atual - valor_aplicado,
+            "data_cotacao": cotacao.data_cotacao if cotacao else None,
+            "fonte_cotacao": cotacao.fonte if cotacao else None,
+        }
+
     quantidade = Decimal("0.00")
     custo = Decimal("0.00")
     for movimento in movimentos:
         if movimento.tipo_movimento in [TipoMovimentoInvestimento.COMPRA, TipoMovimentoInvestimento.APORTE, TipoMovimentoInvestimento.AJUSTE]:
-            quantidade += movimento.quantidade
-            custo += movimento.valor_total + movimento.taxas
+            quantidade += _decimal(movimento.quantidade)
+            custo += _decimal(movimento.valor_total) + _decimal(movimento.taxas)
         elif movimento.tipo_movimento in [TipoMovimentoInvestimento.VENDA, TipoMovimentoInvestimento.RESGATE]:
             if quantidade > 0:
                 preco_medio = custo / quantidade
-                custo -= preco_medio * movimento.quantidade
-            quantidade -= movimento.quantidade
+                custo -= preco_medio * _decimal(movimento.quantidade)
+            quantidade -= _decimal(movimento.quantidade)
     quantidade_atual = max(quantidade, Decimal("0.00"))
     custo_atual = max(custo, Decimal("0.00"))
     preco_medio = Decimal("0.00") if quantidade_atual <= 0 else custo_atual / quantidade_atual
-    cotacao = _ultima_cotacao(session, ativo_id)
-    if ativo.tipo_ativo in TIPOS_CONTA_INVESTIMENTO:
-        valor_atual = cotacao.preco if cotacao else custo_atual
-        preco_atual = valor_atual
-    else:
-        preco_atual = cotacao.preco if cotacao else preco_medio
-        valor_atual = quantidade_atual * preco_atual
+    preco_atual = cotacao.preco if cotacao else preco_medio
+    valor_atual = quantidade_atual * preco_atual
     return {
         "ativo_id": ativo_id,
+        "tipo_controle": _tipo_controle_efetivo(ativo),
         "quantidade_atual": quantidade_atual,
         "preco_medio": preco_medio,
         "preco_atual": preco_atual,
@@ -684,7 +1010,12 @@ def listar_posicoes(session: Session) -> list[dict]:
         if ativo.tipo_ativo in TIPOS_OCULTOS_POSICAO:
             continue
         posicao = calcular_posicao(session, ativo.id)
-        if posicao["quantidade_atual"] > 0:
+        posicao_aberta = (
+            Decimal(str(posicao["valor_atual"])) > 0
+            if _controle_por_valor(ativo)
+            else _decimal(posicao["quantidade_atual"]) > 0
+        )
+        if posicao_aberta:
             tem_dividendos = _tipo_grupo(ativo.tipo_ativo) in TIPOS_COM_DIVIDENDOS
             dividendos_recebidos = _dividendos_recebidos(session, ativo.id) if tem_dividendos else Decimal("0.00")
             valor_aportado = Decimal(str(posicao["valor_total_aportado"]))
@@ -700,6 +1031,7 @@ def listar_posicoes(session: Session) -> list[dict]:
                     "ticker": ativo.ticker,
                     "nome": ativo.nome,
                     "tipo_ativo": ativo.tipo_ativo,
+                    "tipo_controle": _tipo_controle_efetivo(ativo),
                     "moeda": ativo.moeda,
                     "corretora": ativo.corretora,
                     "rentabilidade_percentual": rentabilidade,
@@ -772,6 +1104,7 @@ def calcular_desempenho(session: Session, registrar_historico: bool = True) -> d
                 "ticker": posicao["ticker"],
                 "nome": posicao["nome"],
                 "tipo_ativo": tipo.value,
+                "tipo_controle": posicao.get("tipo_controle"),
                 "tipo_label": TIPO_ATIVO_LABELS.get(tipo, tipo.value),
                 "moeda": moeda_valor,
                 "corretora": posicao.get("corretora"),
@@ -852,24 +1185,22 @@ def listar_historico_desempenho(session: Session, modo: str = "mensal") -> list[
 
 
 def comprar(session: Session, payload: MovimentoInvestimentoCreate, commit: bool = True) -> MovimentoInvestimento:
-    if payload.quantidade <= 0:
-        raise HTTPException(status_code=422, detail="Quantidade deve ser maior que zero.")
     ativo = _obter_ou_criar_ativo(session, payload)
     if ativo.tipo_ativo in TIPOS_OCULTOS_POSICAO:
         raise HTTPException(status_code=422, detail="Dolar em caixa deve ser controlado pela aba Exterior/Dolar, nao como ativo.")
     moeda = _moeda_padrao(ativo.tipo_ativo)
     ativo.moeda = moeda
     session.add(ativo)
-    valor_total = payload.quantidade * payload.preco_unitario
-    valor_financeiro = valor_total + payload.taxas
+    quantidade, preco_unitario, valor_total, taxas = _normalizar_movimento(session, ativo, payload)
+    valor_financeiro = valor_total + taxas
     movimento = MovimentoInvestimento(
         ativo_id=ativo.id,
-        tipo_movimento=TipoMovimentoInvestimento.COMPRA,
+        tipo_movimento=TipoMovimentoInvestimento.APORTE if _controle_por_valor(ativo) else TipoMovimentoInvestimento.COMPRA,
         data_movimento=payload.data_movimento or date.today(),
-        quantidade=payload.quantidade,
-        preco_unitario=payload.preco_unitario,
+        quantidade=quantidade,
+        preco_unitario=preco_unitario,
         valor_total=valor_total,
-        taxas=payload.taxas,
+        taxas=taxas,
         moeda=moeda,
         conta_id=payload.conta_id,
         observacao=payload.observacao,
@@ -886,8 +1217,10 @@ def comprar(session: Session, payload: MovimentoInvestimentoCreate, commit: bool
             referencia_id=movimento.id,
             data_movimento=movimento.data_movimento,
         )
-    elif commit:
-        _sincronizar_lancamento_investimento_brl(session, ativo, movimento)
+    else:
+        _aplicar_saldo_conta_criacao(session, movimento, "Compra/aporte de investimento.")
+        if commit:
+            _sincronizar_lancamento_investimento_brl(session, ativo, movimento)
     if commit:
         session.commit()
         session.refresh(movimento)
@@ -895,26 +1228,27 @@ def comprar(session: Session, payload: MovimentoInvestimentoCreate, commit: bool
 
 
 def vender(session: Session, payload: MovimentoInvestimentoCreate) -> MovimentoInvestimento:
-    if payload.quantidade <= 0:
-        raise HTTPException(status_code=422, detail="Quantidade deve ser maior que zero.")
     if not payload.ativo_id:
         raise HTTPException(status_code=422, detail="Informe o ativo para venda.")
     ativo = session.get(Ativo, payload.ativo_id)
     if not ativo or not ativo.ativo:
         raise HTTPException(status_code=404, detail="Ativo nao encontrado.")
     posicao = calcular_posicao(session, payload.ativo_id)
-    if payload.quantidade > posicao["quantidade_atual"]:
+    quantidade, preco_unitario, valor_total, taxas = _normalizar_movimento(session, ativo, payload)
+    if _controle_por_valor(ativo):
+        if valor_total > Decimal(str(posicao["valor_atual"])):
+            raise HTTPException(status_code=422, detail="Resgate maior que valor atual bloqueado.")
+    elif quantidade is not None and quantidade > posicao["quantidade_atual"]:
         raise HTTPException(status_code=422, detail="Venda maior que quantidade atual bloqueada.")
-    valor_total = payload.quantidade * payload.preco_unitario
     moeda = _moeda_padrao(ativo.tipo_ativo)
     movimento = MovimentoInvestimento(
         ativo_id=payload.ativo_id,
-        tipo_movimento=TipoMovimentoInvestimento.VENDA,
+        tipo_movimento=TipoMovimentoInvestimento.RESGATE if _controle_por_valor(ativo) else TipoMovimentoInvestimento.VENDA,
         data_movimento=payload.data_movimento or date.today(),
-        quantidade=payload.quantidade,
-        preco_unitario=payload.preco_unitario,
+        quantidade=quantidade,
+        preco_unitario=preco_unitario,
         valor_total=valor_total,
-        taxas=payload.taxas,
+        taxas=taxas,
         moeda=moeda,
         conta_id=payload.conta_id,
         observacao=payload.observacao,
@@ -925,12 +1259,15 @@ def vender(session: Session, payload: MovimentoInvestimentoCreate) -> MovimentoI
         registrar_movimento_dolar(
             session,
             TipoMovimentoDolar.VENDA_EXTERIOR,
-            max(valor_total - payload.taxas, Decimal("0.00")),
+            max(valor_total - taxas, Decimal("0.00")),
             descricao=f"Venda {ativo.ticker}",
             origem="INVESTIMENTO",
             referencia_id=movimento.id,
             data_movimento=movimento.data_movimento,
         )
+    else:
+        _aplicar_saldo_conta_criacao(session, movimento, "Venda/resgate de investimento.")
+        _sincronizar_lancamento_investimento_brl(session, ativo, movimento)
     session.commit()
     session.refresh(movimento)
     return movimento
@@ -941,7 +1278,9 @@ def ativos_para_dividendos(session: Session) -> list[Ativo]:
     return [
         ativo
         for ativo in ativos
-        if ativo.tipo_ativo not in TIPOS_OCULTOS_POSICAO and calcular_posicao(session, ativo.id)["quantidade_atual"] > 0
+        if ativo.tipo_ativo not in TIPOS_OCULTOS_POSICAO
+        and not _controle_por_valor(ativo)
+        and _decimal(calcular_posicao(session, ativo.id)["quantidade_atual"]) > 0
     ]
 
 

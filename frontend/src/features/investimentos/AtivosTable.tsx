@@ -5,7 +5,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Td, Th, Table } from "../../components/ui/table";
 import { formatMoney, formatPercent, toNumber } from "../../lib/formatters";
-import { isAccountLikeInvestment, needsTicker } from "../../lib/investmentProfiles";
+import { needsTicker } from "../../lib/investmentProfiles";
 import type { Posicao, TipoAtivo } from "../../lib/types";
 
 interface AtivosTableProps {
@@ -79,9 +79,9 @@ export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, dol
       <tbody>
         {posicoes.map((item) => {
           const tickerVisivel = needsTicker(item.tipo_ativo);
-          const investimentoConta = isAccountLikeInvestment(item.tipo_ativo);
+          const controleValor = item.tipo_controle === "VALOR";
           const moeda = item.moeda === "USD" ? "USD" : "BRL";
-          const automatico = AUTO_QUOTE_TYPES.has(item.tipo_ativo);
+          const automatico = !controleValor && AUTO_QUOTE_TYPES.has(item.tipo_ativo);
           const valorAtualBrl = moeda === "USD" && dolarCotacao > 0 ? toNumber(item.valor_atual) * dolarCotacao : null;
           const lucroBrl = moeda === "USD" && dolarCotacao > 0 ? toNumber(item.lucro_prejuizo) * dolarCotacao : null;
           const resultado = toNumber(item.lucro_prejuizo);
@@ -104,12 +104,12 @@ export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, dol
               <Td className={`${cellClass} align-middle`}>
                 <div className="truncate font-semibold text-slate-100">{tickerVisivel ? item.ticker : item.nome}</div>
                 <div className="mt-0.5 truncate text-[11px] text-slate-500">
-                  {[tickerVisivel ? item.nome : null, item.corretora, moeda].filter(Boolean).join(" | ") || "-"}
+                  {[tickerVisivel ? item.nome : null, item.corretora, moeda, controleValor ? "Valor" : null].filter(Boolean).join(" | ") || "-"}
                 </div>
               </Td>
               <Td className={`${cellClass} align-middle text-right`}>
-                <div className="font-semibold text-slate-100">{investimentoConta ? "Saldo" : toNumber(item.quantidade_atual).toLocaleString("pt-BR")}</div>
-                <div className="text-[11px] text-slate-500">{investimentoConta ? "Aportes" : "PM"} {formatMoney(investimentoConta ? item.valor_total_aportado : item.preco_medio, moeda)}</div>
+                <div className="font-semibold text-slate-100">{controleValor ? "Valor" : toNumber(item.quantidade_atual).toLocaleString("pt-BR")}</div>
+                <div className="text-[11px] text-slate-500">{controleValor ? "Aplicado" : "PM"} {formatMoney(controleValor ? item.valor_total_aportado : item.preco_medio, moeda)}</div>
               </Td>
               <Td className={`${cellClass} align-middle text-right`}>
                 {automatico ? (
@@ -137,7 +137,7 @@ export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, dol
                       />
                     </div>
                     {onUpdatePrice && (
-                      <Button size="icon" variant="secondary" title={investimentoConta ? "Salvar saldo atual" : "Salvar cotacao"} aria-label={investimentoConta ? "Salvar saldo atual" : "Salvar cotacao"} disabled={busyId === item.ativo_id} onClick={() => savePrice(item)}>
+                      <Button size="icon" variant="secondary" title={controleValor ? "Salvar valor atual" : "Salvar cotacao"} aria-label={controleValor ? "Salvar valor atual" : "Salvar cotacao"} disabled={busyId === item.ativo_id} onClick={() => savePrice(item)}>
                         <Save className="h-3.5 w-3.5" />
                       </Button>
                     )}
@@ -172,7 +172,7 @@ export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, dol
               )}
               <Td className={`${cellClass} align-middle text-center`}>
                 {onSell ? (
-                  <Button size="icon" variant="secondary" title="Vender" aria-label="Vender" onClick={() => onSell(item)}>
+                  <Button size="icon" variant="secondary" title={controleValor ? "Resgatar" : "Vender"} aria-label={controleValor ? "Resgatar" : "Vender"} onClick={() => onSell(item)}>
                     <CircleDollarSign className="h-4 w-4" />
                   </Button>
                 ) : (

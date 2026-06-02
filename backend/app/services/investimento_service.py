@@ -1,5 +1,9 @@
-from datetime import date, datetime, timezone
-from decimal import Decimal
+import csv
+import io
+import re
+import unicodedata
+from datetime import date, datetime, timedelta, timezone
+from decimal import ROUND_HALF_UP, Decimal
 from urllib.parse import quote
 
 import httpx
@@ -21,7 +25,7 @@ from app.models.extrato_dolar import ExtratoDolar
 from app.models.historico_investimento import HistoricoInvestimentoMensal
 from app.models.investimento import Ativo, MovimentoInvestimento
 from app.models.lancamento import Lancamento
-from app.models.conta import Conta, ContaSaldo
+from app.models.conta import Conta
 from app.schemas.investimento_schema import MovimentoInvestimentoCreate, MovimentoInvestimentoUpdate
 from app.services.dividendo_service import dividendos_recebidos_brl
 from app.services.exterior_dolar_service import buscar_cotacao_dolar_atual, registrar_movimento_dolar, resumo_dolar, saldo_teorico_usd
@@ -31,7 +35,6 @@ TIPOS_EXTERIOR = {TipoAtivo.EXTERIOR, TipoAtivo.ACAO_EXTERIOR, TipoAtivo.ETF_EXT
 TIPOS_CONTROLE_VALOR = {
     TipoAtivo.CAIXINHA_CDB,
     TipoAtivo.RESERVA_EMERGENCIA,
-    TipoAtivo.RENDA_FIXA,
     TipoAtivo.PREVIDENCIA,
     TipoAtivo.OUTRO,
 }
@@ -39,19 +42,18 @@ TIPOS_CONTA_INVESTIMENTO = {TipoAtivo.CAIXINHA_CDB, TipoAtivo.RESERVA_EMERGENCIA
 TIPOS_SEM_TICKER = TIPOS_CONTROLE_VALOR
 TIPOS_OCULTOS_POSICAO = {TipoAtivo.DOLAR_CAIXA}
 TIPOS_COTACAO_AUTOMATICA_BR = {TipoAtivo.ACAO_BR, TipoAtivo.FII, TipoAtivo.ETF_BR}
-TIPOS_COTACAO_AUTOMATICA = TIPOS_COTACAO_AUTOMATICA_BR | TIPOS_EXTERIOR | {TipoAtivo.CRIPTO}
-TIPOS_COM_DIVIDENDOS = {TipoAtivo.ACAO_BR, TipoAtivo.FII, TipoAtivo.ETF_BR} | TIPOS_EXTERIOR
-TIPOS_CONTA_SALDO_BRL = {
-    "CONTA_CORRENTE",
-    "CARTEIRA_DIGITAL",
-    "DINHEIRO_FISICO",
-    "GASTO",
-    "RESERVA",
-    "OUTRO",
-    "OUTRA",
-}
-CONTA_SALDO_INVESTIMENTO_PREFIX = "AUTO_INVESTIMENTO"
+TIPOS_COTACAO_AUTOMATICA = TIPOS_COTACAO_AUTOMATICA_BR | TIPOS_EXTERIOR | {TipoAtivo.CRIPTO, TipoAtivo.RENDA_FIXA}
 
+TESOURO_CSV_URL = (
+    "https://www.tesourotransparente.gov.br/ckan/dataset/"
+    "df56aa42-484a-4a59-8184-7676580c81e3/resource/"
+    "796d2059-14e9-44e3-80c9-2d9e30b405c1/download/PrecoTaxaTesouroDireto.csv"
+)
+_TESOURO_CACHE: dict = {"itens": None, "carregado_em": None}
+_TESOURO_CACHE_TTL = timedelta(hours=6)
+# Palavras genericas que nao ajudam a distinguir o titulo do Tesouro.
+_TESOURO_STOPWORDS = {"tesouro", "com", "de", "do", "da", "e"}
+TIPOS_COM_DIVIDENDOS = {TipoAtivo.ACAO_BR, TipoAtivo.FII, TipoAtivo.ETF_BR} | TIPOS_EXTERIOR
 COINGECKO_IDS = {
     "BTC": "bitcoin",
     "ETH": "ethereum",
@@ -93,6 +95,17 @@ def _moeda_padrao(tipo_ativo: TipoAtivo) -> Moeda:
 
 def _decimal(value: Decimal | None) -> Decimal:
     return value if value is not None else Decimal("0.00")
+
+
+def _quantizar_dinheiro(value: Decimal) -> Decimal:
+    """Arredonda valores financeiros para centavos.
+
+    O saldo (extrato) e armazenado com 2 casas, entao o valor da operacao
+    precisa ser arredondado da mesma forma. Caso contrario, uma compra
+    fracionada (ex.: quantidade * preco = 5.16000685) e comparada com o
+    saldo (5.16) acusa "saldo insuficiente" por uma fracao de centavo.
+    """
+    return _decimal(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def _tipo_controle_padrao(tipo_ativo: TipoAtivo) -> TipoControleInvestimento:
@@ -221,6 +234,105 @@ def _buscar_preco_cripto_brl(session: Session, ativo: Ativo) -> Decimal | None:
         return None
     cotacao_dolar = Decimal(str(buscar_cotacao_dolar_atual(session).get("cotacao_brl") or "0"))
     return preco_usd * cotacao_dolar if cotacao_dolar > 0 else None
+
+
+def _tokens_tesouro(texto: str | None) -> set[str]:
+    if not texto:
+        return set()
+    base = unicodedata.normalize("NFKD", texto)
+    base = "".join(ch for ch in base if not unicodedata.combining(ch))
+    base = re.sub(r"[^a-z0-9]+", " ", base.lower())
+    return {token for token in base.split() if token} - _TESOURO_STOPWORDS
+
+
+def _pu_para_decimal(valor: str | None) -> Decimal | None:
+    if not valor:
+        return None
+    try:
+        preco = Decimal(valor.strip().replace(".", "").replace(",", "."))
+    except Exception:
+        return None
+    return preco if preco > 0 else None
+
+
+def _data_base_ordenavel(valor: str | None) -> tuple[int, int, int]:
+    try:
+        dia, mes, ano = (valor or "").split("/")
+        return (int(ano), int(mes), int(dia))
+    except Exception:
+        return (0, 0, 0)
+
+
+def _carregar_tabela_tesouro() -> list[dict]:
+    """Baixa a tabela diaria de precos do Tesouro Direto (Tesouro Transparente).
+
+    Retorna apenas os titulos da data-base mais recente. O resultado fica em
+    cache por algumas horas porque o CSV oficial tem o historico completo (~14 MB).
+    """
+    carregado_em = _TESOURO_CACHE.get("carregado_em")
+    itens = _TESOURO_CACHE.get("itens")
+    if itens is not None and carregado_em and datetime.now(timezone.utc) - carregado_em < _TESOURO_CACHE_TTL:
+        return itens
+
+    response = httpx.get(TESOURO_CSV_URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=60, follow_redirects=True)
+    response.raise_for_status()
+    linhas = list(csv.DictReader(io.StringIO(response.content.decode("latin-1")), delimiter=";"))
+    if not linhas:
+        raise ValueError("CSV do Tesouro Direto veio vazio.")
+
+    data_base_max = max((linha.get("Data Base") or "" for linha in linhas), key=_data_base_ordenavel)
+    registros: list[dict] = []
+    for linha in linhas:
+        if (linha.get("Data Base") or "") != data_base_max:
+            continue
+        preco = (
+            _pu_para_decimal(linha.get("PU Venda Manha"))
+            or _pu_para_decimal(linha.get("PU Base Manha"))
+            or _pu_para_decimal(linha.get("PU Compra Manha"))
+        )
+        if not preco:
+            continue
+        vencimento = linha.get("Data Vencimento") or ""
+        registros.append(
+            {
+                "tipo_tokens": _tokens_tesouro(linha.get("Tipo Titulo")),
+                "ano": vencimento[-4:] if len(vencimento) >= 4 else "",
+                "preco": preco,
+            }
+        )
+
+    _TESOURO_CACHE["itens"] = registros
+    _TESOURO_CACHE["carregado_em"] = datetime.now(timezone.utc)
+    return registros
+
+
+def _buscar_preco_tesouro(ativo: Ativo) -> Decimal | None:
+    try:
+        tabela = _carregar_tabela_tesouro()
+    except Exception:
+        return None
+    alvo = _tokens_tesouro(ativo.nome) | _tokens_tesouro(ativo.ticker)
+    anos = {token for token in alvo if re.fullmatch(r"20\d{2}", token)}
+    if not anos:
+        # Sem o ano de vencimento nao da para distinguir os titulos.
+        return None
+
+    melhor_preco: Decimal | None = None
+    melhor_chave: tuple[int, int] | None = None
+    for registro in tabela:
+        tipo_tokens: set[str] = registro["tipo_tokens"]
+        if registro["ano"] not in anos:
+            continue
+        sobreposicao = len(tipo_tokens & alvo)
+        if sobreposicao == 0:
+            continue
+        # Mais tokens em comum vence; em empate, prefere o titulo mais especifico
+        # (menos tokens do tipo que ficaram de fora do que o usuario digitou).
+        chave = (sobreposicao, -len(tipo_tokens - alvo))
+        if melhor_chave is None or chave > melhor_chave:
+            melhor_chave = chave
+            melhor_preco = registro["preco"]
+    return melhor_preco
 
 
 def _buscar_indice_yahoo(simbolo: str) -> dict:
@@ -436,114 +548,6 @@ def _valor_financeiro_venda(movimento: MovimentoInvestimento) -> Decimal:
     return max(_decimal(movimento.valor_total) - _decimal(movimento.taxas), Decimal("0.00"))
 
 
-def _efeito_conta_brl(
-    tipo_movimento: TipoMovimentoInvestimento,
-    valor_total: Decimal | None,
-    taxas: Decimal | None,
-) -> Decimal:
-    if _movimento_entrada(tipo_movimento):
-        return -(_decimal(valor_total) + _decimal(taxas))
-    if _movimento_saida(tipo_movimento):
-        return max(_decimal(valor_total) - _decimal(taxas), Decimal("0.00"))
-    return Decimal("0.00")
-
-
-def _marcador_conta_investimento(movimento_id: str) -> str:
-    return f"{CONTA_SALDO_INVESTIMENTO_PREFIX}:{movimento_id}"
-
-
-def _conta_saldo_aplicada(session: Session, movimento_id: str) -> bool:
-    marcador = f"%{_marcador_conta_investimento(movimento_id)}%"
-    return bool(session.exec(select(ContaSaldo).where(ContaSaldo.observacao.ilike(marcador))).first())
-
-
-def _validar_conta_saldo_brl(conta: Conta) -> None:
-    tipo_conta = conta.tipo_conta.value if hasattr(conta.tipo_conta, "value") else str(conta.tipo_conta)
-    moeda = conta.moeda.value if hasattr(conta.moeda, "value") else str(conta.moeda)
-    if not conta.ativa:
-        raise HTTPException(status_code=422, detail="A conta selecionada esta inativa.")
-    if moeda != Moeda.BRL.value:
-        raise HTTPException(status_code=422, detail="Investimento nacional precisa usar uma conta em BRL.")
-    if not conta.conta_gasto or not conta.entra_no_saldo_em_contas or tipo_conta not in TIPOS_CONTA_SALDO_BRL:
-        raise HTTPException(
-            status_code=422,
-            detail="Selecione uma conta que entra no saldo em contas para movimentar investimento nacional.",
-        )
-
-
-def _aplicar_delta_saldo_conta(
-    session: Session,
-    conta_id: str | None,
-    delta: Decimal,
-    movimento: MovimentoInvestimento,
-    descricao: str,
-) -> None:
-    if not conta_id or delta == Decimal("0.00"):
-        return
-    conta = session.get(Conta, conta_id)
-    if not conta:
-        raise HTTPException(status_code=404, detail="Conta do investimento nao encontrada.")
-    _validar_conta_saldo_brl(conta)
-    conta.saldo_atual_informado = _decimal(conta.saldo_atual_informado) + delta
-    conta.atualizado_em = now_utc()
-    session.add(conta)
-    session.add(
-        ContaSaldo(
-            conta_id=conta.id,
-            data_referencia=movimento.data_movimento,
-            saldo_informado=conta.saldo_atual_informado,
-            observacao=f"{_marcador_conta_investimento(movimento.id)} {descricao}",
-        )
-    )
-
-
-def _aplicar_saldo_conta_criacao(session: Session, movimento: MovimentoInvestimento, descricao: str) -> None:
-    if _conta_saldo_aplicada(session, movimento.id):
-        return
-    _aplicar_delta_saldo_conta(
-        session,
-        movimento.conta_id,
-        _efeito_conta_brl(movimento.tipo_movimento, movimento.valor_total, movimento.taxas),
-        movimento,
-        descricao,
-    )
-
-
-def _reconciliar_saldo_conta_atualizacao(
-    session: Session,
-    movimento: MovimentoInvestimento,
-    conta_id_anterior: str | None,
-    efeito_anterior: Decimal,
-) -> None:
-    if _conta_saldo_aplicada(session, movimento.id):
-        _aplicar_delta_saldo_conta(
-            session,
-            conta_id_anterior,
-            -efeito_anterior,
-            movimento,
-            "Estorno do estado anterior.",
-        )
-    _aplicar_delta_saldo_conta(
-        session,
-        movimento.conta_id,
-        _efeito_conta_brl(movimento.tipo_movimento, movimento.valor_total, movimento.taxas),
-        movimento,
-        "Atualizacao de movimento.",
-    )
-
-
-def _estornar_saldo_conta_exclusao(session: Session, movimento: MovimentoInvestimento) -> None:
-    if not _conta_saldo_aplicada(session, movimento.id):
-        return
-    _aplicar_delta_saldo_conta(
-        session,
-        movimento.conta_id,
-        -_efeito_conta_brl(movimento.tipo_movimento, movimento.valor_total, movimento.taxas),
-        movimento,
-        "Exclusao de movimento.",
-    )
-
-
 def _buscar_extrato_vinculado(session: Session, movimento_id: str) -> ExtratoDolar | None:
     return session.exec(
         select(ExtratoDolar).where(
@@ -561,7 +565,6 @@ def _buscar_lancamento_investimento_vinculado(
 ) -> Lancamento | None:
     vinculado = session.exec(
         select(Lancamento).where(
-            Lancamento.ativo.is_(True),
             Lancamento.referencia_id == movimento.id,
             Lancamento.origem_sistema.in_(["INVESTIMENTO_COMPRA", "INVESTIMENTO_RESGATE"]),
         )
@@ -661,7 +664,7 @@ def _normalizar_movimento(
         raise HTTPException(status_code=422, detail="Quantidade deve ser maior que zero.")
     if preco_unitario is None or preco_unitario <= 0:
         raise HTTPException(status_code=422, detail="Preco unitario deve ser maior que zero.")
-    return quantidade, preco_unitario, quantidade * preco_unitario, taxas
+    return quantidade, preco_unitario, _quantizar_dinheiro(quantidade * preco_unitario), taxas
 
 
 def _sincronizar_lancamento_investimento_brl(
@@ -671,13 +674,7 @@ def _sincronizar_lancamento_investimento_brl(
     lancamento_existente: Lancamento | None = None,
 ) -> None:
     lancamento = lancamento_existente
-    # Um investimento nacional so afeta o saldo livre / saldo em contas quando o
-    # usuario indica a conta de caixa de onde o dinheiro saiu (aporte) ou para
-    # onde voltou (resgate). Posicoes ja existentes sem conta de origem ficam
-    # neutras: nao reduzem nem aumentam o saldo livre.
-    afeta_saldo = (
-        _movimento_entrada(movimento.tipo_movimento) or _movimento_saida(movimento.tipo_movimento)
-    ) and movimento.conta_id is not None
+    afeta_saldo = _movimento_entrada(movimento.tipo_movimento) or _movimento_saida(movimento.tipo_movimento)
     if not afeta_saldo:
         if lancamento:
             lancamento.ativo = False
@@ -813,7 +810,7 @@ def listar_movimentos(session: Session) -> list[dict]:
     return [_movimento_to_dict(session, movimento) for movimento in movimentos if session.get(Ativo, movimento.ativo_id)]
 
 
-def sincronizar_lancamentos_investimentos_brl_pendentes(session: Session) -> int:
+def sincronizar_lancamentos_investimentos_brl_pendentes(session: Session, incluir_sem_conta: bool = False) -> int:
     movimentos = session.exec(
         select(MovimentoInvestimento).order_by(MovimentoInvestimento.data_movimento, MovimentoInvestimento.criado_em)
     ).all()
@@ -826,6 +823,8 @@ def sincronizar_lancamentos_investimentos_brl_pendentes(session: Session) -> int
             or ativo.tipo_ativo in TIPOS_EXTERIOR
             or ativo.tipo_ativo in TIPOS_OCULTOS_POSICAO
         ):
+            continue
+        if not incluir_sem_conta and movimento.conta_id is None:
             continue
         lancamento = _buscar_lancamento_investimento_vinculado(session, movimento, ativo)
         _sincronizar_lancamento_investimento_brl(session, ativo, movimento, lancamento)
@@ -853,8 +852,6 @@ def atualizar_movimento(
         if ativo.tipo_ativo not in TIPOS_EXTERIOR
         else None
     )
-    conta_id_anterior = movimento.conta_id
-    efeito_conta_anterior = _efeito_conta_brl(movimento.tipo_movimento, movimento.valor_total, movimento.taxas)
     data = payload.model_dump(exclude_unset=True)
     taxas = _decimal(data.get("taxas", movimento.taxas))
     if taxas < 0:
@@ -880,7 +877,7 @@ def atualizar_movimento(
             raise HTTPException(status_code=422, detail="Quantidade deve ser maior que zero.")
         if preco_unitario is None or preco_unitario <= 0:
             raise HTTPException(status_code=422, detail="Preco unitario deve ser maior que zero.")
-        valor_total = quantidade * preco_unitario
+        valor_total = _quantizar_dinheiro(quantidade * preco_unitario)
 
     movimento.data_movimento = data.get("data_movimento", movimento.data_movimento)
     movimento.quantidade = quantidade
@@ -899,7 +896,6 @@ def atualizar_movimento(
     if ativo.tipo_ativo in TIPOS_EXTERIOR:
         _sincronizar_extrato_investimento_usd(session, ativo, movimento, extrato_vinculado)
     else:
-        _reconciliar_saldo_conta_atualizacao(session, movimento, conta_id_anterior, efeito_conta_anterior)
         _sincronizar_lancamento_investimento_brl(session, ativo, movimento, lancamento_vinculado)
     session.commit()
     session.refresh(movimento)
@@ -936,8 +932,6 @@ def excluir_movimento(session: Session, movimento_id: str) -> None:
         lancamento_vinculado.ativo = False
         lancamento_vinculado.atualizado_em = now_utc()
         session.add(lancamento_vinculado)
-    if ativo.tipo_ativo not in TIPOS_EXTERIOR:
-        _estornar_saldo_conta_exclusao(session, movimento)
     session.delete(movimento)
     session.commit()
 
@@ -1218,7 +1212,6 @@ def comprar(session: Session, payload: MovimentoInvestimentoCreate, commit: bool
             data_movimento=movimento.data_movimento,
         )
     else:
-        _aplicar_saldo_conta_criacao(session, movimento, "Compra/aporte de investimento.")
         if commit:
             _sincronizar_lancamento_investimento_brl(session, ativo, movimento)
     if commit:
@@ -1266,7 +1259,6 @@ def vender(session: Session, payload: MovimentoInvestimentoCreate) -> MovimentoI
             data_movimento=movimento.data_movimento,
         )
     else:
-        _aplicar_saldo_conta_criacao(session, movimento, "Venda/resgate de investimento.")
         _sincronizar_lancamento_investimento_brl(session, ativo, movimento)
     session.commit()
     session.refresh(movimento)
@@ -1309,7 +1301,15 @@ def atualizar_cotacao_automatica(session: Session, ativo_id: str) -> Cotacao:
     if not ativo or not ativo.ativo or ativo.tipo_ativo in TIPOS_OCULTOS_POSICAO:
         raise HTTPException(status_code=404, detail="Ativo nao encontrado.")
     if ativo.tipo_ativo not in TIPOS_COTACAO_AUTOMATICA:
-        raise HTTPException(status_code=422, detail="Cotacao automatica disponivel apenas para acoes BR, FIIs, ETFs BR, exterior e criptos.")
+        raise HTTPException(status_code=422, detail="Cotacao automatica disponivel apenas para acoes BR, FIIs, ETFs BR, exterior, criptos e Tesouro Direto.")
+    if ativo.tipo_ativo == TipoAtivo.RENDA_FIXA:
+        preco = _buscar_preco_tesouro(ativo)
+        if not preco:
+            raise HTTPException(
+                status_code=422,
+                detail="Nao foi possivel encontrar este titulo no Tesouro Direto. Use o nome com o ano de vencimento (ex.: Tesouro Selic 2029).",
+            )
+        return registrar_cotacao(session, ativo_id, preco, fonte="TESOURO")
     preco = _buscar_preco_cripto_brl(session, ativo) if ativo.tipo_ativo == TipoAtivo.CRIPTO else _buscar_preco_yahoo(ativo)
     if not preco:
         raise HTTPException(status_code=422, detail="Nao foi possivel encontrar cotacao automatica para este ticker.")

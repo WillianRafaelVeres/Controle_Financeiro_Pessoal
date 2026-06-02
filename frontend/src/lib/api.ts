@@ -181,6 +181,9 @@ export const api = {
   dividendos: () => apiFetch<Dividendo[]>("/dividendos"),
   ativosDividendos: () => apiFetch<Ativo[]>("/dividendos/ativos-disponiveis"),
   criarDividendo: (payload: Record<string, unknown>) => apiFetch<Dividendo>("/dividendos", { method: "POST", body: JSON.stringify(payload) }),
+  atualizarDividendo: (id: string, payload: Record<string, unknown>) =>
+    apiFetch<Dividendo>(`/dividendos/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  excluirDividendo: (id: string) => apiFetch<void>(`/dividendos/${id}`, { method: "DELETE" }),
 
   relGastosCategoria: (ano: number, mes: number) => apiFetch<Array<Record<string, string | number>>>("/relatorios/gastos-por-categoria", {}, { ano, mes }),
   relOrcadoRealizado: (ano: number, mes: number) => apiFetch<OrcamentoLinha[]>("/relatorios/orcado-vs-realizado", {}, { ano, mes }),

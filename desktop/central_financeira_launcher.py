@@ -104,6 +104,12 @@ class SpaHandler(SimpleHTTPRequestHandler):
             self.path = "/index.html"
         return super().send_head()
 
+    def end_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
+
     def log_message(self, format: str, *args: object) -> None:
         return
 

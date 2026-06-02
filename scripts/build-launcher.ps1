@@ -18,6 +18,9 @@ $pyinstaller = Join-Path $root ".venv\Scripts\pyinstaller.exe"
   --clean `
   --windowed `
   --name "Central Financeira" `
+  --distpath (Join-Path $root "dist") `
+  --workpath (Join-Path $root "build") `
+  --specpath $root `
   --icon (Join-Path $root "frontend\src-tauri\icons\icon.ico") `
   --add-data "$(Join-Path $root "frontend\dist");web" `
   --add-binary "$(Join-Path $root "backend\dist\central-financeira-backend.exe");backend" `

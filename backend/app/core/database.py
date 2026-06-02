@@ -21,6 +21,7 @@ def create_db_and_tables() -> None:
     _ensure_schema_compatibility()
     _seed_system_categories()
     _sync_investment_entries()
+    _sync_dividend_dollar_entries()
 
 
 def _ensure_schema_compatibility() -> None:
@@ -171,7 +172,6 @@ def _ensure_schema_compatibility() -> None:
                     WHERE tipo_ativo IN (
                         'CAIXINHA_CDB',
                         'RESERVA_EMERGENCIA',
-                        'RENDA_FIXA',
                         'PREVIDENCIA',
                         'OUTRO'
                     )
@@ -231,6 +231,14 @@ def _sync_investment_entries() -> None:
 
     with Session(engine) as session:
         sincronizar_lancamentos_investimentos_brl_pendentes(session)
+        session.commit()
+
+
+def _sync_dividend_dollar_entries() -> None:
+    from app.services.dividendo_service import sincronizar_movimentos_dolar_dividendos_pendentes
+
+    with Session(engine) as session:
+        sincronizar_movimentos_dolar_dividendos_pendentes(session)
         session.commit()
 
 

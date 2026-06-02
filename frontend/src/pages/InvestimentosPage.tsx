@@ -11,6 +11,7 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
+import { Select } from "../components/ui/select";
 import { Table, Td, Th } from "../components/ui/table";
 import { AtivosTable } from "../features/investimentos/AtivosTable";
 import { CompraAtivoModal } from "../features/investimentos/CompraAtivoModal";
@@ -472,11 +473,25 @@ function MovimentoInvestimentoDialog({
     quantidade: "",
     preco_unitario: "",
     taxas: "",
+    conta_id: "",
     corretora: "",
     observacao: "",
   });
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const moeda = movimento?.moeda || "BRL";
+  const contas = useQuery({ queryKey: ["contas", "investimentos", "editar-movimento"], queryFn: () => api.contas(), enabled: movimento !== null && moeda !== "USD" });
+  const contasSaldo = useMemo(
+    () =>
+      (contas.data ?? []).filter(
+        (conta) =>
+          conta.ativa !== false &&
+          conta.conta_gasto &&
+          conta.entra_no_saldo_em_contas &&
+          (conta.moeda ?? "BRL") === "BRL",
+      ),
+    [contas.data],
+  );
 
   useEffect(() => {
     if (!movimento) return;
@@ -485,6 +500,7 @@ function MovimentoInvestimentoDialog({
       quantidade: String(toNumber(movimento.quantidade)),
       preco_unitario: String(toNumber(movimento.tipo_controle === "VALOR" ? movimento.valor_total : movimento.preco_unitario)),
       taxas: String(toNumber(movimento.taxas)),
+      conta_id: movimento.conta_id || "",
       corretora: movimento.corretora || "",
       observacao: movimento.observacao || "",
     });
@@ -495,7 +511,6 @@ function MovimentoInvestimentoDialog({
   if (!movimento) return null;
 
   const controleValor = movimento.tipo_controle === "VALOR";
-  const moeda = movimento.moeda || "BRL";
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -524,6 +539,7 @@ function MovimentoInvestimentoDialog({
               preco_unitario: toNumber(form.preco_unitario),
             }),
         taxas: toNumber(form.taxas),
+        conta_id: moeda === "USD" ? null : form.conta_id || null,
         corretora: form.corretora.trim() || null,
         observacao: form.observacao.trim() || null,
       });
@@ -551,13 +567,26 @@ function MovimentoInvestimentoDialog({
           <Input type="date" value={form.data_movimento} onChange={(event) => setForm({ ...form, data_movimento: event.target.value })} />
         </label>
         <label className="space-y-1">
-          <span className="text-xs font-medium text-slate-500">Conta/corretora</span>
+          <span className="text-xs font-medium text-slate-500">Instituicao/corretora</span>
           <Input value={form.corretora} onChange={(event) => setForm({ ...form, corretora: event.target.value })} />
         </label>
+        {moeda !== "USD" && (
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-slate-500">Conta vinculada (opcional)</span>
+            <Select value={form.conta_id} onChange={(event) => setForm({ ...form, conta_id: event.target.value })}>
+              <option value="">Sem conta vinculada</option>
+              {contasSaldo.map((conta) => (
+                <option key={conta.id} value={conta.id}>
+                  {conta.nome}
+                </option>
+              ))}
+            </Select>
+          </label>
+        )}
         {!controleValor && (
           <label className="space-y-1">
             <span className="text-xs font-medium text-slate-500">Quantidade</span>
-            <MoneyInput currency={false} decimals={6} preview={false} value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} required />
+            <MoneyInput currency={false} decimals={8} preview={false} value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} required />
           </label>
         )}
         <label className="space-y-1">

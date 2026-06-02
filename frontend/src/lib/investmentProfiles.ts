@@ -29,8 +29,8 @@ export const INVESTMENT_TYPE_OPTIONS: Array<{ value: TipoAtivo; label: string }>
   { value: "OUTRO", label: "Outro investimento" },
 ];
 
-const TICKER_TYPES = new Set<TipoAtivo>(["ACAO_BR", "FII", "ETF_BR", "EXTERIOR", "ACAO_EXTERIOR", "ETF_EXTERIOR", "CRIPTO"]);
-const VALUE_CONTROL_TYPES = new Set<TipoAtivo>(["CAIXINHA_CDB", "RESERVA_EMERGENCIA", "RENDA_FIXA", "PREVIDENCIA", "OUTRO"]);
+const TICKER_TYPES = new Set<TipoAtivo>(["ACAO_BR", "FII", "ETF_BR", "EXTERIOR", "ACAO_EXTERIOR", "ETF_EXTERIOR", "CRIPTO", "RENDA_FIXA"]);
+const VALUE_CONTROL_TYPES = new Set<TipoAtivo>(["CAIXINHA_CDB", "RESERVA_EMERGENCIA", "PREVIDENCIA", "OUTRO"]);
 
 export function needsTicker(tipo: TipoAtivo) {
   return TICKER_TYPES.has(tipo);
@@ -56,7 +56,7 @@ export function defaultCurrencyForInvestment(tipo: TipoAtivo) {
 export function tickerPlaceholder(tipo: TipoAtivo) {
   if (tipo === "EXTERIOR" || tipo === "ACAO_EXTERIOR" || tipo === "ETF_EXTERIOR") return "AAPL";
   if (tipo === "CRIPTO") return "BTC";
-  if (tipo === "RENDA_FIXA") return "CDB-BANCO-X";
+  if (tipo === "RENDA_FIXA") return "Tesouro Selic 2029";
   if (tipo === "FII" || tipo === "ETF_BR") return "HGLG11";
   return "BBAS3";
 }

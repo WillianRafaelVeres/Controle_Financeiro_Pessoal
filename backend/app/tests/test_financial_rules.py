@@ -18,6 +18,7 @@ from app.models.base import (
     TipoItemOrcamento,
     TipoLancamento,
     TipoMetodo,
+    TipoMovimentoDolar,
     TipoMovimentoInvestimento,
     TipoProvento,
 )
@@ -49,6 +50,9 @@ from app.services.conta_futura_service import criar_conta_futura, pagar_conta_fu
 from app.services.investimento_service import (
     TIPOS_COTACAO_AUTOMATICA,
     TIPOS_COTACAO_AUTOMATICA_BR,
+    _TESOURO_CACHE,
+    _buscar_preco_tesouro,
+    _tokens_tesouro,
     ativos_para_dividendos,
     atualizar_cotacao_automatica,
     atualizar_movimento,
@@ -95,7 +99,7 @@ from app.services.exterior_dolar_service import (
     resumo_dolar,
     saldo_teorico_usd,
 )
-from app.services.dividendo_service import listar_historico_proventos
+from app.services.dividendo_service import listar_historico_proventos, sincronizar_movimentos_dolar_dividendos_pendentes
 
 
 @pytest.fixture()
@@ -896,7 +900,7 @@ def test_venda_investimento_nacional_por_quantidade_aumenta_saldo_livre(session:
     )
     assert calcular_saldo_livre(session) == Decimal("800.00")
     session.refresh(conta)
-    assert conta.saldo_atual_informado == Decimal("800.00")
+    assert conta.saldo_atual_informado == Decimal("1000.00")
 
     venda = vender(
         session,
@@ -915,7 +919,7 @@ def test_venda_investimento_nacional_por_quantidade_aumenta_saldo_livre(session:
 
     assert calcular_saldo_livre(session) == Decimal("915.00")
     session.refresh(conta)
-    assert conta.saldo_atual_informado == Decimal("915.00")
+    assert conta.saldo_atual_informado == Decimal("1000.00")
     assert lancamento_venda.tipo == TipoLancamento.AJUSTE
     assert lancamento_venda.valor == Decimal("115.00")
     assert lancamento_venda.afeta_orcamento is False
@@ -1011,7 +1015,7 @@ def test_proventos_usd_guardam_valor_brl_historico(session: Session, monkeypatch
     dividendo_usd = criar_dividendo_route(
         DividendoCreate(
             ativo_id=exterior.id,
-            tipo_provento=TipoProvento.DIVIDENDO_EXTERIOR,
+            tipo_provento=TipoProvento.DIVIDENDO,
             data_recebimento=date(2026, 5, 10),
             valor=Decimal("10.00"),
             moeda=Moeda.USD,
@@ -1033,6 +1037,39 @@ def test_proventos_usd_guardam_valor_brl_historico(session: Session, monkeypatch
     movimento_dividendo = next(item for item in extrato if item["tipo"] == "DIVIDENDO_EXTERIOR")
     assert movimento_dividendo["valor_brl"] == Decimal("49.0000")
     assert movimento_dividendo["cotacao_efetiva"] == Decimal("4.9000")
+    assert saldo_teorico_usd(session) == Decimal("170.00")
+
+
+def test_sincronizacao_corrige_dividendo_usd_antigo_sem_extrato(session: Session):
+    ativo = Ativo(ticker="IVV", nome="iShares Core S&P 500", tipo_ativo=TipoAtivo.EXTERIOR, moeda=Moeda.USD)
+    session.add(ativo)
+    session.flush()
+    dividendo = Dividendo(
+        ativo_id=ativo.id,
+        tipo_provento=TipoProvento.DIVIDENDO,
+        data_recebimento=date(2026, 6, 1),
+        valor=Decimal("0.01"),
+        moeda=Moeda.USD,
+        valor_brl=Decimal("0.05"),
+        cotacao_brl=Decimal("5.00"),
+        data_cotacao=date(2026, 6, 1),
+        fonte_cotacao="Manual",
+    )
+    session.add(dividendo)
+    session.commit()
+
+    assert saldo_teorico_usd(session) == Decimal("0.00")
+
+    assert sincronizar_movimentos_dolar_dividendos_pendentes(session) == 1
+    session.commit()
+
+    extrato = listar_extrato(session)
+    movimento_dividendo = next(item for item in extrato if item["referencia_id"] == dividendo.id)
+
+    assert movimento_dividendo["tipo"] == TipoMovimentoDolar.DIVIDENDO_EXTERIOR
+    assert movimento_dividendo["entrada_usd"] == Decimal("0.01")
+    assert movimento_dividendo["valor_brl"] == Decimal("0.05")
+    assert saldo_teorico_usd(session) == Decimal("0.01")
 
 
 def test_cotacao_automatica_inclui_etf_br(session: Session, monkeypatch):
@@ -1230,7 +1267,7 @@ def test_investimento_por_valor_nao_exige_quantidade_e_resgate_aumenta_saldo_liv
     aporte = comprar(
         session,
         MovimentoInvestimentoCreate(
-            tipo_ativo=TipoAtivo.RENDA_FIXA,
+            tipo_ativo=TipoAtivo.OUTRO,
             nome="CDB Banco X",
             corretora="Banco X",
             valor_total=Decimal("1000.00"),
@@ -1249,7 +1286,7 @@ def test_investimento_por_valor_nao_exige_quantidade_e_resgate_aumenta_saldo_liv
     assert movimento_aporte.preco_unitario is None
     assert calcular_saldo_livre(session) == Decimal("0.00")
     session.refresh(conta)
-    assert conta.saldo_atual_informado == Decimal("0.00")
+    assert conta.saldo_atual_informado == Decimal("1000.00")
 
     resgate = vender(
         session,
@@ -1275,7 +1312,7 @@ def test_investimento_por_valor_nao_exige_quantidade_e_resgate_aumenta_saldo_liv
     assert lancamento_resgate.valor == Decimal("390.00")
     assert lancamento_resgate.afeta_orcamento is False
     session.refresh(conta)
-    assert conta.saldo_atual_informado == Decimal("390.00")
+    assert conta.saldo_atual_informado == Decimal("1000.00")
 
 
 def test_sincronizacao_corrige_movimento_brl_antigo_sem_lancamento(session: Session):
@@ -1317,8 +1354,8 @@ def test_sincronizacao_corrige_movimento_brl_antigo_sem_lancamento(session: Sess
     assert resumo["diferenca_conciliacao"] == Decimal("0.00")
 
 
-def test_aporte_nacional_sem_conta_origem_e_neutro_no_saldo_livre(session: Session):
-    """Posicao registrada sem conta de origem nao mexe no saldo livre nem nas contas."""
+def test_aporte_nacional_sem_conta_origem_afeta_saldo_virtual(session: Session):
+    """Posicao BRL sem conta de origem afeta o saldo livre, mas nao altera saldo real informado."""
     conta, *_ = seed_basico(session)
 
     aporte = comprar(
@@ -1333,18 +1370,58 @@ def test_aporte_nacional_sem_conta_origem_e_neutro_no_saldo_livre(session: Sessi
     )
 
     lancamento = session.exec(select(Lancamento).where(Lancamento.referencia_id == aporte.id)).first()
+    resumo = resumo_painel(session, 2026, 6)
 
-    assert lancamento is None
-    assert calcular_saldo_livre(session) == Decimal("1000.00")
+    assert lancamento is not None
+    assert lancamento.tipo == TipoLancamento.INVESTIMENTO
+    assert lancamento.valor == Decimal("100.00")
+    assert lancamento.conta_id is None
+    assert resumo["saldo_livre"] == Decimal("900.00")
+    assert resumo["investimentos_mes"] == Decimal("100.00")
     session.refresh(conta)
     assert conta.saldo_atual_informado == Decimal("1000.00")
-    assert conciliacao(session)["diferenca_conciliacao"] == Decimal("0.00")
     # a posicao continua existindo no patrimonio
     assert calcular_posicao(session, aporte.ativo_id)["valor_total_aportado"] == Decimal("100.00")
 
 
-def test_sincronizacao_desativa_lancamento_de_posicao_sem_conta(session: Session):
-    """Posicoes antigas sem conta de origem devem ficar neutras apos a sincronizacao."""
+def test_resgate_nacional_sem_conta_destino_aumenta_saldo_virtual(session: Session):
+    conta, *_ = seed_basico(session)
+    aporte = comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            tipo_ativo=TipoAtivo.PREVIDENCIA,
+            nome="Previdencia Grao",
+            corretora="Grao",
+            valor_total=Decimal("500.00"),
+            data_movimento=date(2026, 6, 1),
+        ),
+    )
+
+    resgate = vender(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=aporte.ativo_id,
+            valor_total=Decimal("200.00"),
+            taxas=Decimal("10.00"),
+            data_movimento=date(2026, 6, 2),
+        ),
+    )
+
+    lancamento = session.exec(
+        select(Lancamento).where(Lancamento.referencia_id == resgate.id, Lancamento.origem_sistema == "INVESTIMENTO_RESGATE")
+    ).one()
+
+    assert lancamento.tipo == TipoLancamento.AJUSTE
+    assert lancamento.valor == Decimal("190.00")
+    assert lancamento.conta_id is None
+    assert lancamento.afeta_orcamento is False
+    assert calcular_saldo_livre(session) == Decimal("690.00")
+    session.refresh(conta)
+    assert conta.saldo_atual_informado == Decimal("1000.00")
+
+
+def test_sincronizacao_inicial_preserva_posicao_sem_conta(session: Session):
+    """Startup nao ativa movimentos antigos sem conta em lote."""
     conta = Conta(nome="Conta", saldo_inicial=Decimal("1000.00"), saldo_atual_informado=Decimal("1000.00"))
     ativo = Ativo(
         ticker="CAIXINHA_BANCO",
@@ -1362,7 +1439,7 @@ def test_sincronizacao_desativa_lancamento_de_posicao_sem_conta(session: Session
         valor_total=Decimal("500.00"),
         conta_id=None,
     )
-    # lancamento antigo (modelo anterior) que reduzia indevidamente o saldo livre
+    # lancamento antigo inativo continua inativo ate o movimento ser editado.
     lancamento_antigo = Lancamento(
         data_lancamento=date(2026, 5, 1),
         tipo=TipoLancamento.INVESTIMENTO,
@@ -1373,19 +1450,66 @@ def test_sincronizacao_desativa_lancamento_de_posicao_sem_conta(session: Session
         referencia_id=movimento.id,
         afeta_saldo_livre=True,
         afeta_orcamento=True,
+        ativo=False,
     )
     session.add(movimento)
     session.add(lancamento_antigo)
     session.commit()
 
-    assert calcular_saldo_livre(session) == Decimal("500.00")
+    assert calcular_saldo_livre(session) == Decimal("1000.00")
 
-    sincronizar_lancamentos_investimentos_brl_pendentes(session)
+    assert sincronizar_lancamentos_investimentos_brl_pendentes(session) == 0
     session.commit()
     session.refresh(lancamento_antigo)
 
     assert lancamento_antigo.ativo is False
     assert calcular_saldo_livre(session) == Decimal("1000.00")
+
+
+def test_editar_movimento_antigo_sem_conta_ativa_lancamento_virtual(session: Session):
+    conta = Conta(nome="Conta", saldo_inicial=Decimal("1000.00"), saldo_atual_informado=Decimal("1000.00"))
+    ativo = Ativo(
+        ticker="PREVIDENCIA_GRAO",
+        nome="Previdencia Grao",
+        tipo_ativo=TipoAtivo.PREVIDENCIA,
+        tipo_controle=TipoControleInvestimento.VALOR,
+    )
+    session.add(conta)
+    session.add(ativo)
+    session.flush()
+    movimento = MovimentoInvestimento(
+        ativo_id=ativo.id,
+        tipo_movimento=TipoMovimentoInvestimento.APORTE,
+        data_movimento=date(2026, 6, 1),
+        valor_total=Decimal("100.00"),
+        conta_id=None,
+    )
+    lancamento_antigo = Lancamento(
+        data_lancamento=date(2026, 6, 1),
+        tipo=TipoLancamento.INVESTIMENTO,
+        valor=Decimal("100.00"),
+        valor_original=Decimal("100.00"),
+        observacao="Compra PREVIDENCIA_GRAO",
+        origem_sistema="INVESTIMENTO_COMPRA",
+        referencia_id=movimento.id,
+        afeta_saldo_livre=True,
+        afeta_orcamento=True,
+        ativo=False,
+    )
+    session.add(movimento)
+    session.add(lancamento_antigo)
+    session.commit()
+
+    atualizar_movimento(session, movimento.id, MovimentoInvestimentoUpdate(observacao="Aporte confirmado"))
+    session.refresh(lancamento_antigo)
+    resumo = resumo_painel(session, 2026, 6)
+
+    assert lancamento_antigo.ativo is True
+    assert lancamento_antigo.conta_id is None
+    assert resumo["saldo_livre"] == Decimal("900.00")
+    assert resumo["investimentos_mes"] == Decimal("100.00")
+    session.refresh(conta)
+    assert conta.saldo_atual_informado == Decimal("1000.00")
 
 
 def test_desempenho_converte_posicao_usd_por_dolar_atual(session: Session, monkeypatch):
@@ -2365,3 +2489,36 @@ def test_busca_cotacao_dolar_atual_salva_configuracao(session: Session, monkeypa
     assert cotacao["compra_brl"] == Decimal("5.10")
     assert resumo["cotacao_brl"] == Decimal("5.20")
     assert resumo["cotacao_brl_fonte"] == "AwesomeAPI"
+
+
+def _carregar_cache_tesouro_fake():
+    from datetime import datetime, timezone
+
+    _TESOURO_CACHE["itens"] = [
+        {"tipo_tokens": _tokens_tesouro("Tesouro Selic"), "ano": "2029", "preco": Decimal("19091.07")},
+        {"tipo_tokens": _tokens_tesouro("Tesouro IPCA+"), "ano": "2029", "preco": Decimal("3756.33")},
+        {"tipo_tokens": _tokens_tesouro("Tesouro IPCA+ com Juros Semestrais"), "ano": "2035", "preco": Decimal("4212.77")},
+        {"tipo_tokens": _tokens_tesouro("Tesouro Prefixado"), "ano": "2027", "preco": Decimal("925.98")},
+    ]
+    _TESOURO_CACHE["carregado_em"] = datetime.now(timezone.utc)
+
+
+def test_buscar_preco_tesouro_casa_titulo_por_tipo_e_ano():
+    _carregar_cache_tesouro_fake()
+    try:
+        selic = Ativo(ticker="TESOURO SELIC 2029", nome="Tesouro Selic 2029", tipo_ativo=TipoAtivo.RENDA_FIXA)
+        ipca = Ativo(ticker="TESOURO IPCA+ 2029", nome="Tesouro IPCA+ 2029", tipo_ativo=TipoAtivo.RENDA_FIXA)
+        semestrais = Ativo(ticker="TESOURO IPCA+ COM JUROS SEMESTRAIS 2035", nome="Tesouro IPCA+ com Juros Semestrais 2035", tipo_ativo=TipoAtivo.RENDA_FIXA)
+        cdb = Ativo(ticker="CDB BANCO X 2027", nome="CDB Banco X 2027", tipo_ativo=TipoAtivo.RENDA_FIXA)
+        sem_ano = Ativo(ticker="TESOURO SELIC", nome="Tesouro Selic", tipo_ativo=TipoAtivo.RENDA_FIXA)
+
+        assert _buscar_preco_tesouro(selic) == Decimal("19091.07")
+        # IPCA+ 2029 deve casar o titulo simples, nao o "com Juros Semestrais".
+        assert _buscar_preco_tesouro(ipca) == Decimal("3756.33")
+        assert _buscar_preco_tesouro(semestrais) == Decimal("4212.77")
+        # Sem fonte publica e sem ano nao ha cotacao automatica.
+        assert _buscar_preco_tesouro(cdb) is None
+        assert _buscar_preco_tesouro(sem_ano) is None
+    finally:
+        _TESOURO_CACHE["itens"] = None
+        _TESOURO_CACHE["carregado_em"] = None

@@ -4,10 +4,11 @@ from decimal import Decimal
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from app.models.base import Moeda, TipoAtivo, TipoProvento
+from app.models.base import Moeda, TipoAtivo, TipoMovimentoDolar, TipoProvento, now_utc
 from app.models.dividendo import Dividendo
+from app.models.extrato_dolar import ExtratoDolar
 from app.models.investimento import Ativo
-from app.services.exterior_dolar_service import buscar_cotacao_dolar_data, resumo_dolar
+from app.services.exterior_dolar_service import buscar_cotacao_dolar_data, registrar_movimento_dolar, resumo_dolar
 
 
 TIPOS_EXTERIOR_PROVENTOS = {TipoAtivo.EXTERIOR, TipoAtivo.ACAO_EXTERIOR, TipoAtivo.ETF_EXTERIOR}
@@ -41,6 +42,83 @@ def _moeda_valor(moeda: Moeda | str | None) -> str:
     if hasattr(moeda, "value"):
         return moeda.value
     return str(moeda or Moeda.BRL.value)
+
+
+def provento_em_dolar(dividendo: Dividendo) -> bool:
+    return _moeda_valor(dividendo.moeda) == Moeda.USD.value
+
+
+def desativar_movimentos_dolar_dividendo(session: Session, dividendo_id: str) -> None:
+    movimentos = session.exec(
+        select(ExtratoDolar).where(ExtratoDolar.referencia_id == dividendo_id, ExtratoDolar.origem == "DIVIDENDO")
+    ).all()
+    for movimento in movimentos:
+        movimento.ativo = False
+        movimento.atualizado_em = now_utc()
+        session.add(movimento)
+
+
+def registrar_movimento_dolar_dividendo(
+    session: Session,
+    dividendo: Dividendo,
+    ativo: Ativo | None,
+    movimento_existente: ExtratoDolar | None = None,
+) -> None:
+    if not provento_em_dolar(dividendo) or not ativo:
+        if movimento_existente:
+            movimento_existente.ativo = False
+            movimento_existente.atualizado_em = now_utc()
+            session.add(movimento_existente)
+        return
+
+    descricao = dividendo.observacao or f"Dividendo exterior {ativo.ticker}"
+    if movimento_existente:
+        movimento_existente.data_movimento = dividendo.data_recebimento
+        movimento_existente.tipo = TipoMovimentoDolar.DIVIDENDO_EXTERIOR
+        movimento_existente.descricao = descricao
+        movimento_existente.entrada_usd = dividendo.valor
+        movimento_existente.saida_usd = Decimal("0.00")
+        movimento_existente.valor_brl = dividendo.valor_brl
+        movimento_existente.cotacao_efetiva = Decimal("0.00") if dividendo.valor == 0 or dividendo.valor_brl == 0 else dividendo.valor_brl / dividendo.valor
+        movimento_existente.origem = "DIVIDENDO"
+        movimento_existente.referencia_id = dividendo.id
+        movimento_existente.ativo = True
+        movimento_existente.atualizado_em = now_utc()
+        session.add(movimento_existente)
+        return
+
+    registrar_movimento_dolar(
+        session,
+        TipoMovimentoDolar.DIVIDENDO_EXTERIOR,
+        dividendo.valor,
+        valor_brl=dividendo.valor_brl,
+        descricao=descricao,
+        origem="DIVIDENDO",
+        referencia_id=dividendo.id,
+        data_movimento=dividendo.data_recebimento,
+    )
+
+
+def sincronizar_movimentos_dolar_dividendos_pendentes(session: Session) -> int:
+    dividendos = session.exec(select(Dividendo).order_by(Dividendo.data_recebimento, Dividendo.criado_em)).all()
+    sincronizados = 0
+    for dividendo in dividendos:
+        ativo = session.get(Ativo, dividendo.ativo_id)
+        movimento = session.exec(
+            select(ExtratoDolar).where(ExtratoDolar.referencia_id == dividendo.id, ExtratoDolar.origem == "DIVIDENDO")
+        ).first()
+        if not provento_em_dolar(dividendo):
+            if movimento and movimento.ativo:
+                registrar_movimento_dolar_dividendo(session, dividendo, ativo, movimento)
+                sincronizados += 1
+            continue
+        if movimento and movimento.ativo:
+            continue
+        registrar_movimento_dolar_dividendo(session, dividendo, ativo, movimento)
+        sincronizados += 1
+    if sincronizados:
+        session.flush()
+    return sincronizados
 
 
 def _tipo_grupo_provento(tipo_ativo: TipoAtivo) -> TipoAtivo:

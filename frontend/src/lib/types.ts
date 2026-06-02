@@ -459,4 +459,6 @@ export interface Dividendo {
   cotacao_brl?: string | number | null;
   data_cotacao?: string | null;
   fonte_cotacao?: string | null;
+  conta_destino_id?: string | null;
+  observacao?: string | null;
 }

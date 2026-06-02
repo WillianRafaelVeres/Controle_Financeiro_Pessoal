@@ -19,7 +19,7 @@ import {
   tickerPlaceholder,
 } from "../../lib/investmentProfiles";
 import { api } from "../../lib/api";
-import { toNumber } from "../../lib/formatters";
+import { formatMoney, toNumber } from "../../lib/formatters";
 import type { Posicao, TipoAtivo } from "../../lib/types";
 
 export function CompraAtivoModal({
@@ -41,7 +41,6 @@ export function CompraAtivoModal({
     quantidade: "",
     preco_unitario: "",
     taxas: "0",
-    conta_id: "",
     data_movimento: "",
     observacao: "",
   });
@@ -52,23 +51,11 @@ export function CompraAtivoModal({
   const tipoAtivo = form.tipo_ativo;
   const prefs = useMemo(readInvestmentBrokerPrefs, [open]);
   const posicoes = useQuery({ queryKey: ["investimentos", "posicoes", "compra-modal"], queryFn: api.posicoes, enabled: open });
-  const contas = useQuery({ queryKey: ["contas", "investimentos", "compra-modal"], queryFn: () => api.contas(), enabled: open });
   const selectedAtivo = (posicoes.data ?? []).find((item) => item.ativo_id === ativoId);
   const controleValor = selectedAtivo?.tipo_controle === "VALOR" || isValueControlledInvestment(tipoAtivo);
   const tickerObrigatorio = !controleValor && needsTicker(tipoAtivo);
   const moeda = defaultCurrencyForInvestment(tipoAtivo);
-  const investimentoExterior = moeda === "USD";
-  const contasSaldo = useMemo(
-    () =>
-      (contas.data ?? []).filter(
-        (conta) =>
-          conta.ativa !== false &&
-          conta.conta_gasto &&
-          conta.entra_no_saldo_em_contas &&
-          (conta.moeda ?? "BRL") === "BRL",
-      ),
-    [contas.data],
-  );
+  const totalOperacao = toNumber(form.quantidade) * toNumber(form.preco_unitario);
 
   function tipoAgrupado(tipo: TipoAtivo) {
     return tipo === "ACAO_EXTERIOR" || tipo === "ETF_EXTERIOR" ? "EXTERIOR" : tipo;
@@ -116,7 +103,6 @@ export function CompraAtivoModal({
       ticker: "",
       nome: "",
       corretora: prefs[tipo_ativo] || "",
-      conta_id: "",
       taxas: current.taxas,
       data_movimento: current.data_movimento,
     }));
@@ -151,11 +137,6 @@ export function CompraAtivoModal({
       setErro(controleValor ? "Informe um valor investido maior que zero." : "Informe um preco maior que zero.");
       return;
     }
-    if (!investimentoExterior && !form.conta_id) {
-      setErro("Selecione a conta de origem do investimento.");
-      return;
-    }
-
     const payload = {
       ...(ativoId
         ? { ativo_id: ativoId }
@@ -178,7 +159,7 @@ export function CompraAtivoModal({
             preco_unitario: toNumber(form.preco_unitario),
           }),
       taxas: controleValor ? 0 : toNumber(form.taxas),
-      conta_id: investimentoExterior ? null : form.conta_id,
+      conta_id: null,
       data_movimento: form.data_movimento || null,
       corretora: corretora || null,
       observacao: form.observacao.trim() || null,
@@ -189,7 +170,7 @@ export function CompraAtivoModal({
       await onSubmit(payload);
       saveInvestmentBrokerPref(tipoAtivo, corretora);
       setAtivoId("");
-      setForm({ ...form, ticker: "", nome: "", corretora, quantidade: "", preco_unitario: "", taxas: "0", conta_id: form.conta_id, data_movimento: "", observacao: "" });
+      setForm({ ...form, ticker: "", nome: "", corretora, quantidade: "", preco_unitario: "", taxas: "0", data_movimento: "", observacao: "" });
       onClose();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nao foi possivel comprar o ativo.";
@@ -220,19 +201,6 @@ export function CompraAtivoModal({
           <span className="text-xs font-medium text-slate-500">Instituicao/corretora</span>
           <Input value={form.corretora} onChange={(event) => setForm({ ...form, corretora: event.target.value })} placeholder="Ex.: XP, Inter, Santander" />
         </label>
-        {!investimentoExterior && (
-          <label className="space-y-1">
-            <span className="text-xs font-medium text-slate-500">Conta de origem</span>
-            <Select value={form.conta_id} onChange={(event) => setForm({ ...form, conta_id: event.target.value })} required>
-              <option value="">Selecione a conta</option>
-              {contasSaldo.map((conta) => (
-                <option key={conta.id} value={conta.id}>
-                  {conta.nome}
-                </option>
-              ))}
-            </Select>
-          </label>
-        )}
         {tickerObrigatorio && (
           <label className="relative space-y-1">
             <span className="text-xs font-medium text-slate-500">{tipoAtivo === "RENDA_FIXA" ? "Titulo" : "Ticker"}</span>
@@ -306,7 +274,7 @@ export function CompraAtivoModal({
         {!controleValor && (
           <label className="space-y-1">
             <span className="text-xs font-medium text-slate-500">Quantidade</span>
-            <MoneyInput currency={false} decimals={6} preview={false} value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} required />
+            <MoneyInput currency={false} decimals={8} preview={false} value={form.quantidade} onChange={(event) => setForm({ ...form, quantidade: event.target.value })} required />
           </label>
         )}
         <label className="space-y-1">
@@ -317,8 +285,10 @@ export function CompraAtivoModal({
         </label>
         {!controleValor && (
           <label className="space-y-1">
-            <span className="text-xs font-medium text-slate-500">Taxas ({moeda})</span>
-            <MoneyInput currency={moeda} value={form.taxas} onChange={(event) => setForm({ ...form, taxas: event.target.value })} />
+            <span className="text-xs font-medium text-slate-500">Total da operacao ({moeda})</span>
+            <div className="flex h-10 items-center rounded-md border border-slate-700 bg-slate-900/60 px-3 text-sm font-semibold text-slate-100">
+              {formatMoney(totalOperacao, moeda)}
+            </div>
           </label>
         )}
         <label className="space-y-1">

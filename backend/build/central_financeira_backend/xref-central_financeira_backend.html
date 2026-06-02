@@ -10594,11 +10594,9 @@ imports:
  &#8226;   <a href="#app.core.database">app.core.database</a>
  &#8226;   <a href="#app.models.base">app.models.base</a>
  &#8226;   <a href="#app.models.dividendo">app.models.dividendo</a>
- &#8226;   <a href="#app.models.extrato_dolar">app.models.extrato_dolar</a>
  &#8226;   <a href="#app.models.investimento">app.models.investimento</a>
  &#8226;   <a href="#app.schemas.dividendo_schema">app.schemas.dividendo_schema</a>
  &#8226;   <a href="#app.services.dividendo_service">app.services.dividendo_service</a>
- &#8226;   <a href="#app.services.exterior_dolar_service">app.services.exterior_dolar_service</a>
  &#8226;   <a href="#app.services.investimento_service">app.services.investimento_service</a>
  &#8226;   <a href="#datetime">datetime</a>
  &#8226;   <a href="#fastapi">fastapi</a>
@@ -10877,6 +10875,7 @@ imports:
  &#8226;   <a href="#app.models">app.models</a>
  &#8226;   <a href="#app.models.base">app.models.base</a>
  &#8226;   <a href="#app.models.categoria">app.models.categoria</a>
+ &#8226;   <a href="#app.services.dividendo_service">app.services.dividendo_service</a>
  &#8226;   <a href="#app.services.investimento_service">app.services.investimento_service</a>
  &#8226;   <a href="#sqlalchemy">sqlalchemy</a>
  &#8226;   <a href="#sqlmodel">sqlmodel</a>
@@ -11343,8 +11342,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#app.api.routes.dividendos">app.api.routes.dividendos</a>
- &#8226;   <a href="#app.models">app.models</a>
+    <a href="#app.models">app.models</a>
+ &#8226;   <a href="#app.services.dividendo_service">app.services.dividendo_service</a>
  &#8226;   <a href="#app.services.exterior_dolar_service">app.services.exterior_dolar_service</a>
  &#8226;   <a href="#app.services.investimento_service">app.services.investimento_service</a>
  &#8226;   <a href="#desktop_server.py">desktop_server.py</a>
@@ -12051,6 +12050,7 @@ imported by:
 imports:
     <a href="#app.models.base">app.models.base</a>
  &#8226;   <a href="#app.models.dividendo">app.models.dividendo</a>
+ &#8226;   <a href="#app.models.extrato_dolar">app.models.extrato_dolar</a>
  &#8226;   <a href="#app.models.investimento">app.models.investimento</a>
  &#8226;   <a href="#app.services">app.services</a>
  &#8226;   <a href="#app.services.exterior_dolar_service">app.services.exterior_dolar_service</a>
@@ -12064,6 +12064,7 @@ imports:
 imported by:
     <a href="#app.api.routes.dividendos">app.api.routes.dividendos</a>
  &#8226;   <a href="#app.api.routes.investimentos">app.api.routes.investimentos</a>
+ &#8226;   <a href="#app.core.database">app.core.database</a>
  &#8226;   <a href="#app.services.investimento_service">app.services.investimento_service</a>
  &#8226;   <a href="#desktop_server.py">desktop_server.py</a>
 
@@ -12092,8 +12093,7 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#app.api.routes.dividendos">app.api.routes.dividendos</a>
- &#8226;   <a href="#app.api.routes.exterior_dolar">app.api.routes.exterior_dolar</a>
+    <a href="#app.api.routes.exterior_dolar">app.api.routes.exterior_dolar</a>
  &#8226;   <a href="#app.services.dividendo_service">app.services.dividendo_service</a>
  &#8226;   <a href="#app.services.financeiro_service">app.services.financeiro_service</a>
  &#8226;   <a href="#app.services.investimento_service">app.services.investimento_service</a>
@@ -12149,12 +12149,16 @@ imports:
  &#8226;   <a href="#app.services">app.services</a>
  &#8226;   <a href="#app.services.dividendo_service">app.services.dividendo_service</a>
  &#8226;   <a href="#app.services.exterior_dolar_service">app.services.exterior_dolar_service</a>
+ &#8226;   <a href="#csv">csv</a>
  &#8226;   <a href="#datetime">datetime</a>
  &#8226;   <a href="#decimal">decimal</a>
  &#8226;   <a href="#fastapi">fastapi</a>
  &#8226;   <a href="#httpx">httpx</a>
+ &#8226;   <a href="#io">io</a>
+ &#8226;   <a href="#re">re</a>
  &#8226;   <a href="#sqlalchemy">sqlalchemy</a>
  &#8226;   <a href="#sqlmodel">sqlmodel</a>
+ &#8226;   <a href="#unicodedata">unicodedata</a>
  &#8226;   <a href="#urllib.parse">urllib.parse</a>
 
   </div>
@@ -15498,7 +15502,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#importlib.metadata">importlib.metadata</a>
+    <a href="#app.services.investimento_service">app.services.investimento_service</a>
+ &#8226;   <a href="#importlib.metadata">importlib.metadata</a>
  &#8226;   <a href="#setuptools._vendor.importlib_metadata">setuptools._vendor.importlib_metadata</a>
  &#8226;   <a href="#setuptools._vendor.wheel.wheelfile">setuptools._vendor.wheel.wheelfile</a>
 
@@ -24692,6 +24697,7 @@ imported by:
  &#8226;   <a href="#anyio._core._subprocesses">anyio._core._subprocesses</a>
  &#8226;   <a href="#anyio._core._tempfile">anyio._core._tempfile</a>
  &#8226;   <a href="#anyio.abc._sockets">anyio.abc._sockets</a>
+ &#8226;   <a href="#app.services.investimento_service">app.services.investimento_service</a>
  &#8226;   <a href="#asyncio.graph">asyncio.graph</a>
  &#8226;   <a href="#asyncio.proactor_events">asyncio.proactor_events</a>
  &#8226;   <a href="#asyncio.unix_events">asyncio.unix_events</a>
@@ -40880,6 +40886,7 @@ imported by:
  &#8226;   <a href="#alembic.util.pyfiles">alembic.util.pyfiles</a>
  &#8226;   <a href="#alembic.util.sqla_compat">alembic.util.sqla_compat</a>
  &#8226;   <a href="#anyio.streams.tls">anyio.streams.tls</a>
+ &#8226;   <a href="#app.services.investimento_service">app.services.investimento_service</a>
  &#8226;   <a href="#argparse">argparse</a>
  &#8226;   <a href="#ast">ast</a>
  &#8226;   <a href="#click._compat">click._compat</a>
@@ -60753,6 +60760,7 @@ imported by:
  &#8226;   <a href="#_pyrepl.utils">_pyrepl.utils</a>
  &#8226;   <a href="#_pytest._io.wcwidth">_pytest._io.wcwidth</a>
  &#8226;   <a href="#_pytest.assertion.util">_pytest.assertion.util</a>
+ &#8226;   <a href="#app.services.investimento_service">app.services.investimento_service</a>
  &#8226;   <a href="#app.services.saldo_service">app.services.saldo_service</a>
  &#8226;   <a href="#encodings.idna">encodings.idna</a>
  &#8226;   <a href="#idna.core">idna.core</a>

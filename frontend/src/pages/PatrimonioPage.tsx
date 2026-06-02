@@ -14,7 +14,6 @@ import { Select } from "../components/ui/select";
 import { Td, Th, Table } from "../components/ui/table";
 import { api } from "../lib/api";
 import { formatMoney, formatPercent, toNumber } from "../lib/formatters";
-import { INVESTMENT_TYPE_LABELS } from "../lib/investmentProfiles";
 import { cn } from "../lib/utils";
 import type { DesempenhoAtivo, TipoAtivo } from "../lib/types";
 
@@ -49,8 +48,47 @@ const TYPE_DOT: Partial<Record<TipoAtivo, string>> = {
 };
 const tooltipStyle = { backgroundColor: "#111821", border: "1px solid #273343", borderRadius: 6, color: "#eef2f7" };
 
-function typeLabel(tipo?: TipoAtivo) {
-  return tipo ? INVESTMENT_TYPE_LABELS[tipo] ?? tipo : "Sem tipo";
+type MacroGrupo = "VARIAVEL" | "FII" | "EXTERIOR" | "RENDA_FIXA" | "CRIPTO" | "RESERVA_EMERGENCIA" | "PREVIDENCIA" | "OUTROS";
+
+const MACRO_LABELS: Record<MacroGrupo, string> = {
+  VARIAVEL: "Acoes",
+  FII: "FII",
+  EXTERIOR: "Exterior",
+  RENDA_FIXA: "Renda fixa",
+  CRIPTO: "Cripto",
+  RESERVA_EMERGENCIA: "Reserva de emergencia",
+  PREVIDENCIA: "Previdencia",
+  OUTROS: "Outros",
+};
+
+const MACRO_ORDER: MacroGrupo[] = ["VARIAVEL", "FII", "EXTERIOR", "RENDA_FIXA", "CRIPTO", "RESERVA_EMERGENCIA", "PREVIDENCIA", "OUTROS"];
+
+const TIPOS_A_PARTE: TipoAtivo[] = ["RESERVA_EMERGENCIA", "PREVIDENCIA"];
+const EXCLUIR_RESERVAS_KEY = "patrimonio:excluir-reservas";
+
+function macroGrupo(tipo?: TipoAtivo): MacroGrupo {
+  switch (tipo) {
+    case "ACAO_BR":
+    case "ETF_BR":
+      return "VARIAVEL";
+    case "FII":
+      return "FII";
+    case "EXTERIOR":
+    case "ACAO_EXTERIOR":
+    case "ETF_EXTERIOR":
+      return "EXTERIOR";
+    case "RENDA_FIXA":
+    case "CAIXINHA_CDB":
+      return "RENDA_FIXA";
+    case "CRIPTO":
+      return "CRIPTO";
+    case "RESERVA_EMERGENCIA":
+      return "RESERVA_EMERGENCIA";
+    case "PREVIDENCIA":
+      return "PREVIDENCIA";
+    default:
+      return "OUTROS";
+  }
 }
 
 function currencySymbol(currency: CurrencyView) {
@@ -72,14 +110,14 @@ function normalize(value: string | null | undefined) {
 }
 
 function groupKey(item: DesempenhoAtivo, groupBy: GroupBy) {
-  if (groupBy === "tipo") return item.tipo_ativo;
+  if (groupBy === "tipo") return macroGrupo(item.tipo_ativo);
   if (groupBy === "corretora") return item.corretora || "Sem corretora";
   if (groupBy === "moeda") return item.moeda || "BRL";
   return item.ativo_id;
 }
 
 function groupName(item: DesempenhoAtivo, groupBy: GroupBy) {
-  if (groupBy === "tipo") return item.tipo_label || typeLabel(item.tipo_ativo);
+  if (groupBy === "tipo") return MACRO_LABELS[macroGrupo(item.tipo_ativo)];
   if (groupBy === "corretora") return item.corretora || "Sem corretora";
   if (groupBy === "moeda") return item.moeda === "USD" ? "Exterior em dolar" : "Brasil em reais";
   return item.ticker;
@@ -102,17 +140,32 @@ export function PatrimonioPage() {
   const [groupBy, setGroupBy] = useState<GroupBy>("ativo");
   const [sortBy, setSortBy] = useState<SortBy>("valor");
   const [currency, setCurrency] = useState<CurrencyView>("BRL");
-  const [typeFilter, setTypeFilter] = useState<"TODOS" | TipoAtivo>("TODOS");
+  const [typeFilter, setTypeFilter] = useState<"TODOS" | MacroGrupo>("TODOS");
   const [currencyFilter, setCurrencyFilter] = useState<"TODAS" | "BRL" | "USD">("TODAS");
   const [search, setSearch] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [excluirReservas, setExcluirReservas] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(EXCLUIR_RESERVAS_KEY) === "1";
+  });
+
+  function toggleExcluirReservas(valor: boolean) {
+    setExcluirReservas(valor);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(EXCLUIR_RESERVAS_KEY, valor ? "1" : "0");
+    }
+  }
 
   const dolar = toNumber(patrimonio.data?.benchmarks.dolar.valor) || 1;
-  const ativos = patrimonio.data?.alocacao_por_ativo ?? [];
-  const availableTypes = useMemo(
-    () => [...new Set(ativos.map((item) => item.tipo_ativo))].sort((a, b) => typeLabel(a).localeCompare(typeLabel(b))),
-    [ativos],
+  const ativosTodos = patrimonio.data?.alocacao_por_ativo ?? [];
+  const ativos = useMemo(
+    () => (excluirReservas ? ativosTodos.filter((item) => !TIPOS_A_PARTE.includes(item.tipo_ativo)) : ativosTodos),
+    [ativosTodos, excluirReservas],
   );
+  const availableTypes = useMemo(() => {
+    const presentes = new Set(ativos.map((item) => macroGrupo(item.tipo_ativo)));
+    return MACRO_ORDER.filter((macro) => presentes.has(macro));
+  }, [ativos]);
 
   function displayValue(brl: number) {
     return currency === "USD" && dolar > 0 ? brl / dolar : brl;
@@ -121,7 +174,7 @@ export function PatrimonioPage() {
   const rows = useMemo(() => {
     const term = normalize(search);
     const filtered = ativos.filter((item) => {
-      const matchesType = typeFilter === "TODOS" || item.tipo_ativo === typeFilter;
+      const matchesType = typeFilter === "TODOS" || macroGrupo(item.tipo_ativo) === typeFilter;
       const matchesCurrency = currencyFilter === "TODAS" || item.moeda === currencyFilter;
       const haystack = normalize([item.ticker, item.nome, item.tipo_label, item.corretora, item.moeda].filter(Boolean).join(" "));
       return matchesType && matchesCurrency && (!term || haystack.includes(term));
@@ -206,11 +259,11 @@ export function PatrimonioPage() {
             <option value="corretora">Agrupar: corretora</option>
             <option value="moeda">Agrupar: moeda</option>
           </Select>
-          <Select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as "TODOS" | TipoAtivo)} aria-label="Filtrar tipo">
+          <Select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as "TODOS" | MacroGrupo)} aria-label="Filtrar tipo">
             <option value="TODOS">Todos os tipos</option>
-            {availableTypes.map((tipo) => (
-              <option key={tipo} value={tipo}>
-                {typeLabel(tipo)}
+            {availableTypes.map((macro) => (
+              <option key={macro} value={macro}>
+                {MACRO_LABELS[macro]}
               </option>
             ))}
           </Select>
@@ -245,6 +298,21 @@ export function PatrimonioPage() {
             <Eye className="h-4 w-4" />
             Mostrar tudo
           </Button>
+          <label
+            className={cn(
+              "inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border px-3 text-xs font-semibold transition",
+              excluirReservas ? "border-brand-500/50 bg-brand-500/10 text-brand-300" : "border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-100",
+            )}
+            title="Remove Reserva de emergencia e Previdencia de todos os calculos, graficos e do patrimonio total."
+          >
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 accent-brand-500"
+              checked={excluirReservas}
+              onChange={(event) => toggleExcluirReservas(event.target.checked)}
+            />
+            Desconsiderar Reserva e Previdencia
+          </label>
           <Badge tone="blue">{rows.length} linha{rows.length === 1 ? "" : "s"}</Badge>
           <Badge tone="neutral">Dolar {formatMoney(dolar)}</Badge>
         </div>

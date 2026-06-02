@@ -67,10 +67,6 @@ export function VendaAtivoModal({
     event.preventDefault();
     setErro("");
     if (excede) return;
-    if (!investimentoExterior && !form.conta_id) {
-      setErro("Selecione a conta de destino do resgate/venda.");
-      return;
-    }
     await onSubmit({
       ativo_id: form.ativo_id,
       ...(controleValor
@@ -86,7 +82,7 @@ export function VendaAtivoModal({
             preco_unitario: toNumber(form.preco_unitario),
           }),
       taxas: toNumber(form.taxas),
-      conta_id: investimentoExterior ? null : form.conta_id,
+      conta_id: investimentoExterior ? null : form.conta_id || null,
       data_movimento: form.data_movimento || null,
       observacao: [
         form.observacao.trim(),
@@ -115,9 +111,9 @@ export function VendaAtivoModal({
         </label>
         {!investimentoExterior && (
           <label className="space-y-1">
-            <span className="text-xs font-medium text-slate-500">Conta de destino</span>
-            <Select value={form.conta_id} onChange={(event) => setForm({ ...form, conta_id: event.target.value })} required>
-              <option value="">Selecione a conta</option>
+            <span className="text-xs font-medium text-slate-500">Conta de destino (opcional)</span>
+            <Select value={form.conta_id} onChange={(event) => setForm({ ...form, conta_id: event.target.value })}>
+              <option value="">Sem conta vinculada</option>
               {contasSaldo.map((conta) => (
                 <option key={conta.id} value={conta.id}>
                   {conta.nome}

@@ -17,7 +17,7 @@ interface AtivosTableProps {
   showDividendos?: boolean;
 }
 
-const AUTO_QUOTE_TYPES = new Set<TipoAtivo>(["ACAO_BR", "FII", "ETF_BR", "CRIPTO", "EXTERIOR", "ACAO_EXTERIOR", "ETF_EXTERIOR"]);
+const AUTO_QUOTE_TYPES = new Set<TipoAtivo>(["ACAO_BR", "FII", "ETF_BR", "CRIPTO", "EXTERIOR", "ACAO_EXTERIOR", "ETF_EXTERIOR", "RENDA_FIXA"]);
 
 export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, dolarCotacao = 0, showDividendos = false }: AtivosTableProps) {
   const [prices, setPrices] = useState<Record<string, string>>({});

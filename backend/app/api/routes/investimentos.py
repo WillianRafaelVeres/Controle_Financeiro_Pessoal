@@ -33,7 +33,6 @@ router = APIRouter(prefix="/investimentos", tags=["investimentos"])
 TIPOS_CONTROLE_VALOR = {
     TipoAtivo.CAIXINHA_CDB,
     TipoAtivo.RESERVA_EMERGENCIA,
-    TipoAtivo.RENDA_FIXA,
     TipoAtivo.PREVIDENCIA,
     TipoAtivo.OUTRO,
 }

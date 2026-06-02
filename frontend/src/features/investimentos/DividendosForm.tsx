@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { MoneyInput } from "../../components/finance/MoneyInput";
 import { Button } from "../../components/ui/button";
@@ -7,6 +7,13 @@ import { Select } from "../../components/ui/select";
 import { toNumber } from "../../lib/formatters";
 import { INVESTMENT_TYPE_LABELS, INVESTMENT_TYPE_OPTIONS } from "../../lib/investmentProfiles";
 import type { Ativo, TipoAtivo } from "../../lib/types";
+
+function proventoPadrao(tipoAtivo: TipoAtivo) {
+  if (tipoAtivo === "FII") return "RENDIMENTO_FII";
+  if (tipoAtivo === "EXTERIOR" || tipoAtivo === "ACAO_EXTERIOR" || tipoAtivo === "ETF_EXTERIOR") return "DIVIDENDO_EXTERIOR";
+  if (tipoAtivo === "RENDA_FIXA" || tipoAtivo === "CAIXINHA_CDB" || tipoAtivo === "RESERVA_EMERGENCIA" || tipoAtivo === "PREVIDENCIA") return "JUROS_RENDA_FIXA";
+  return "DIVIDENDO";
+}
 
 export function DividendosForm({ ativos, onSubmit }: { ativos: Ativo[]; onSubmit: (payload: Record<string, unknown>) => Promise<void> }) {
   const tiposDisponiveis = useMemo(() => {
@@ -21,13 +28,19 @@ export function DividendosForm({ ativos, onSubmit }: { ativos: Ativo[]; onSubmit
   const ativosFiltrados = useMemo(() => ativos.filter((ativo) => ativo.tipo_ativo === tipoAtivo), [ativos, tipoAtivo]);
   const ativo = ativos.find((item) => item.id === ativoId);
 
+  useEffect(() => {
+    if (tiposDisponiveis.length === 0) return;
+    if (!tiposDisponiveis.some((item) => item.value === tipoAtivo)) {
+      const proximoTipoAtivo = tiposDisponiveis[0].value;
+      setTipoAtivo(proximoTipoAtivo);
+      setTipo(proventoPadrao(proximoTipoAtivo));
+    }
+  }, [tipoAtivo, tiposDisponiveis]);
+
   function changeTipoAtivo(value: TipoAtivo) {
     setTipoAtivo(value);
     setAtivoId("");
-    if (value === "FII") setTipo("RENDIMENTO_FII");
-    else if (value === "EXTERIOR" || value === "ACAO_EXTERIOR" || value === "ETF_EXTERIOR") setTipo("DIVIDENDO_EXTERIOR");
-    else if (value === "RENDA_FIXA" || value === "CAIXINHA_CDB" || value === "RESERVA_EMERGENCIA" || value === "PREVIDENCIA") setTipo("JUROS_RENDA_FIXA");
-    else setTipo("DIVIDENDO");
+    setTipo(proventoPadrao(value));
   }
 
   return (
@@ -35,7 +48,13 @@ export function DividendosForm({ ativos, onSubmit }: { ativos: Ativo[]; onSubmit
       className="grid gap-3 md:grid-cols-2 xl:grid-cols-[190px_minmax(260px,1fr)_180px_180px_150px_auto] xl:items-end"
       onSubmit={async (event) => {
         event.preventDefault();
-        await onSubmit({ ativo_id: ativoId, valor: toNumber(valor), tipo_provento: tipo, moeda: ativo?.moeda ?? "BRL", data_recebimento: dataRecebimento });
+        await onSubmit({
+          ativo_id: ativoId,
+          valor: toNumber(valor),
+          tipo_provento: ativo?.moeda === "USD" && tipo === "DIVIDENDO" ? "DIVIDENDO_EXTERIOR" : tipo,
+          moeda: ativo?.moeda ?? "BRL",
+          data_recebimento: dataRecebimento,
+        });
         setAtivoId("");
         setValor("");
       }}

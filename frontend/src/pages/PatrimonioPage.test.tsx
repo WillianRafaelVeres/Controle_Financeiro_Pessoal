@@ -83,7 +83,7 @@ describe("PatrimonioPage", () => {
 
     fireEvent.change(screen.getByLabelText("Agrupar patrimonio"), { target: { value: "tipo" } });
 
-    expect((await screen.findAllByText("Acao BR"))[0]).toBeInTheDocument();
+    expect((await screen.findAllByText("Acoes"))[0]).toBeInTheDocument();
     expect((await screen.findAllByText("Exterior"))[0]).toBeInTheDocument();
   });
 });

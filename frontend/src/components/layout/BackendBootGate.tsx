@@ -36,8 +36,8 @@ export function BackendBootGate({
   if (status === "ready") return <>{children}</>;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#090d12] p-6">
-      <div className="w-full max-w-md rounded-md border border-slate-800 bg-[#111821] p-5 text-center">
+    <div className="flex min-h-screen items-center justify-center bg-[#07111f] p-6">
+      <div className="glass-highlight w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/[0.72] p-6 text-center shadow-[0_28px_90px_rgba(0,0,0,0.42)] ring-1 ring-inset ring-white/[0.06] backdrop-blur-2xl">
         {status === "loading" ? (
           <>
             <Loader2 className="mx-auto h-8 w-8 animate-spin text-brand-500" />

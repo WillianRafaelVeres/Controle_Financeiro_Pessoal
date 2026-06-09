@@ -4,17 +4,17 @@
 
 :root {
   color: #d8dee9;
-  background: #080c11;
+  background: #07111f;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color-scheme: dark;
   font-size: 14px;
-  --surface: #111821;
-  --surface-soft: #0e151d;
-  --surface-elevated: #151e29;
-  --line: #263345;
+  --surface: #101a2b;
+  --surface-soft: #0c1625;
+  --surface-elevated: #17243a;
+  --line: rgba(148, 163, 184, 0.18);
   --page-max: 1680px;
 }
 
@@ -36,12 +36,55 @@ body {
   min-width: 320px;
   min-height: 100vh;
   overflow-x: hidden;
-  background:
-    linear-gradient(180deg, rgba(18, 26, 36, 0.86) 0%, rgba(8, 12, 17, 0.98) 38%, #080c11 100%);
+  background-color: #07111f;
+  background-image:
+    linear-gradient(118deg, rgba(24, 199, 122, 0.15) 0%, transparent 22%, rgba(52, 124, 255, 0.14) 58%, transparent 78%),
+    linear-gradient(180deg, #132036 0%, #0b1424 48%, #07111f 100%);
+  background-attachment: fixed;
   line-height: 1.4;
 }
 
+/* Camada decorativa: grade técnica sutil que dá o ar "premium" sem afetar o layout. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 56px,
+      rgba(74, 222, 128, 0.055) 56px 64px,
+      transparent 64px 104px,
+      rgba(59, 130, 246, 0.045) 104px 113px,
+      transparent 113px 168px
+    );
+  background-position: center top, center top, right 18px top 0;
+  background-size: 46px 46px, 46px 46px, 280px 220px;
+  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.44) 54%, transparent 100%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.44) 54%, transparent 100%);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(130deg, transparent 12%, rgba(74, 222, 128, 0.1) 12.3%, transparent 25%, transparent 41%, rgba(96, 165, 250, 0.1) 41.2%, transparent 58%),
+    linear-gradient(160deg, transparent 62%, rgba(34, 197, 94, 0.08) 62.3%, transparent 78%);
+  opacity: 0.55;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 18%, #000 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 18%, #000 100%);
+}
+
 #root {
+  position: relative;
+  z-index: 1;
   min-height: 100vh;
   overflow-x: hidden;
 }
@@ -72,10 +115,33 @@ video {
   max-width: 100%;
 }
 
+tbody tr {
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+tbody tr:hover td {
+  background-color: rgba(96, 165, 250, 0.055);
+}
+
 .app-page {
   width: 100%;
   max-width: var(--page-max);
   margin-inline: auto;
+}
+
+.glass-highlight {
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-highlight::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.24), transparent);
+  pointer-events: none;
 }
 
 .responsive-grid {
@@ -151,6 +217,34 @@ main > * {
   background-color: #090d12;
 }
 
+.bg-\[\#111821\] {
+  background-color: rgba(15, 23, 42, 0.62);
+}
+
+.bg-slate-950 {
+  background-color: rgba(2, 6, 23, 0.58);
+}
+
+.bg-slate-950\/20,
+.bg-slate-950\/25,
+.bg-slate-950\/30,
+.bg-slate-950\/35,
+.bg-slate-950\/40,
+.bg-slate-950\/45,
+.bg-slate-950\/50,
+.bg-slate-950\/60,
+.bg-slate-950\/70 {
+  background-color: rgba(2, 6, 23, 0.38);
+}
+
+.bg-slate-900,
+.bg-slate-900\/50,
+.bg-slate-900\/60,
+.bg-slate-900\/80,
+.bg-slate-900\/95 {
+  background-color: rgba(15, 23, 42, 0.58);
+}
+
 .bg-slate-50,
 .bg-slate-100 {
   background-color: #151e29;
@@ -202,6 +296,17 @@ main > * {
 .border-slate-300,
 .border-amber-100 {
   border-color: #273343;
+}
+
+.border-slate-700,
+.border-slate-700\/50,
+.border-slate-700\/80,
+.border-slate-700\/90,
+.border-slate-800,
+.border-slate-800\/70,
+.border-slate-800\/80,
+.border-slate-800\/90 {
+  border-color: rgba(148, 163, 184, 0.14);
 }
 
 .border-brand-50 {

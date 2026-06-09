@@ -1,4 +1,4 @@
-# Central Financeira Pessoal
+﻿# Central Financeira Pessoal
 
 Aplicativo local de controle financeiro pessoal focado na finalidade do dinheiro. A regra central do sistema e:
 
@@ -39,30 +39,12 @@ cd backend
 
 Nao use `--reload` no modo desktop. O endpoint de saude e `GET http://127.0.0.1:17831/health`.
 
-### Desktop com Tauri
+### Desktop nativo instalado
 
-A estrutura Tauri esta em `frontend/src-tauri` e usa o backend Python empacotado como sidecar.
-
-```powershell
-npm run backend:build
-npm run desktop:dev
-npm run package:windows
-```
-
-O build desktop exige Rust/Cargo e as dependencias do Tauri instaladas no Windows. O backend sidecar e gerado em:
-
-```text
-backend/dist/central-financeira-backend.exe
-frontend/src-tauri/binaries/central-financeira-backend-x86_64-pc-windows-msvc.exe
-```
-
-Depois que o Tauri build rodar com Rust instalado, o instalador fica em `frontend/src-tauri/target/release/bundle/`.
-
-### Desktop instalado (launcher PyInstaller) — recomendado
-
-O aplicativo desktop que esta de fato instalado (atalho do menu Iniciar) e gerado
-pelo launcher PyInstaller, **nao** pelo Tauri. Ele empacota o frontend (`frontend/dist`)
-e o backend sidecar num so executavel e roda `alembic upgrade head` no start.
+O desktop instalado e gerado por um launcher PyInstaller que abre uma janela
+nativa WebView2. Ele nao chama Edge/Chrome com `--app` e nao abre o sistema no
+navegador. O pacote inclui o frontend (`frontend/dist`) e o backend local como
+sidecar.
 
 ```powershell
 # Reconstroi backend + frontend + app desktop em dist\Central Financeira\
@@ -70,12 +52,24 @@ powershell -ExecutionPolicy Bypass -File scripts\build-launcher.ps1
 ```
 
 Saida: `dist\Central Financeira\Central Financeira.exe` (com `_internal\web` e
-`_internal\backend\central-financeira-backend.exe`). Esse caminho e o que o atalho
-do menu Iniciar usa, entao reconstruir aqui ja atualiza o app instalado.
+`_internal\backend\central-financeira-backend.exe`). Esse caminho e o que o
+atalho do menu Iniciar/desktop deve usar para abrir o aplicativo.
 
-> Observacao: o caminho Tauri (`npm run package:windows`) exige o linker MSVC
-> (`link.exe`, Visual Studio Build Tools com workload C++). Sem ele o `cargo build`
-> falha no link. O launcher PyInstaller nao precisa do MSVC e e o fluxo usado aqui.
+O backend sidecar tambem e copiado para a estrutura Tauri em:
+
+```text
+backend/dist/central-financeira-backend.exe
+frontend/src-tauri/binaries/central-financeira-backend-x86_64-pc-windows-msvc.exe
+```
+
+### Desktop com Tauri
+
+A estrutura Tauri continua em `frontend/src-tauri`, mas e opcional. Esse build
+exige Rust/Cargo e o linker MSVC (`link.exe`, Visual Studio Build Tools com
+workload C++). Sem esse ambiente, use o desktop nativo instalado acima.
+
+Depois que o Tauri build rodar com Rust instalado, o instalador fica em
+`frontend/src-tauri/target/release/bundle/`.
 
 ## Testes
 

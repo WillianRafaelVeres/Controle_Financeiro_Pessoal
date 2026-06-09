@@ -16,11 +16,11 @@ export function MonthSelector({ ano, mes, onChange }: MonthSelectorProps) {
   }
 
   return (
-    <div className="flex h-8 items-center rounded-md border border-slate-700 bg-slate-950">
+    <div className="flex min-h-10 items-center rounded-xl border border-white/10 bg-slate-950/45 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
       <Button variant="ghost" size="icon" onClick={() => shift(-1)} aria-label="Mes anterior">
         <ChevronLeft className="h-4 w-4" />
       </Button>
-      <div className="w-32 text-center text-[13px] font-medium capitalize text-slate-200 sm:w-36">{monthLabel(ano, mes)}</div>
+      <div className="w-36 text-center text-[13px] font-semibold capitalize text-slate-100 sm:w-40">{monthLabel(ano, mes)}</div>
       <Button variant="ghost" size="icon" onClick={() => shift(1)} aria-label="Proximo mes">
         <ChevronRight className="h-4 w-4" />
       </Button>

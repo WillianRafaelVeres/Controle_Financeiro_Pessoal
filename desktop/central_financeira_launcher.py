@@ -14,6 +14,8 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
+import webview
+
 
 APP_NAME = "Central Financeira"
 BACKEND_PORT = 17831
@@ -50,17 +52,6 @@ def backend_exe() -> Path:
     if bundled.exists():
         return bundled
     return Path(__file__).resolve().parents[1] / "backend" / "dist" / "central-financeira-backend.exe"
-
-
-def find_edge() -> Path:
-    candidates = [
-        Path(os.getenv("ProgramFiles(x86)", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
-        Path(os.getenv("ProgramFiles", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return Path("msedge.exe")
 
 
 def port_available(port: int) -> bool:
@@ -145,41 +136,39 @@ def start_backend() -> subprocess.Popen[bytes] | None:
     )
 
 
-def edge_processes_running(profile_dir: Path) -> bool:
-    escaped = str(profile_dir).replace("'", "''")
-    script = (
-        "Get-CimInstance Win32_Process -Filter \"name='msedge.exe'\" | "
-        f"Where-Object {{ $_.CommandLine -like '*{escaped}*' }} | "
-        "Select-Object -First 1 -ExpandProperty ProcessId"
-    )
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-Command", script],
-        capture_output=True,
-        text=True,
-        creationflags=CREATE_NO_WINDOW,
-        timeout=5,
-    )
-    return bool(result.stdout.strip())
-
-
-def open_app_window(port: int) -> subprocess.Popen[bytes]:
-    edge = find_edge()
-    profile_dir = app_data_dir() / "edge-profile"
-    profile_dir.mkdir(parents=True, exist_ok=True)
+def open_app_window(port: int) -> None:
     url = f"http://127.0.0.1:{port}"
-    return subprocess.Popen(
-        [
-            str(edge),
-            f"--app={url}",
-            f"--user-data-dir={profile_dir}",
-            "--no-first-run",
-            "--disable-features=Translate",
-        ],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=CREATE_NO_WINDOW,
+    webview.create_window(
+        APP_NAME,
+        url,
+        width=1360,
+        height=860,
+        min_size=(1100, 720),
+        background_color="#07111f",
+        text_select=True,
     )
+    webview.start(gui="edgechromium", private_mode=False)
+
+
+def terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=CREATE_NO_WINDOW,
+            timeout=8,
+            check=False,
+        )
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=4)
+    except subprocess.TimeoutExpired:
+        process.kill()
 
 
 def cleanup() -> None:
@@ -189,11 +178,7 @@ def cleanup() -> None:
         frontend_server.server_close()
         frontend_server = None
     if backend_process is not None and backend_process.poll() is None:
-        backend_process.terminate()
-        try:
-            backend_process.wait(timeout=4)
-        except subprocess.TimeoutExpired:
-            backend_process.kill()
+        terminate_process_tree(backend_process)
     backend_process = None
 
 
@@ -204,11 +189,7 @@ def main() -> int:
         backend_process = start_backend()
         wait_for_backend()
         frontend_server, frontend_port = start_frontend()
-        edge_process = open_app_window(frontend_port)
-        edge_process.wait()
-        profile_dir = app_data_dir() / "edge-profile"
-        while edge_processes_running(profile_dir):
-            time.sleep(1.5)
+        open_app_window(frontend_port)
         return 0
     finally:
         cleanup()

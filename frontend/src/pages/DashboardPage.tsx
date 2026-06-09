@@ -43,21 +43,21 @@ export function DashboardPage({ onNewLancamento }: { onNewLancamento?: () => voi
       <div className="grid items-start gap-3 xl:grid-cols-[minmax(320px,1fr)_minmax(280px,0.82fr)]">
         <ConciliacaoBox data={conciliacao.data} />
         <SectionCard title="Ações rápidas" description="Registre as movimentações mais comuns." className="self-start">
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Button className="justify-center" aria-label="Novo lancamento" onClick={abrirLancamento}>
-              <Plus className="h-4 w-4" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Button className="min-h-16 justify-center rounded-2xl text-sm shadow-[0_18px_42px_rgba(34,197,94,0.32)] sm:flex-col sm:gap-2" aria-label="Novo lancamento" onClick={abrirLancamento}>
+              <Plus className="h-5 w-5" />
               Novo lançamento
             </Button>
-            <Button variant="secondary" aria-label="Registrar investimento" onClick={() => setCompraAtivoOpen(true)}>
-              <TrendingUp className="h-4 w-4" />
+            <Button variant="secondary" className="min-h-16 justify-center rounded-2xl border-cyan-300/25 bg-gradient-to-br from-cyan-500 to-blue-700 text-sm text-white shadow-[0_18px_42px_rgba(14,165,233,0.24)] hover:border-cyan-200/40 sm:flex-col sm:gap-2" aria-label="Registrar investimento" onClick={() => setCompraAtivoOpen(true)}>
+              <TrendingUp className="h-5 w-5" />
               Investimento
             </Button>
-            <Button variant="secondary" aria-label="Registrar dividendo" onClick={() => setDividendoOpen(true)}>
-              <Banknote className="h-4 w-4" />
+            <Button variant="secondary" className="min-h-16 justify-center rounded-2xl border-blue-300/25 bg-gradient-to-br from-blue-500 to-sky-800 text-sm text-white shadow-[0_18px_42px_rgba(59,130,246,0.22)] hover:border-blue-200/40 sm:flex-col sm:gap-2" aria-label="Registrar dividendo" onClick={() => setDividendoOpen(true)}>
+              <Banknote className="h-5 w-5" />
               Dividendo
             </Button>
-            <Button variant="secondary" aria-label="Enviar dolar" onClick={() => setDolarAction("ENVIO")}>
-              <DollarSign className="h-4 w-4" />
+            <Button variant="secondary" className="min-h-16 justify-center rounded-2xl border-red-300/25 bg-gradient-to-br from-red-500 to-rose-800 text-sm text-white shadow-[0_18px_42px_rgba(239,68,68,0.20)] hover:border-red-200/40 sm:flex-col sm:gap-2" aria-label="Enviar dolar" onClick={() => setDolarAction("ENVIO")}>
+              <DollarSign className="h-5 w-5" />
               Dólar
             </Button>
           </div>

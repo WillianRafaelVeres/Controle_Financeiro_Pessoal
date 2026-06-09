@@ -132,7 +132,7 @@ export function ComboboxCreate({
       ? createPortal(
           <div
             ref={dropdownRef}
-            className="fixed z-[80] overflow-y-auto rounded-lg border border-slate-700/90 bg-slate-950/95 p-1 shadow-2xl shadow-black/50 backdrop-blur-sm"
+            className="glass-highlight fixed z-[80] overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/[0.92] p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.45)] ring-1 ring-inset ring-white/[0.05] backdrop-blur-xl"
             style={{
               left: dropdownPosition.left,
               top: dropdownPosition.top,
@@ -145,8 +145,8 @@ export function ComboboxCreate({
                 key={option.id}
                 type="button"
                 className={cn(
-                  "flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-[13px] text-slate-200 transition hover:bg-slate-800",
-                  option.id === valueId && "bg-brand-500/15 text-brand-500",
+                  "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] text-slate-200 transition hover:bg-white/[0.08]",
+                  option.id === valueId && "border border-brand-500/25 bg-brand-500/15 text-emerald-300",
                 )}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
@@ -156,7 +156,7 @@ export function ComboboxCreate({
               >
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{option.label}</span>
-                  {option.description && <span className="block truncate text-xs text-slate-500">{option.description}</span>}
+                  {option.description && <span className="block truncate text-xs text-slate-400">{option.description}</span>}
                 </span>
                 {option.id === valueId && <Check className="h-4 w-4 shrink-0" />}
               </button>
@@ -164,7 +164,7 @@ export function ComboboxCreate({
             {canCreate && (
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[13px] font-medium text-brand-500 transition hover:bg-brand-500/15"
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[13px] font-semibold text-emerald-300 transition hover:bg-brand-500/15"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
                   setError("");
@@ -183,10 +183,10 @@ export function ComboboxCreate({
       : null;
 
   return (
-    <div className="min-w-0 space-y-1" ref={wrapperRef}>
-      <span className="text-xs font-medium text-slate-500">{label}</span>
+    <div className="min-w-0 space-y-1.5" ref={wrapperRef}>
+      <span className="text-xs font-semibold text-slate-400">{label}</span>
       <div className="relative min-w-0">
-        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+        <Search className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
         <Input
           ref={inputRef}
           className="pl-9 pr-9"
@@ -208,7 +208,7 @@ export function ComboboxCreate({
         />
         {(valueId || temporaryValue) && (
           <button
-            className="absolute right-2 top-1.5 flex h-5 w-5 items-center justify-center rounded text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+            className="absolute right-2 top-2.5 flex h-5 w-5 items-center justify-center rounded-lg text-slate-400 hover:bg-white/[0.08] hover:text-slate-100"
             type="button"
             onClick={() => {
               onSelect(null);

@@ -14,10 +14,10 @@ interface SectionCardProps {
 export function SectionCard({ title, description, action, className, contentClassName, compact, children }: PropsWithChildren<SectionCardProps>) {
   return (
     <Card className={className}>
-      <CardHeader className={compact ? "flex flex-row items-start justify-between gap-3 px-3 py-2" : "flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-start sm:justify-between"}>
+      <CardHeader className={compact ? "flex flex-row items-start justify-between gap-3 px-4 py-3" : "flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-start sm:justify-between"}>
         <div className="min-w-0">
-          <h2 className="text-[11px] font-semibold uppercase tracking-wide text-slate-300">{title}</h2>
-          {description && <p className="mt-0.5 max-w-3xl text-[11px] leading-4 text-slate-500">{description}</p>}
+          <h2 className="text-[12px] font-semibold uppercase tracking-wide text-slate-200">{title}</h2>
+          {description && <p className="mt-0.5 max-w-3xl text-[12px] leading-5 text-slate-400">{description}</p>}
         </div>
         {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
       </CardHeader>

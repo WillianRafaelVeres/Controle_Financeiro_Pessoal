@@ -22,8 +22,10 @@ $pyinstaller = Join-Path $root ".venv\Scripts\pyinstaller.exe"
   --workpath (Join-Path $root "build") `
   --specpath $root `
   --icon (Join-Path $root "frontend\src-tauri\icons\icon.ico") `
+  --collect-submodules webview `
+  --hidden-import webview.platforms.edgechromium `
   --add-data "$(Join-Path $root "frontend\dist");web" `
   --add-binary "$(Join-Path $root "backend\dist\central-financeira-backend.exe");backend" `
   (Join-Path $root "desktop\central_financeira_launcher.py")
 
-Write-Host "App desktop gerado em: $(Join-Path $root "dist\Central Financeira\Central Financeira.exe")"
+Write-Host "App desktop nativo gerado em: $(Join-Path $root "dist\Central Financeira\Central Financeira.exe")"

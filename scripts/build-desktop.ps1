@@ -1,6 +1,3 @@
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-Push-Location (Join-Path $root "frontend")
-npm run desktop:build
-Pop-Location
-
+& (Join-Path $root "scripts\build-launcher.ps1")

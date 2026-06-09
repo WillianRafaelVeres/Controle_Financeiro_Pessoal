@@ -1,2 +1,2 @@
 - [Investimento saldo model](investimento-saldo-model.md) — how national investments affect saldo livre / saldo em contas (conta_id => affects both; no conta => neutral)
-- Desktop app is a PyInstaller launcher built via `scripts\build-launcher.ps1` (bundles frontend `web/` + backend sidecar, runs `alembic upgrade head`); the Tauri path needs MSVC `link.exe`. Real DB: `%APPDATA%\CentralFinanceira\central_financeira.db`.
+- Desktop app is a PyInstaller + pywebview launcher built via `scripts\build-launcher.ps1` (bundles frontend `web/` + backend sidecar and opens a native WebView2 window, not Edge `--app`); the Tauri path needs MSVC `link.exe`. Real DB: `%APPDATA%\CentralFinanceira\central_financeira.db`.

@@ -4,9 +4,9 @@ import { EmptyState } from "../../components/finance/EmptyState";
 import { SectionCard } from "../../components/finance/SectionCard";
 import { formatMoney, toNumber } from "../../lib/formatters";
 
-const colors = ["#16A34A", "#2563EB", "#F59E0B", "#DC2626", "#64748B", "#0F766E"];
-const axisStyle = { fill: "#8f9bad", fontSize: 11 };
-const tooltipStyle = { backgroundColor: "#111821", border: "1px solid #273343", borderRadius: 8, color: "#eef2f7" };
+const colors = ["#22C55E", "#60A5FA", "#F59E0B", "#F87171", "#94A3B8", "#14B8A6"];
+const axisStyle = { fill: "#9aa8bb", fontSize: 11 };
+const tooltipStyle = { backgroundColor: "rgba(15, 23, 42, 0.94)", border: "1px solid rgba(148, 163, 184, 0.18)", borderRadius: 14, color: "#eef2f7", boxShadow: "0 18px 42px rgba(0, 0, 0, 0.35)" };
 
 export function GraficosResumo({ data }: { data?: Record<string, Array<Record<string, string | number>>> }) {
   const gastos = normalizeChartData(data?.gastos_por_categoria ?? []);
@@ -36,8 +36,8 @@ export function GraficosResumo({ data }: { data?: Record<string, Array<Record<st
         <div className="h-[280px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={receitas} style={{ outline: "none" }}>
-              <CartesianGrid stroke="#273343" strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="nome" tick={axisStyle} axisLine={{ stroke: "#273343" }} tickLine={false} />
+              <CartesianGrid stroke="rgba(148, 163, 184, 0.16)" strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="nome" tick={axisStyle} axisLine={{ stroke: "rgba(148, 163, 184, 0.18)" }} tickLine={false} />
               <YAxis tick={axisStyle} axisLine={false} tickLine={false} tickFormatter={(value) => formatMoney(value).replace("R$", "")} />
               <Tooltip contentStyle={tooltipStyle} formatter={(value) => formatMoney(value as number)} />
               <Bar dataKey="valor" radius={[6, 6, 0, 0]}>

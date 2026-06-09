@@ -15,7 +15,7 @@ export function ConciliacaoBox({ data }: { data?: Record<string, string | number
 
   return (
     <SectionCard title="Conciliação" description="Confere se o saldo informado nas contas bate com o saldo explicado pelo app.">
-      <div className="space-y-2 text-[13px]">
+      <div className="space-y-2.5 text-[13px]">
         <Line label="Saldo em contas" value={data?.saldo_em_contas_informado ?? data?.saldo_em_contas} />
         <Line label="Saldo livre" value={data?.saldo_livre} highlight />
         <Line label="Reservado cartão" value={data?.reservado_cartao} />
@@ -28,8 +28,8 @@ export function ConciliacaoBox({ data }: { data?: Record<string, string | number
         <div
           className={
             ok
-              ? "flex items-center gap-2 rounded-md bg-brand-500/15 p-2 text-brand-500"
-              : "flex items-center gap-2 rounded-md bg-amber-500/15 p-2 text-amber-400"
+              ? "flex items-center gap-2 rounded-xl border border-brand-500/25 bg-brand-500/15 px-3 py-2.5 text-emerald-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+              : "flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/15 px-3 py-2.5 text-amber-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
           }
         >
           {ok ? <CheckCircle2 className="h-4 w-4" /> : <TriangleAlert className="h-4 w-4" />}
@@ -52,7 +52,7 @@ function Line({
   highlight?: boolean;
 }) {
   return (
-    <div className={highlight ? "flex items-center justify-between gap-4 rounded-lg bg-brand-500/10 px-3 py-2" : "flex items-center justify-between gap-4 px-1 py-0.5"}>
+    <div className={highlight ? "flex items-center justify-between gap-4 rounded-xl border border-brand-500/15 bg-brand-500/[0.12] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]" : "flex items-center justify-between gap-4 px-1 py-0.5"}>
       <span className={strong || highlight ? "font-semibold text-slate-100" : "text-slate-400"}>{label}</span>
       <span className={strong || highlight ? "font-semibold text-slate-100" : "text-slate-200"}>{formatMoney(value)}</span>
     </div>

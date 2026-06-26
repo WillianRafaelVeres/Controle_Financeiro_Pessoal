@@ -11,6 +11,7 @@ import {
   Gauge,
   Landmark,
   LineChart,
+  LogOut,
   Plug,
   ReceiptText,
   Settings,
@@ -29,35 +30,41 @@ const groups: Array<{ title: string; items: Array<{ key: PageKey; label: string;
     title: "Financeiro geral",
     items: [
       { key: "dashboard", label: "Painel", icon: Gauge },
-      { key: "lancamentos", label: "Lançamentos", icon: ReceiptText },
+      { key: "lancamentos", label: "Lancamentos", icon: ReceiptText },
       { key: "contas", label: "Contas", icon: Landmark },
       { key: "contas_futuras", label: "Contas futuras", icon: CalendarClock },
       { key: "dinheiro_separado", label: "Dinheiro separado", icon: Archive },
-      { key: "orcamento", label: "Orçamento", icon: Target },
-      { key: "cartoes", label: "Cartões", icon: CreditCard },
+      { key: "orcamento", label: "Orcamento", icon: Target },
+      { key: "cartoes", label: "Cartoes", icon: CreditCard },
     ],
   },
   {
     title: "Investimentos",
     items: [
-      { key: "patrimonio", label: "Meu patrimônio", icon: WalletCards },
+      { key: "patrimonio", label: "Meu patrimonio", icon: WalletCards },
       { key: "investimentos", label: "Investimentos", icon: BarChart3 },
       { key: "desempenho", label: "Desempenho", icon: LineChart },
       { key: "dividendos", label: "Dividendos", icon: Banknote },
-      { key: "exterior", label: "Exterior/Dólar", icon: DollarSign },
+      { key: "exterior", label: "Exterior/Dolar", icon: DollarSign },
     ],
   },
   {
     title: "Sistema",
     items: [
-      { key: "relatorios", label: "Relatórios", icon: FileBarChart },
-      { key: "configuracoes", label: "Configurações", icon: Settings },
-      { key: "integracoes", label: "Integrações", icon: Plug },
+      { key: "relatorios", label: "Relatorios", icon: FileBarChart },
+      { key: "configuracoes", label: "Configuracoes", icon: Settings },
+      { key: "integracoes", label: "Integracoes", icon: Plug },
     ],
   },
 ];
 
-export function Sidebar({ current, onNavigate }: { current: PageKey; onNavigate: (page: PageKey) => void }) {
+interface SidebarProps {
+  current: PageKey;
+  onNavigate: (page: PageKey) => void;
+  onLogout?: () => void;
+}
+
+export function Sidebar({ current, onNavigate, onLogout }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   return (
     <aside
@@ -72,7 +79,7 @@ export function Sidebar({ current, onNavigate }: { current: PageKey; onNavigate:
         </div>
         <div className={cn("min-w-0", collapsed && "hidden")}>
           <p className="truncate text-sm font-semibold text-slate-100">Central Financeira</p>
-          <p className="truncate text-[12px] text-slate-400">Controle local</p>
+          <p className="truncate text-[12px] text-slate-400">Controle pessoal</p>
         </div>
         <button
           className="ml-auto hidden h-8 w-8 items-center justify-center rounded-xl border border-transparent text-slate-400 transition hover:border-white/10 hover:bg-white/[0.08] hover:text-slate-100 xl:flex"
@@ -128,10 +135,25 @@ export function Sidebar({ current, onNavigate }: { current: PageKey; onNavigate:
           </div>
         ))}
       </nav>
-      <div className="border-t border-white/10 p-3">
+      <div className="border-t border-white/10 p-3 space-y-2">
+        {onLogout && (
+          <button
+            onClick={onLogout}
+            title="Sair"
+            className={cn(
+              "group flex min-h-10 w-full items-center gap-2.5 rounded-2xl px-2.5 text-left text-[13px] font-semibold text-slate-500 transition hover:bg-red-500/10 hover:text-red-400",
+              collapsed && "justify-center px-0",
+            )}
+          >
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl transition group-hover:bg-red-500/[0.12]">
+              <LogOut className="h-4 w-4" />
+            </span>
+            <span className={cn("truncate", collapsed && "hidden")}>Sair</span>
+          </button>
+        )}
         <div className={cn("rounded-2xl border border-white/10 bg-slate-950/35 px-3 py-2.5 text-[12px] text-slate-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]", collapsed && "px-1 text-center")}>
-          <div className="font-semibold text-slate-100">{collapsed ? "DB" : "SQLite local"}</div>
-          {!collapsed && <div>Dados neste computador</div>}
+          <div className="font-semibold text-slate-100">{collapsed ? "DB" : "Supabase"}</div>
+          {!collapsed && <div>Banco online</div>}
         </div>
       </div>
     </aside>

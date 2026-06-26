@@ -30,6 +30,7 @@ import type {
   TipoProvento,
 } from "./types";
 import { getApiBaseUrl } from "./apiBase";
+import { getAccessToken, isSupabaseConfigured } from "./supabase";
 
 type Query = Record<string, string | number | boolean | undefined | null>;
 
@@ -44,9 +45,15 @@ function withQuery(path: string, query?: Query) {
 }
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}, query?: Query): Promise<T> {
+  const authHeaders: Record<string, string> = {};
+  if (isSupabaseConfigured) {
+    const token = await getAccessToken();
+    if (token) authHeaders["Authorization"] = `Bearer ${token}`;
+  }
   const response = await fetch(`${getApiBaseUrl()}${withQuery(path, query)}`, {
     headers: {
       "Content-Type": "application/json",
+      ...authHeaders,
       ...(options.headers ?? {}),
     },
     ...options,

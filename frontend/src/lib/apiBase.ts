@@ -51,7 +51,7 @@ export async function bootBackend(): Promise<BackendBootResult> {
     setApiBaseUrl(discovered.baseUrl);
     return { ...discovered, desktop: true };
   }
-  await waitForHealth(apiBaseUrl);
+  await waitForHealth(apiBaseUrl, 120, 1000);
   return { baseUrl: apiBaseUrl, port: portFromBase(apiBaseUrl), desktop: false };
 }
 
@@ -163,6 +163,4 @@ function portFromBase(url: string) {
   try {
     return Number(new URL(url).port);
   } catch {
-    return undefined;
-  }
-}
+    return

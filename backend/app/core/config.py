@@ -24,7 +24,7 @@ def _load_env_files() -> None:
 
 class Settings(BaseModel):
     app_name: str = "Central Financeira Pessoal"
-    app_version: str = "2026.06.26-v1-supabase-render"
+    app_version: str = "2026.06.26-v2-supabase-login"
     api_prefix: str = "/api"
     data_dir: Path = default_data_dir()
     database_file: Path = data_dir / "central_financeira.db"
@@ -37,6 +37,11 @@ class Settings(BaseModel):
         "https://controle-financeiro-pessoal-jz43.onrender.com",
     ]
     cors_origin_regex: str = r"^https?://(localhost|127\.0\.0\.1):\d+$"
+
+    # Supabase Auth
+    supabase_url: str | None = None
+    supabase_anon_key: str | None = None
+    auth_enabled: bool = False
 
     @staticmethod
     def _list_from_env(value: str | None) -> list[str] | None:
@@ -79,7 +84,11 @@ class Settings(BaseModel):
 def get_settings() -> Settings:
     _load_env_files()
     cors_origins = Settings._list_from_env(os.getenv("CORS_ORIGINS"))
+    auth_enabled = os.getenv("AUTH_ENABLED", "").lower() in ("1", "true", "yes")
     return Settings(
         database_url_override=os.getenv("DATABASE_URL"),
+        supabase_url=os.getenv("SUPABASE_URL"),
+        supabase_anon_key=os.getenv("SUPABASE_ANON_KEY"),
+        auth_enabled=auth_enabled,
         **({"cors_origins": cors_origins} if cors_origins else {}),
     )

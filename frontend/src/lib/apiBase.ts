@@ -7,7 +7,7 @@ const REQUIRED_API_CAPABILITIES = [
   { path: "/api/investimentos/movimentos/{movimento_id}", method: "put" },
 ];
 
-let apiBaseUrl = normalizeApiBase(import.meta.env.VITE_API_URL ?? `http://127.0.0.1:${DEFAULT_DESKTOP_PORT}/api`);
+let apiBaseUrl = normalizeApiBase(defaultApiBase());
 let backendProcess: { kill?: () => Promise<void> } | null = null;
 let closeHandlerRegistered = false;
 
@@ -33,6 +33,12 @@ export function setApiBaseUrl(url: string) {
 
 export function isTauriDesktop() {
   return typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__);
+}
+
+function defaultApiBase() {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  if (import.meta.env.DEV || isTauriDesktop()) return `http://127.0.0.1:${DEFAULT_DESKTOP_PORT}/api`;
+  return "/api";
 }
 
 export async function bootBackend(): Promise<BackendBootResult> {

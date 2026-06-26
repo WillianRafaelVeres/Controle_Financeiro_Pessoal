@@ -8,7 +8,7 @@ O banco pode mostrar um valor alto, mas parte dele pode estar reservada para car
 
 ## Stack
 
-- Backend: Python, FastAPI, SQLModel, SQLite e Alembic.
+- Backend: Python, FastAPI, SQLModel, SQLite local ou Supabase/PostgreSQL, e Alembic.
 - Frontend: React, TypeScript, Vite, Tailwind CSS, componentes locais no estilo shadcn/ui, lucide-react, Recharts, TanStack Query, React Hook Form e Zod.
 - Testes: pytest no backend; Vitest e React Testing Library no frontend.
 
@@ -103,6 +103,40 @@ No modo desktop, o backend grava dados em:
 O backend desktop cria as pastas necessarias, escolhe uma porta local segura a partir de `17831`, roda `alembic upgrade head` automaticamente e grava a porta em `%APPDATA%/CentralFinanceira/backend-port.json`.
 
 Para resetar o banco desktop, feche o aplicativo e remova `%APPDATA%/CentralFinanceira/central_financeira.db`. Para preservar historico, copie antes a pasta `%APPDATA%/CentralFinanceira`.
+
+## Banco online com Supabase
+
+O projeto Supabase configurado para este app e:
+
+```text
+https://qmglaobhnbgxgcfucxtj.supabase.co
+```
+
+No Render, configure a variavel de ambiente `DATABASE_URL` com a connection string do **Shared Pooler - Session mode**:
+
+```text
+postgresql://postgres.qmglaobhnbgxgcfucxtj:SENHA_DO_BANCO@aws-0-sa-east-1.pooler.supabase.com:5432/postgres
+```
+
+Render normalmente precisa do pooler porque a conexao direta do Supabase usa IPv6 em projetos Free. A senha do banco fica somente no painel do Supabase/Render; nao coloque esse valor no Git.
+
+Para desenvolvimento local:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\configure-supabase-env.ps1 -DatabasePassword "SENHA_DO_BANCO"
+```
+
+Para o desktop instalado:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\configure-supabase-env.ps1 -DatabasePassword "SENHA_DO_BANCO" -Desktop
+```
+
+Para copiar dados do SQLite local para o Supabase, rode uma vez depois de configurar `DATABASE_URL`:
+
+```powershell
+.\.venv\Scripts\python scripts\migrate_sqlite_to_supabase.py
+```
 
 ## Regras financeiras implementadas
 

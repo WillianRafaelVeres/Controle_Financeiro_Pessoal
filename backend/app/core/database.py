@@ -1,17 +1,20 @@
 from collections.abc import Generator
 
 from sqlalchemy import inspect, text
+from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.core.config import get_settings
 
 settings = get_settings()
 
-engine = create_engine(
-    settings.database_url,
-    echo=False,
-    connect_args={"check_same_thread": False},
-)
+
+def _new_engine() -> Engine:
+    connect_args = {} if settings.using_postgres else {"check_same_thread": False}
+    return create_engine(settings.database_url, echo=False, connect_args=connect_args, pool_pre_ping=True)
+
+
+engine = _new_engine()
 
 
 def create_db_and_tables() -> None:
@@ -37,14 +40,17 @@ def _ensure_schema_compatibility() -> None:
         with engine.begin() as conn:
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
 
+    boolean_true = "BOOLEAN DEFAULT TRUE NOT NULL" if settings.using_postgres else "BOOLEAN DEFAULT 1 NOT NULL"
+    datetime_type = "TIMESTAMP" if settings.using_postgres else "DATETIME"
+
     for table, active_column in [("categorias", "ativa"), ("subcategorias", "ativa")]:
         add_column_if_missing(table, "natureza", "VARCHAR DEFAULT 'GASTO' NOT NULL")
-        add_column_if_missing(table, active_column, "BOOLEAN DEFAULT 1 NOT NULL")
-        add_column_if_missing(table, "inativado_em", "DATETIME")
+        add_column_if_missing(table, active_column, boolean_true)
+        add_column_if_missing(table, "inativado_em", datetime_type)
         add_column_if_missing(table, "motivo_inativacao", "VARCHAR(250)")
 
     for table in ["metodos_pagamento", "cartoes"]:
-        add_column_if_missing(table, "inativado_em", "DATETIME")
+        add_column_if_missing(table, "inativado_em", datetime_type)
         add_column_if_missing(table, "motivo_inativacao", "VARCHAR(250)")
 
     if "contas" in tables:
@@ -52,8 +58,8 @@ def _ensure_schema_compatibility() -> None:
         add_column_if_missing("contas", "tipo_conta", "VARCHAR DEFAULT 'CONTA_CORRENTE' NOT NULL")
         add_column_if_missing("contas", "moeda", "VARCHAR DEFAULT 'BRL' NOT NULL")
         add_column_if_missing("contas", "saldo_atual_informado", "NUMERIC(14, 2) DEFAULT 0 NOT NULL")
-        add_column_if_missing("contas", "entra_no_saldo_em_contas", "BOOLEAN DEFAULT 1 NOT NULL")
-        add_column_if_missing("contas", "inativado_em", "DATETIME")
+        add_column_if_missing("contas", "entra_no_saldo_em_contas", boolean_true)
+        add_column_if_missing("contas", "inativado_em", datetime_type)
 
     if "extrato_dolar" in tables:
         add_column_if_missing("extrato_dolar", "valor_brl", "NUMERIC(14, 2) DEFAULT 0 NOT NULL")
@@ -90,8 +96,8 @@ def _ensure_schema_compatibility() -> None:
 
     if "orcamento_itens" in tables:
         add_column_if_missing("orcamento_itens", "natureza", "VARCHAR DEFAULT 'GASTO' NOT NULL")
-        add_column_if_missing("orcamento_itens", "ativo", "BOOLEAN DEFAULT 1 NOT NULL")
-        add_column_if_missing("orcamento_itens", "inativado_em", "DATETIME")
+        add_column_if_missing("orcamento_itens", "ativo", boolean_true)
+        add_column_if_missing("orcamento_itens", "inativado_em", datetime_type)
         add_column_if_missing("orcamento_itens", "motivo_inativacao", "VARCHAR(250)")
 
     with engine.begin() as conn:

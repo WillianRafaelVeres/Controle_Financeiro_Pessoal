@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: controle-financeiro-pessoal
+    runtime: python
+    rootDir: backend
+    buildCommand: bash render-build.sh
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        value: "https://controle-financeiro-pessoal-jz43.onrender.com"

@@ -27,7 +27,8 @@ def diagnostico() -> dict:
         "status": "ok",
         "desktop": os.getenv("CENTRAL_FINANCEIRA_DESKTOP") == "1",
         "porta": os.getenv("CENTRAL_FINANCEIRA_PORT"),
-        "banco": str(settings.database_file),
+        "banco": settings.database_url_safe,
+        "tipo_banco": "supabase_postgres" if settings.using_postgres else "sqlite_local",
         "pasta_dados": str(settings.data_dir),
         "pasta_logs": str(settings.logs_dir),
         "pasta_backups": str(settings.backups_dir),
@@ -67,6 +68,8 @@ def salvar(payload: Configuracao, session: Session = Depends(get_session)) -> Co
 @router.post("/backup/exportar")
 def exportar_backup() -> dict:
     settings = get_settings()
+    if settings.using_postgres:
+        raise HTTPException(status_code=400, detail="Backup por arquivo .db esta disponivel apenas para SQLite local.")
     if not settings.database_file.exists():
         raise HTTPException(status_code=404, detail="Banco de dados ainda nao existe.")
     backup_dir = settings.data_dir / "backups"
@@ -79,6 +82,11 @@ def exportar_backup() -> dict:
 @router.post("/backup/importar")
 def importar_backup(caminho: str) -> dict:
     settings = get_settings()
+    if settings.using_postgres:
+        raise HTTPException(
+            status_code=400,
+            detail="Importacao por arquivo .db esta disponivel apenas para SQLite local.",
+        )
     source = Path(caminho)
     if not source.exists():
         raise HTTPException(status_code=404, detail="Arquivo de backup nao encontrado.")

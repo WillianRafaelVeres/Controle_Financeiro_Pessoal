@@ -1,5 +1,9 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import (
     caixinhas,
@@ -37,6 +41,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+
+
+def find_frontend_dist() -> Path:
+    candidates = [
+        BACKEND_DIR / "frontend" / "dist",
+        BACKEND_DIR.parent / "frontend" / "dist",
+    ]
+    for candidate in candidates:
+        if (candidate / "index.html").exists():
+            return candidate
+    return candidates[0]
+
+
+FRONTEND_DIST = find_frontend_dist()
+
 
 @app.on_event("startup")
 def on_startup() -> None:
@@ -45,7 +65,13 @@ def on_startup() -> None:
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "version": settings.app_version,
+        "database": "postgresql" if settings.using_postgres else "sqlite",
+        "database_url": settings.database_url_safe,
+        "frontend_index": (FRONTEND_DIST / "index.html").exists(),
+    }
 
 
 for router in [
@@ -69,3 +95,28 @@ for router in [
     configuracoes.router,
 ]:
     app.include_router(router, prefix=settings.api_prefix)
+
+
+if (FRONTEND_DIST / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+
+
+@app.get("/", response_model=None)
+def serve_frontend_index():
+    index_file = FRONTEND_DIST / "index.html"
+    if not index_file.exists():
+        return JSONResponse({"detail": "Frontend build not found."}, status_code=404)
+    return FileResponse(index_file)
+
+
+@app.get("/{path:path}", include_in_schema=False, response_model=None)
+def serve_frontend_app(path: str):
+    if path.startswith(("api/", "docs", "redoc", "openapi.json", "health")):
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    requested_file = FRONTEND_DIST / path
+    if requested_file.is_file():
+        return FileResponse(requested_file)
+    index_file = FRONTEND_DIST / "index.html"
+    if not index_file.exists():
+        return JSONResponse({"detail": "Frontend build not found."}, status_code=404)
+    return FileResponse(index_file)

@@ -163,4 +163,6 @@ function portFromBase(url: string) {
   try {
     return Number(new URL(url).port);
   } catch {
-    return
+    return undefined;
+  }
+}

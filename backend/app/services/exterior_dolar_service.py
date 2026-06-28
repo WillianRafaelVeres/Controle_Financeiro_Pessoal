@@ -28,6 +28,7 @@ SAIDAS = {
 
 COTACAO_USD_BRL_URL = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
 COTACAO_USD_BRL_HISTORICO_URL = "https://economia.awesomeapi.com.br/json/daily/USD-BRL/7"
+COTACAO_FALLBACK_URL = "https://api.frankfurter.app/latest?from=USD&to=BRL"
 
 
 def saldo_teorico_usd(session: Session, ignorar_movimento_id: str | None = None) -> Decimal:
@@ -288,44 +289,85 @@ def _set_config_text(session: Session, chave: str, value: str) -> None:
     session.add(config)
 
 
-def buscar_cotacao_dolar_atual(session: Session) -> dict:
+def _buscar_cotacao_awesomeapi() -> dict | None:
     try:
-        response = httpx.get(COTACAO_USD_BRL_URL, timeout=8)
+        response = httpx.get(COTACAO_USD_BRL_URL, timeout=8, headers={"User-Agent": "CentralFinanceira/1.0"})
         response.raise_for_status()
         item = response.json().get("USDBRL") or {}
         compra = Decimal(str(item.get("bid") or "0"))
         venda = Decimal(str(item.get("ask") or "0"))
         cotacao = venda if venda > 0 else compra
         if cotacao <= 0:
-            raise ValueError("cotacao invalida")
-    except Exception as exc:
-        salva = _get_config_decimal(session, "dolar_cotacao_brl")
-        if salva > 0:
-            return {
-                "cotacao_brl": salva,
-                "compra_brl": salva,
-                "venda_brl": salva,
-                "variacao_brl": Decimal("0.00"),
-                "percentual_variacao": Decimal("0.00"),
-                "data_cotacao": _get_config_text(session, "dolar_cotacao_brl_data"),
-                "fonte": "CONFIG",
-                "erro": "Nao foi possivel atualizar a cotacao agora.",
-            }
-        raise HTTPException(status_code=502, detail="Nao foi possivel buscar cotacao do dolar agora.") from exc
+            return None
+        data_cotacao = str(item.get("create_date") or item.get("timestamp") or "")
+        return {
+            "cotacao_brl": cotacao,
+            "compra_brl": compra,
+            "venda_brl": venda,
+            "variacao_brl": Decimal(str(item.get("varBid") or "0")),
+            "percentual_variacao": Decimal(str(item.get("pctChange") or "0")),
+            "data_cotacao": data_cotacao,
+            "fonte": "AwesomeAPI",
+        }
+    except Exception:
+        return None
 
-    data_cotacao = str(item.get("create_date") or item.get("timestamp") or "")
-    _set_config_decimal(session, "dolar_cotacao_brl", cotacao)
-    _set_config_text(session, "dolar_cotacao_brl_data", data_cotacao)
-    _set_config_text(session, "dolar_cotacao_brl_fonte", "AwesomeAPI")
-    session.commit()
+
+def _buscar_cotacao_frankfurter() -> dict | None:
+    try:
+        response = httpx.get(COTACAO_FALLBACK_URL, timeout=8)
+        response.raise_for_status()
+        data = response.json()
+        brl_rate = Decimal(str(data.get("rates", {}).get("BRL") or "0"))
+        if brl_rate <= 0:
+            return None
+        return {
+            "cotacao_brl": brl_rate,
+            "compra_brl": brl_rate,
+            "venda_brl": brl_rate,
+            "variacao_brl": Decimal("0.00"),
+            "percentual_variacao": Decimal("0.00"),
+            "data_cotacao": str(data.get("date", "")),
+            "fonte": "Frankfurter",
+        }
+    except Exception:
+        return None
+
+
+def buscar_cotacao_dolar_atual(session: Session) -> dict:
+    resultado = _buscar_cotacao_awesomeapi() or _buscar_cotacao_frankfurter()
+
+    if resultado:
+        _set_config_decimal(session, "dolar_cotacao_brl", resultado["cotacao_brl"])
+        _set_config_text(session, "dolar_cotacao_brl_data", resultado["data_cotacao"])
+        _set_config_text(session, "dolar_cotacao_brl_fonte", resultado["fonte"])
+        session.commit()
+        return resultado
+
+    # Usa valor salvo em cache se disponivel
+    salva = _get_config_decimal(session, "dolar_cotacao_brl")
+    if salva > 0:
+        return {
+            "cotacao_brl": salva,
+            "compra_brl": salva,
+            "venda_brl": salva,
+            "variacao_brl": Decimal("0.00"),
+            "percentual_variacao": Decimal("0.00"),
+            "data_cotacao": _get_config_text(session, "dolar_cotacao_brl_data"),
+            "fonte": "CONFIG",
+            "erro": "Nao foi possivel atualizar a cotacao agora.",
+        }
+
+    # Retorna indisponivel sem erro 502
     return {
-        "cotacao_brl": cotacao,
-        "compra_brl": compra,
-        "venda_brl": venda,
-        "variacao_brl": Decimal(str(item.get("varBid") or "0")),
-        "percentual_variacao": Decimal(str(item.get("pctChange") or "0")),
-        "data_cotacao": data_cotacao,
-        "fonte": "AwesomeAPI",
+        "cotacao_brl": Decimal("0.00"),
+        "compra_brl": Decimal("0.00"),
+        "venda_brl": Decimal("0.00"),
+        "variacao_brl": Decimal("0.00"),
+        "percentual_variacao": Decimal("0.00"),
+        "data_cotacao": "",
+        "fonte": "INDISPONIVEL",
+        "erro": "Nao foi possivel buscar cotacao do dolar. Informe manualmente.",
     }
 
 

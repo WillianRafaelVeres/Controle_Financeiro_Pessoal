@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { ComboboxCreate } from "../../components/finance/ComboboxCreate";
 import { MoneyInput } from "../../components/finance/MoneyInput";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -27,6 +28,15 @@ export function DividendosForm({ ativos, onSubmit }: { ativos: Ativo[]; onSubmit
   const [tipo, setTipo] = useState("DIVIDENDO");
   const ativosFiltrados = useMemo(() => ativos.filter((ativo) => ativo.tipo_ativo === tipoAtivo), [ativos, tipoAtivo]);
   const ativo = ativos.find((item) => item.id === ativoId);
+  const ativoOptions = useMemo(
+    () =>
+      ativosFiltrados.map((item) => ({
+        id: item.id,
+        label: item.ticker ? `${item.ticker} - ${item.nome}` : item.nome,
+        description: item.corretora || undefined,
+      })),
+    [ativosFiltrados],
+  );
 
   useEffect(() => {
     if (tiposDisponiveis.length === 0) return;
@@ -48,6 +58,10 @@ export function DividendosForm({ ativos, onSubmit }: { ativos: Ativo[]; onSubmit
       className="grid gap-3 md:grid-cols-2 xl:grid-cols-[190px_minmax(260px,1fr)_180px_180px_150px_auto] xl:items-end"
       onSubmit={async (event) => {
         event.preventDefault();
+        if (!ativoId) {
+          alert("Selecione o ativo em carteira.");
+          return;
+        }
         await onSubmit({
           ativo_id: ativoId,
           valor: toNumber(valor),
@@ -69,17 +83,14 @@ export function DividendosForm({ ativos, onSubmit }: { ativos: Ativo[]; onSubmit
           ))}
         </Select>
       </label>
-      <label className="space-y-1">
-        <span className="text-xs font-medium text-slate-500">Ativo em carteira</span>
-        <Select value={ativoId} onChange={(event) => setAtivoId(event.target.value)} required>
-          <option value="">Selecione um ativo</option>
-          {ativosFiltrados.map((ativo) => (
-            <option key={ativo.id} value={ativo.id}>
-              {ativo.ticker} - {ativo.nome} {ativo.corretora ? `(${ativo.corretora})` : ""}
-            </option>
-          ))}
-        </Select>
-      </label>
+      <ComboboxCreate
+        label="Ativo em carteira"
+        placeholder="Buscar ativo"
+        valueId={ativoId || null}
+        options={ativoOptions}
+        emptyMessage="Nenhum ativo deste tipo na carteira."
+        onSelect={(option) => setAtivoId(option?.id ?? "")}
+      />
       <label className="space-y-1">
         <span className="text-xs font-medium text-slate-500">Provento</span>
         <Select value={tipo} onChange={(event) => setTipo(event.target.value)}>

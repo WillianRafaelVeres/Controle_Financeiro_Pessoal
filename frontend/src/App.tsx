@@ -72,7 +72,7 @@ export default function App() {
     setAuthState("unauthenticated");
   }, []);
 
-  const backendStatus = boot?.port ? `Servico local em 127.0.0.1:${boot.port}` : "SQLite local";
+  const backendStatus = boot?.port ? `Servico local em 127.0.0.1:${boot.port}` : "Supabase PostgreSQL";
 
   if (authState === "checking") {
     return (

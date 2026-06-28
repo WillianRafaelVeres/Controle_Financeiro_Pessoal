@@ -217,12 +217,12 @@ export function CompraAtivoModal({
               required={!ativoId}
             />
             {sugestoesOpen && sugestoes.length > 0 && (
-              <div className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border border-slate-700 bg-slate-950 p-1 shadow-xl shadow-black/30">
+              <div className="glass-highlight absolute z-[80] mt-1 max-h-56 w-full overflow-auto rounded-2xl border border-white/10 bg-slate-950/[0.92] p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.45)] ring-1 ring-inset ring-white/[0.05] backdrop-blur-xl">
                 {sugestoes.map((ativo) => (
                   <button
                     key={ativo.ativo_id}
                     type="button"
-                    className="w-full rounded-md px-2.5 py-2 text-left text-[13px] text-slate-200 transition hover:bg-slate-800"
+                    className="w-full rounded-xl px-3 py-2.5 text-left text-[13px] text-slate-200 transition hover:bg-white/[0.08]"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => selecionarAtivo(ativo)}
                   >
@@ -252,12 +252,12 @@ export function CompraAtivoModal({
               required
             />
             {sugestoesOpen && sugestoes.length > 0 && (
-              <div className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border border-slate-700 bg-slate-950 p-1 shadow-xl shadow-black/30">
+              <div className="glass-highlight absolute z-[80] mt-1 max-h-56 w-full overflow-auto rounded-2xl border border-white/10 bg-slate-950/[0.92] p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.45)] ring-1 ring-inset ring-white/[0.05] backdrop-blur-xl">
                 {sugestoes.map((ativo) => (
                   <button
                     key={ativo.ativo_id}
                     type="button"
-                    className="w-full rounded-md px-2.5 py-2 text-left text-[13px] text-slate-200 transition hover:bg-slate-800"
+                    className="w-full rounded-xl px-3 py-2.5 text-left text-[13px] text-slate-200 transition hover:bg-white/[0.08]"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => selecionarAtivo(ativo)}
                   >

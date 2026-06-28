@@ -85,7 +85,12 @@ async def auth_middleware(request: Request, call_next):
 
 @app.on_event("startup")
 def on_startup() -> None:
-    create_db_and_tables()
+    try:
+        create_db_and_tables()
+        logger.info("Database initialized successfully.")
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to initialize database on startup: %s", exc)
+        logger.error("App will start but database operations may fail until connection is available.")
 
 
 @app.get("/health")

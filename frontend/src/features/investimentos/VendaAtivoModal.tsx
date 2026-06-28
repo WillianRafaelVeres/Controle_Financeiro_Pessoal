@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 
+import { ComboboxCreate } from "../../components/finance/ComboboxCreate";
 import { MoneyInput } from "../../components/finance/MoneyInput";
 import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
@@ -50,6 +51,18 @@ export function VendaAtivoModal({
       ),
     [contas.data],
   );
+  const posicaoOptions = useMemo(
+    () =>
+      posicoes.map((item) => ({
+        id: item.ativo_id,
+        label:
+          item.tipo_controle === "VALOR"
+            ? `${item.nome} - ${formatMoney(item.valor_atual, item.moeda === "USD" ? "USD" : "BRL")}`
+            : `${item.ticker} - ${toNumber(item.quantidade_atual).toLocaleString("pt-BR")}`,
+        description: item.corretora || undefined,
+      })),
+    [posicoes],
+  );
   const quantidade = toNumber(form.quantidade);
   const valorResgate = toNumber(form.valor_total);
   const valorBruto = controleValor ? valorResgate : quantidade * toNumber(form.preco_unitario);
@@ -66,6 +79,10 @@ export function VendaAtivoModal({
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setErro("");
+    if (!form.ativo_id) {
+      setErro("Selecione o investimento em posicao.");
+      return;
+    }
     if (excede) return;
     await onSubmit({
       ativo_id: form.ativo_id,
@@ -96,19 +113,14 @@ export function VendaAtivoModal({
   return (
     <Dialog open={open} title={controleValor ? "Resgatar investimento" : "Vender ativo"} onClose={onClose}>
       <form className="grid gap-3" onSubmit={submit}>
-        <label className="space-y-1">
-          <span className="text-xs font-medium text-slate-500">Investimento em posicao</span>
-          <Select value={form.ativo_id} onChange={(event) => setForm({ ...form, ativo_id: event.target.value })} required>
-            <option value="">Selecione</option>
-            {posicoes.map((item) => (
-              <option key={item.ativo_id} value={item.ativo_id}>
-                {item.tipo_controle === "VALOR"
-                  ? `${item.nome} - ${formatMoney(item.valor_atual, item.moeda === "USD" ? "USD" : "BRL")}`
-                  : `${item.ticker} - ${toNumber(item.quantidade_atual).toLocaleString("pt-BR")}`}
-              </option>
-            ))}
-          </Select>
-        </label>
+        <ComboboxCreate
+          label="Investimento em posicao"
+          placeholder="Buscar investimento"
+          valueId={form.ativo_id || null}
+          options={posicaoOptions}
+          emptyMessage="Nenhuma posicao encontrada."
+          onSelect={(option) => setForm({ ...form, ativo_id: option?.id ?? "" })}
+        />
         {!investimentoExterior && (
           <label className="space-y-1">
             <span className="text-xs font-medium text-slate-500">Conta de destino (opcional)</span>

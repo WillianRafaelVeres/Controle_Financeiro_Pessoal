@@ -1,12 +1,19 @@
 from collections.abc import Generator
 
+from fastapi import Request
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.core.config import get_settings
 
+# Importing tenancy registers the per-user query-filter / row-stamping listeners.
+from app.core.tenancy import SESSION_USER_KEY, ensure_user_initialized, user_owned_models
+
 settings = get_settings()
+
+# Users whose default data has already been seeded in this process (see get_session).
+_initialized_users: set[str] = set()
 
 
 def _new_engine() -> Engine:
@@ -22,9 +29,13 @@ def create_db_and_tables() -> None:
 
     SQLModel.metadata.create_all(engine)
     _ensure_schema_compatibility()
-    _seed_system_categories()
-    _sync_investment_entries()
-    _sync_dividend_dollar_entries()
+    if not settings.auth_enabled:
+        # Single-user / desktop (local SQLite) mode: seed and reconcile globally.
+        # In multi-user web mode (auth enabled) data is per user, so this work is
+        # done lazily per user in get_session to avoid cross-user contamination.
+        _seed_system_categories()
+        _sync_investment_entries()
+        _sync_dividend_dollar_entries()
 
 
 def _ensure_schema_compatibility() -> None:
@@ -42,6 +53,12 @@ def _ensure_schema_compatibility() -> None:
 
     boolean_true = "BOOLEAN DEFAULT TRUE NOT NULL" if settings.using_postgres else "BOOLEAN DEFAULT 1 NOT NULL"
     datetime_type = "TIMESTAMP" if settings.using_postgres else "DATETIME"
+
+    # Multi-tenancy: every user-owned table needs a user_id column. Brand-new
+    # databases already get it via create_all; this backfills databases created
+    # before per-user isolation was introduced (existing Postgres / local SQLite).
+    for _model in user_owned_models():
+        add_column_if_missing(_model.__tablename__, "user_id", "VARCHAR(64)")
 
     for table, active_column in [("categorias", "ativa"), ("subcategorias", "ativa")]:
         add_column_if_missing(table, "natureza", "VARCHAR DEFAULT 'GASTO' NOT NULL")
@@ -248,6 +265,16 @@ def _sync_dividend_dollar_entries() -> None:
         session.commit()
 
 
-def get_session() -> Generator[Session, None, None]:
+def get_session(request: Request) -> Generator[Session, None, None]:
+    # The auth middleware stores the verified Supabase user id on the request
+    # state. Publishing it through the ContextVar lets the tenancy listeners
+    # scope every query/insert to this user. In desktop/local mode there is no
+    # authenticated user, so user_id stays None and no filtering is applied.
+    user_id = getattr(request.state, "user_id", None)
     with Session(engine) as session:
+        if user_id is not None:
+            session.info[SESSION_USER_KEY] = user_id
+            if user_id not in _initialized_users:
+                ensure_user_initialized(session, user_id)
+                _initialized_users.add(user_id)
         yield session

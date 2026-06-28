@@ -3,10 +3,10 @@ from decimal import Decimal
 
 from sqlmodel import Field
 
-from app.models.base import IdMixin, TimestampMixin, TipoLancamento, money_column
+from app.models.base import IdMixin, TimestampMixin, TipoLancamento, UserOwnedMixin, money_column
 
 
-class Lancamento(IdMixin, TimestampMixin, table=True):
+class Lancamento(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "lancamentos"
 
     data_lancamento: date = Field(index=True)

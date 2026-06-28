@@ -3,13 +3,13 @@ from decimal import Decimal
 
 from sqlmodel import Field
 
-from app.models.base import IdMixin, Moeda, TimestampMixin, TipoConta, money_column
+from app.models.base import IdMixin, Moeda, TimestampMixin, TipoConta, UserOwnedMixin, money_column
 
 
-class Conta(IdMixin, TimestampMixin, table=True):
+class Conta(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "contas"
 
-    nome: str = Field(index=True, unique=True, min_length=1, max_length=120)
+    nome: str = Field(index=True, min_length=1, max_length=120)
     banco: str | None = Field(default=None, max_length=120)
     instituicao: str | None = Field(default=None, max_length=120)
     tipo_conta: TipoConta = Field(default=TipoConta.CONTA_CORRENTE, index=True)
@@ -22,7 +22,7 @@ class Conta(IdMixin, TimestampMixin, table=True):
     inativado_em: datetime | None = Field(default=None)
 
 
-class ContaSaldo(IdMixin, TimestampMixin, table=True):
+class ContaSaldo(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "conta_saldos"
 
     conta_id: str = Field(foreign_key="contas.id", index=True)

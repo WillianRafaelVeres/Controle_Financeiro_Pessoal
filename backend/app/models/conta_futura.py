@@ -3,10 +3,10 @@ from decimal import Decimal
 
 from sqlmodel import Field
 
-from app.models.base import IdMixin, StatusContaFutura, TimestampMixin, money_column
+from app.models.base import IdMixin, StatusContaFutura, TimestampMixin, UserOwnedMixin, money_column
 
 
-class ContaFutura(IdMixin, TimestampMixin, table=True):
+class ContaFutura(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "contas_futuras"
 
     descricao: str = Field(max_length=160, index=True)

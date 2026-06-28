@@ -146,6 +146,19 @@ class IdMixin(SQLModel):
     id: str = Field(default_factory=new_id, primary_key=True)
 
 
+class UserOwnedMixin(SQLModel):
+    """Marks a table as belonging to a single authenticated user.
+
+    ``user_id`` holds the Supabase user id (UUID string). It is nullable so that
+    the desktop/local single-user build (no authentication) and background
+    startup tasks can keep writing rows without a user context. In the
+    multi-user web deployment every row is automatically stamped and filtered by
+    the current user via the listeners in app.core.tenancy.
+    """
+
+    user_id: str | None = Field(default=None, index=True, max_length=64)
+
+
 class MesAno(SQLModel):
     ano: int
     mes: int

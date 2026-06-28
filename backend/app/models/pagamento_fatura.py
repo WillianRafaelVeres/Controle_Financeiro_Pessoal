@@ -3,10 +3,10 @@ from decimal import Decimal
 
 from sqlmodel import Field
 
-from app.models.base import IdMixin, TimestampMixin, money_column
+from app.models.base import IdMixin, TimestampMixin, UserOwnedMixin, money_column
 
 
-class PagamentoFatura(IdMixin, TimestampMixin, table=True):
+class PagamentoFatura(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "pagamentos_fatura"
 
     cartao_id: str = Field(foreign_key="cartoes.id", index=True)

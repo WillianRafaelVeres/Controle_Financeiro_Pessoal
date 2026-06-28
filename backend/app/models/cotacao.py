@@ -3,10 +3,10 @@ from decimal import Decimal
 
 from sqlmodel import Field
 
-from app.models.base import IdMixin, Moeda, TimestampMixin, money_column
+from app.models.base import IdMixin, Moeda, TimestampMixin, UserOwnedMixin, money_column
 
 
-class Cotacao(IdMixin, TimestampMixin, table=True):
+class Cotacao(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "cotacoes"
 
     ativo_id: str | None = Field(default=None, foreign_key="ativos.id", index=True)
@@ -17,7 +17,7 @@ class Cotacao(IdMixin, TimestampMixin, table=True):
     moeda: Moeda = Field(default=Moeda.BRL, index=True)
 
 
-class CompraDolar(IdMixin, TimestampMixin, table=True):
+class CompraDolar(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "compras_dolar"
 
     data_compra: date = Field(index=True)

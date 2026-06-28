@@ -3,12 +3,12 @@ from decimal import Decimal
 from sqlalchemy import Column, Numeric, UniqueConstraint
 from sqlmodel import Field
 
-from app.models.base import IdMixin, TimestampMixin, money_column
+from app.models.base import IdMixin, TimestampMixin, UserOwnedMixin, money_column
 
 
-class HistoricoInvestimentoMensal(IdMixin, TimestampMixin, table=True):
+class HistoricoInvestimentoMensal(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "historico_investimentos_mensal"
-    __table_args__ = (UniqueConstraint("ano", "mes", name="uq_historico_investimentos_mensal_periodo"),)
+    __table_args__ = (UniqueConstraint("user_id", "ano", "mes", name="uq_historico_investimentos_mensal_periodo"),)
 
     ano: int = Field(index=True)
     mes: int = Field(index=True)

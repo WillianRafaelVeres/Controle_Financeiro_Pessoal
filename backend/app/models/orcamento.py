@@ -4,10 +4,18 @@ from decimal import Decimal
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field
 
-from app.models.base import IdMixin, TimestampMixin, TipoItemOrcamento, NaturezaCategoria, money_column, now_utc
+from app.models.base import (
+    IdMixin,
+    TimestampMixin,
+    TipoItemOrcamento,
+    NaturezaCategoria,
+    UserOwnedMixin,
+    money_column,
+    now_utc,
+)
 
 
-class OrcamentoItem(IdMixin, TimestampMixin, table=True):
+class OrcamentoItem(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "orcamento_itens"
     __table_args__ = (
         UniqueConstraint("ano", "mes", "categoria_id", "subcategoria_id", name="uq_orcamento_item_mes"),
@@ -27,7 +35,7 @@ class OrcamentoItem(IdMixin, TimestampMixin, table=True):
     motivo_inativacao: str | None = Field(default=None, max_length=250)
 
 
-class OrcamentoItemPadrao(IdMixin, TimestampMixin, table=True):
+class OrcamentoItemPadrao(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "orcamento_itens_padrao"
     __table_args__ = (
         UniqueConstraint(
@@ -57,7 +65,7 @@ class OrcamentoItemPadrao(IdMixin, TimestampMixin, table=True):
     motivo_inativacao: str | None = Field(default=None, max_length=250)
 
 
-class OrcamentoMensal(IdMixin, TimestampMixin, table=True):
+class OrcamentoMensal(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "orcamentos_mensais"
     __table_args__ = (UniqueConstraint("ano", "mes", "categoria_id", name="uq_orcamento_mes_categoria"),)
 
@@ -67,7 +75,7 @@ class OrcamentoMensal(IdMixin, TimestampMixin, table=True):
     valor_orcado: Decimal = Field(default=Decimal("0.00"), sa_column=money_column())
 
 
-class OrcamentoPadrao(IdMixin, TimestampMixin, table=True):
+class OrcamentoPadrao(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "orcamento_padrao"
 
     categoria_id: str = Field(foreign_key="categorias.id", index=True, unique=True)

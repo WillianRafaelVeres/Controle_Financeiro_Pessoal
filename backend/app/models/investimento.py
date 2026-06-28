@@ -10,14 +10,15 @@ from app.models.base import (
     TipoAtivo,
     TipoControleInvestimento,
     TipoMovimentoInvestimento,
+    UserOwnedMixin,
     money_column,
 )
 
 
-class Ativo(IdMixin, TimestampMixin, table=True):
+class Ativo(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "ativos"
 
-    ticker: str = Field(index=True, unique=True, min_length=1, max_length=40)
+    ticker: str = Field(index=True, min_length=1, max_length=40)
     nome: str = Field(min_length=1, max_length=160)
     tipo_ativo: TipoAtivo = Field(index=True)
     tipo_controle: TipoControleInvestimento = Field(default=TipoControleInvestimento.QUANTIDADE, index=True)
@@ -26,7 +27,7 @@ class Ativo(IdMixin, TimestampMixin, table=True):
     ativo: bool = Field(default=True, index=True)
 
 
-class MovimentoInvestimento(IdMixin, TimestampMixin, table=True):
+class MovimentoInvestimento(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "movimentos_investimento"
 
     ativo_id: str = Field(foreign_key="ativos.id", index=True)

@@ -4,10 +4,10 @@ from decimal import Decimal
 from sqlalchemy import Column, Numeric
 from sqlmodel import Field
 
-from app.models.base import IdMixin, Moeda, TimestampMixin, TipoProvento, money_column
+from app.models.base import IdMixin, Moeda, TimestampMixin, TipoProvento, UserOwnedMixin, money_column
 
 
-class Dividendo(IdMixin, TimestampMixin, table=True):
+class Dividendo(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "dividendos"
 
     ativo_id: str = Field(foreign_key="ativos.id", index=True)

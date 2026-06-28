@@ -2,10 +2,10 @@ from datetime import datetime
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field
 
-from app.models.base import IdMixin, TimestampMixin, NaturezaCategoria, now_utc
+from app.models.base import IdMixin, TimestampMixin, UserOwnedMixin, NaturezaCategoria, now_utc
 
 
-class Subcategoria(IdMixin, TimestampMixin, table=True):
+class Subcategoria(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "subcategorias"
     __table_args__ = (UniqueConstraint("nome", "categoria_id", name="uq_subcategoria_categoria"),)
 

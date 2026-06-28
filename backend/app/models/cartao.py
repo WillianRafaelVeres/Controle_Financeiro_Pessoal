@@ -3,13 +3,13 @@ from decimal import Decimal
 
 from sqlmodel import Field
 
-from app.models.base import IdMixin, TimestampMixin, money_column
+from app.models.base import IdMixin, TimestampMixin, UserOwnedMixin, money_column
 
 
-class Cartao(IdMixin, TimestampMixin, table=True):
+class Cartao(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "cartoes"
 
-    nome: str = Field(index=True, unique=True, min_length=1, max_length=120)
+    nome: str = Field(index=True, min_length=1, max_length=120)
     instituicao: str | None = Field(default=None, max_length=120)
     limite_total: Decimal = Field(default=Decimal("0.00"), sa_column=money_column())
     limite_utilizado_informado: Decimal = Field(default=Decimal("0.00"), sa_column=money_column())

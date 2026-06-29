@@ -1,6 +1,6 @@
 import { Check, ChevronDown, Plus, Search, X } from "lucide-react";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { cn } from "../../lib/utils";
@@ -115,7 +115,10 @@ export function ComboboxCreate({
     });
   }
 
-  useEffect(() => {
+  // useLayoutEffect garante que a posicao e medida ANTES da pintura: o painel
+  // ja aparece ancorado logo abaixo do campo (sem "piscar" no rodape da tela).
+  // Recalcula tambem quando a lista filtrada muda de tamanho.
+  useLayoutEffect(() => {
     if (!open) return;
     updateDropdownPosition();
     window.addEventListener("resize", updateDropdownPosition);
@@ -124,7 +127,7 @@ export function ComboboxCreate({
       window.removeEventListener("resize", updateDropdownPosition);
       window.removeEventListener("scroll", updateDropdownPosition, true);
     };
-  }, [open]);
+  }, [open, rowCount]);
 
   useEffect(() => {
     if (!open) return;
@@ -218,7 +221,8 @@ export function ComboboxCreate({
       ? createPortal(
           <div
             ref={dropdownRef}
-            className="glass-highlight fixed z-[80] overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/[0.92] p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.45)] ring-1 ring-inset ring-white/[0.05] backdrop-blur-xl"
+            role="listbox"
+            className="glass-highlight fixed z-[90] overflow-y-auto rounded-xl border border-white/15 bg-slate-950/95 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-white/[0.06] backdrop-blur-xl"
             style={{
               left: dropdownPosition.left,
               top: dropdownPosition.top,

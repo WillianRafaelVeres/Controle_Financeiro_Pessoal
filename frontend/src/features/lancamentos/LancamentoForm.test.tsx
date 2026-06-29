@@ -37,28 +37,28 @@ describe("LancamentoForm item e sub-item", () => {
   it("lista itens e sub-itens reais do formulario", async () => {
     renderForm();
 
-    fireEvent.focus(screen.getByRole("textbox", { name: "Item" }));
+    fireEvent.focus(screen.getByRole("combobox", { name: "Item" }));
     expect(await screen.findByText("Mercado")).toBeInTheDocument();
 
-    fireEvent.focus(screen.getByRole("textbox", { name: "Sub-item" }));
+    fireEvent.focus(screen.getByRole("combobox", { name: "Sub-item" }));
     expect(await screen.findByText("Supermercado")).toBeInTheDocument();
   });
 
   it("selecionar sub-item existente preenche o item correspondente", async () => {
     renderForm();
 
-    const subItem = screen.getByRole("textbox", { name: "Sub-item" });
+    const subItem = screen.getByRole("combobox", { name: "Sub-item" });
     fireEvent.focus(subItem);
     fireEvent.click(await screen.findByText("Supermercado"));
 
-    expect(screen.getByRole("textbox", { name: "Sub-item" })).toHaveValue("Supermercado");
-    expect(screen.getByRole("textbox", { name: "Item" })).toHaveValue("Mercado");
+    expect(screen.getByRole("combobox", { name: "Sub-item" })).toHaveValue("Supermercado");
+    expect(screen.getByRole("combobox", { name: "Item" })).toHaveValue("Mercado");
   });
 
   it("criar sub-item exige item correspondente", async () => {
     renderForm();
 
-    const subItem = screen.getByRole("textbox", { name: "Sub-item" });
+    const subItem = screen.getByRole("combobox", { name: "Sub-item" });
     fireEvent.focus(subItem);
     fireEvent.change(subItem, { target: { value: "Padaria" } });
     fireEvent.click(await screen.findByText('Criar sub-item "Padaria"'));

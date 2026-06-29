@@ -367,4 +367,5 @@ export function ComboboxCreate({
 }
 
 function capitalize(value: string) {
-  return value.charAt(0).to
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}

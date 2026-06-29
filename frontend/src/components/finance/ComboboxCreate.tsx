@@ -222,8 +222,10 @@ export function ComboboxCreate({
           <div
             ref={dropdownRef}
             role="listbox"
-            className="glass-highlight fixed z-[90] overflow-y-auto rounded-xl border border-white/15 bg-slate-950/95 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-white/[0.06] backdrop-blur-xl"
+            className="overflow-y-auto rounded-xl border border-white/15 bg-slate-950/95 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-white/[0.06] backdrop-blur-xl"
             style={{
+              position: "fixed",
+              zIndex: 9000,
               left: dropdownPosition.left,
               top: dropdownPosition.top,
               width: dropdownPosition.width,
@@ -365,5 +367,4 @@ export function ComboboxCreate({
 }
 
 function capitalize(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
+  return value.charAt(0).to

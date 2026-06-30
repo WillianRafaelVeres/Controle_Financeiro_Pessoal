@@ -5,7 +5,7 @@ import { AppShell } from "./components/layout/AppShell";
 import { BackendBootGate } from "./components/layout/BackendBootGate";
 import { NovoLancamentoModal } from "./features/lancamentos/NovoLancamentoModal";
 import type { BackendBootResult } from "./lib/apiBase";
-import { getAccessToken, isSupabaseConfigured, signOut } from "./lib/supabase";
+import { getAccessToken, isSupabaseConfigured, PASSWORD_RESET_PATH, signOut } from "./lib/supabase";
 import { CartoesPage } from "./pages/CartoesPage";
 import { ConfiguracoesPage } from "./pages/ConfiguracoesPage";
 import { ContasFuturasPage } from "./pages/ContasFuturasPage";
@@ -23,6 +23,7 @@ import { OrcamentoPage } from "./pages/OrcamentoPage";
 import { PatrimonioPage } from "./pages/PatrimonioPage";
 import type { PageKey } from "./pages/pageTypes";
 import { RelatoriosPage } from "./pages/RelatoriosPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -52,27 +53,47 @@ type AuthState = "checking" | "authenticated" | "unauthenticated";
 
 export default function App() {
   const [page, setPage] = useState<PageKey>("dashboard");
+  const [routePath, setRoutePath] = useState(() => window.location.pathname);
   const [boot, setBoot] = useState<BackendBootResult | null>(null);
   const [novoLancamentoOpen, setNovoLancamentoOpen] = useState(false);
+  const [loginMessage, setLoginMessage] = useState("");
   const [authState, setAuthState] = useState<AuthState>(
     isSupabaseConfigured ? "checking" : "authenticated"
   );
+  const isPasswordResetRoute = routePath === PASSWORD_RESET_PATH;
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
+    if (isPasswordResetRoute) {
+      setAuthState("unauthenticated");
+      return;
+    }
     getAccessToken().then((t) => setAuthState(t ? "authenticated" : "unauthenticated"));
-  }, []);
+  }, [isPasswordResetRoute]);
 
   const handleReady = useCallback((result: BackendBootResult) => setBoot(result), []);
   const abrirNovoLancamento = useCallback(() => setNovoLancamentoOpen(true), []);
-  const handleLogin = useCallback(() => setAuthState("authenticated"), []);
+  const handleLogin = useCallback(() => {
+    setLoginMessage("");
+    setAuthState("authenticated");
+  }, []);
   const handleLogout = useCallback(async () => {
     await signOut();
     queryClient.clear();
     setAuthState("unauthenticated");
   }, []);
+  const handleBackToLogin = useCallback((message = "") => {
+    queryClient.clear();
+    setLoginMessage(message);
+    setRoutePath("/");
+    setAuthState("unauthenticated");
+  }, []);
 
   const backendStatus = boot?.port ? `Servico local em 127.0.0.1:${boot.port}` : "Supabase PostgreSQL";
+
+  if (isPasswordResetRoute) {
+    return <ResetPasswordPage onBackToLogin={handleBackToLogin} />;
+  }
 
   if (authState === "checking") {
     return (
@@ -83,7 +104,7 @@ export default function App() {
   }
 
   if (authState === "unauthenticated") {
-    return <LoginPage onLogin={handleLogin} />;
+    return <LoginPage initialMessage={loginMessage} onLogin={handleLogin} />;
   }
 
   return (

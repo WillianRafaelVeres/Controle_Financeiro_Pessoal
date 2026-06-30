@@ -132,6 +132,13 @@ VITE_SUPABASE_ANON_KEY=...
 
 O backend valida o JWT do Supabase em cada chamada `/api`, grava `user_id` em novos registros e filtra automaticamente as tabelas por usuario. No banco Supabase, as tabelas financeiras tambem devem ficar com RLS ativo e politica por `auth.uid() = user_id`.
 
+Para recuperacao de senha, configure em Supabase Auth:
+
+```text
+Site URL: https://controle-financeiro-pessoal-jz43.onrender.com
+Redirect URL: https://controle-financeiro-pessoal-jz43.onrender.com/reset-password
+```
+
 Para desenvolvimento local:
 
 ```powershell

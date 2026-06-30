@@ -1,8 +1,10 @@
-import { createClient, type AuthChangeEvent, type Session, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type AuthChangeEvent, type EmailOtpType, type Session, type SupabaseClient } from "@supabase/supabase-js";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 const LEGACY_SESSION_KEY = "central_financeira_session";
+const PASSWORD_RECOVERY_REQUEST_KEY = "central_financeira_password_recovery_requested_at";
+const PASSWORD_RECOVERY_REQUEST_TTL_MS = 1000 * 60 * 30;
 
 export const PASSWORD_RESET_PATH = "/reset-password";
 const configuredPasswordResetRedirectUrl = (import.meta.env.VITE_PASSWORD_RESET_REDIRECT_URL as string | undefined)?.trim();
@@ -54,10 +56,36 @@ function clearLegacySession() {
   localStorage.removeItem(LEGACY_SESSION_KEY);
 }
 
+function rememberPasswordRecoveryRequest() {
+  try {
+    localStorage.setItem(PASSWORD_RECOVERY_REQUEST_KEY, String(Date.now()));
+  } catch {
+    // ignore
+  }
+}
+
+function clearPasswordRecoveryRequest() {
+  try {
+    localStorage.removeItem(PASSWORD_RECOVERY_REQUEST_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function hasRecentPasswordRecoveryRequest(): boolean {
+  try {
+    const requestedAt = Number(localStorage.getItem(PASSWORD_RECOVERY_REQUEST_KEY));
+    return Number.isFinite(requestedAt) && Date.now() - requestedAt < PASSWORD_RECOVERY_REQUEST_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
 interface BrowserLocationLike {
   hash?: string;
   hostname?: string;
   origin?: string;
+  pathname?: string;
   search?: string;
 }
 
@@ -99,8 +127,23 @@ function hasRecoveryType(value?: string): boolean {
   return params.get("type") === "recovery";
 }
 
+function authCode(value?: string): string | null {
+  if (!value) return null;
+  return new URLSearchParams(value.replace(/^[#?]/, "")).get("code");
+}
+
+function recoveryTokenHash(value?: string): string | null {
+  if (!value) return null;
+  const params = new URLSearchParams(value.replace(/^[#?]/, ""));
+  if (params.get("type") !== "recovery") return null;
+  return params.get("token_hash");
+}
+
 export function hasPasswordRecoveryParams(location = browserLocation()): boolean {
-  return hasRecoveryType(location?.hash) || hasRecoveryType(location?.search);
+  if (hasRecoveryType(location?.hash) || hasRecoveryType(location?.search)) return true;
+  if (recoveryTokenHash(location?.search)) return true;
+  if (!authCode(location?.search)) return false;
+  return location?.pathname === PASSWORD_RESET_PATH || hasRecentPasswordRecoveryRequest();
 }
 
 export async function signIn(email: string, password: string): Promise<string> {
@@ -123,11 +166,34 @@ export async function signOut(): Promise<void> {
     // ignore
   }
   clearLegacySession();
+  clearPasswordRecoveryRequest();
 }
 
 export async function getCurrentSession(): Promise<Session | null> {
   if (!supabase) return null;
   const { data, error } = await supabase.auth.getSession();
+  if (error) return null;
+  return data.session;
+}
+
+export async function getRecoverySession(): Promise<Session | null> {
+  const session = await getCurrentSession();
+  if (session?.access_token) return session;
+
+  const code = authCode(browserLocation()?.search);
+  if (code) {
+    const { data, error } = await getClient().auth.exchangeCodeForSession(code);
+    if (error) return null;
+    return data.session;
+  }
+
+  const tokenHash = recoveryTokenHash(browserLocation()?.search);
+  if (!tokenHash) return null;
+
+  const { data, error } = await getClient().auth.verifyOtp({
+    token_hash: tokenHash,
+    type: "recovery" as EmailOtpType,
+  });
   if (error) return null;
   return data.session;
 }
@@ -142,6 +208,7 @@ export async function sendPasswordReset(email: string): Promise<void> {
     redirectTo: getPasswordResetRedirectUrl(),
   });
   if (error) throw new Error(error.message);
+  rememberPasswordRecoveryRequest();
 }
 
 export async function updatePassword(password: string): Promise<void> {

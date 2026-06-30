@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const auth = {
+    exchangeCodeForSession: vi.fn(),
     getSession: vi.fn(),
     onAuthStateChange: vi.fn(),
     resetPasswordForEmail: vi.fn(),
@@ -9,6 +10,7 @@ const mocks = vi.hoisted(() => {
     signOut: vi.fn(),
     signUp: vi.fn(),
     updateUser: vi.fn(),
+    verifyOtp: vi.fn(),
   };
   return {
     auth,
@@ -32,6 +34,7 @@ describe("supabase auth helpers", () => {
     localStorage.clear();
     vi.unstubAllEnvs();
     vi.clearAllMocks();
+    mocks.auth.exchangeCodeForSession.mockResolvedValue({ data: { session: { access_token: "recovery-token" } }, error: null });
     mocks.auth.getSession.mockResolvedValue({ data: { session: null }, error: null });
     mocks.auth.onAuthStateChange.mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } });
     mocks.auth.resetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
@@ -39,6 +42,7 @@ describe("supabase auth helpers", () => {
     mocks.auth.signOut.mockResolvedValue({ error: null });
     mocks.auth.signUp.mockResolvedValue({ data: {}, error: null });
     mocks.auth.updateUser.mockResolvedValue({ data: {}, error: null });
+    mocks.auth.verifyOtp.mockResolvedValue({ data: { session: { access_token: "token-hash-session" } }, error: null });
   });
 
   it("faz login e retorna o token da sessao", async () => {
@@ -50,13 +54,14 @@ describe("supabase auth helpers", () => {
   });
 
   it("envia recuperacao de senha com redirect configurado", async () => {
-    const { getPasswordResetRedirectUrl, sendPasswordReset } = await loadModule();
+    const { getPasswordResetRedirectUrl, hasPasswordRecoveryParams, sendPasswordReset } = await loadModule();
 
     await sendPasswordReset("pessoa@email.com");
 
     expect(mocks.auth.resetPasswordForEmail).toHaveBeenCalledWith("pessoa@email.com", {
       redirectTo: getPasswordResetRedirectUrl(),
     });
+    expect(hasPasswordRecoveryParams({ pathname: "/", search: "?code=abc" })).toBe(true);
   });
 
   it("usa a origem atual hospedada para o redirect de recuperacao", async () => {
@@ -83,7 +88,31 @@ describe("supabase auth helpers", () => {
 
     expect(hasPasswordRecoveryParams({ hash: "#access_token=token&type=recovery" })).toBe(true);
     expect(hasPasswordRecoveryParams({ search: "?type=recovery" })).toBe(true);
+    expect(hasPasswordRecoveryParams({ pathname: "/reset-password", search: "?token_hash=abc&type=recovery" })).toBe(true);
+    expect(hasPasswordRecoveryParams({ pathname: "/reset-password", search: "?code=abc" })).toBe(true);
+    expect(hasPasswordRecoveryParams({ pathname: "/", search: "?code=abc" })).toBe(false);
     expect(hasPasswordRecoveryParams({ hash: "#type=signup" })).toBe(false);
+  });
+
+  it("troca codigo de recuperacao por sessao quando necessario", async () => {
+    window.history.replaceState(null, "", "/reset-password?code=recovery-code");
+    const { getRecoverySession } = await loadModule();
+
+    await expect(getRecoverySession()).resolves.toEqual({ access_token: "recovery-token" });
+
+    expect(mocks.auth.exchangeCodeForSession).toHaveBeenCalledWith("recovery-code");
+  });
+
+  it("valida token_hash de recuperacao vindo do template personalizado", async () => {
+    window.history.replaceState(null, "", "/reset-password?token_hash=token-hash&type=recovery");
+    const { getRecoverySession } = await loadModule();
+
+    await expect(getRecoverySession()).resolves.toEqual({ access_token: "token-hash-session" });
+
+    expect(mocks.auth.verifyOtp).toHaveBeenCalledWith({
+      token_hash: "token-hash",
+      type: "recovery",
+    });
   });
 
   it("altera a senha do usuario autenticado pelo link", async () => {

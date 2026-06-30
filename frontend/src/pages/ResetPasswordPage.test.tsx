@@ -1,11 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getCurrentSession, onAuthStateChange, signOut, updatePassword } from "../lib/supabase";
+import { getRecoverySession, onAuthStateChange, signOut, updatePassword } from "../lib/supabase";
 import { ResetPasswordPage } from "./ResetPasswordPage";
 
 vi.mock("../lib/supabase", () => ({
-  getCurrentSession: vi.fn(),
+  getRecoverySession: vi.fn(),
   isSupabaseConfigured: true,
   onAuthStateChange: vi.fn(),
   signOut: vi.fn(),
@@ -16,7 +16,7 @@ describe("ResetPasswordPage", () => {
   beforeEach(() => {
     cleanup();
     vi.clearAllMocks();
-    vi.mocked(getCurrentSession).mockResolvedValue({ access_token: "recovery-token" } as never);
+    vi.mocked(getRecoverySession).mockResolvedValue({ access_token: "recovery-token" } as never);
     vi.mocked(onAuthStateChange).mockReturnValue(vi.fn());
     vi.mocked(signOut).mockResolvedValue(undefined);
     vi.mocked(updatePassword).mockResolvedValue(undefined);

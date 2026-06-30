@@ -141,6 +141,14 @@ Redirect URL: https://controle-financeiro-pessoal-jz43.onrender.com/reset-passwo
 
 Se o link do e-mail abrir `localhost:3000/#access_token...`, o Supabase Auth ainda esta usando uma URL local como fallback. Revise em Authentication > URL Configuration se o Site URL e o Redirect URL permitido estao apontando para o Render. No Render, nao defina `VITE_PASSWORD_RESET_REDIRECT_URL` como `localhost`.
 
+Template personalizado do e-mail de recuperacao:
+
+- Supabase > Authentication > Email Templates > Reset password.
+- Subject: `Recuperar senha - Central Financeira`
+- Body: cole o HTML de `docs/supabase/password-recovery-email-template.html`.
+
+Observacao: desde 3 de junho de 2026, novos projetos Free usando o SMTP padrao do Supabase podem nao permitir editar templates. Nesse caso, configure um SMTP proprio no Supabase Auth ou use um plano Pro para liberar a personalizacao.
+
 Para desenvolvimento local:
 
 ```powershell

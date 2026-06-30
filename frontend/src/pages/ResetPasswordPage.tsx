@@ -2,7 +2,7 @@ import { Loader2, Lock } from "lucide-react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 
-import { getCurrentSession, isSupabaseConfigured, onAuthStateChange, signOut, updatePassword } from "../lib/supabase";
+import { getRecoverySession, isSupabaseConfigured, onAuthStateChange, signOut, updatePassword } from "../lib/supabase";
 
 interface ResetPasswordPageProps {
   onBackToLogin: (message?: string) => void;
@@ -43,7 +43,7 @@ export function ResetPasswordPage({ onBackToLogin }: ResetPasswordPageProps) {
 
     async function hasSession() {
       try {
-        const session = await getCurrentSession();
+        const session = await getRecoverySession();
         return Boolean(session?.access_token);
       } catch {
         return false;

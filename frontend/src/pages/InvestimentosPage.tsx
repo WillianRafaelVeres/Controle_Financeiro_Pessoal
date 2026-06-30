@@ -19,6 +19,7 @@ import { VendaAtivoModal } from "../features/investimentos/VendaAtivoModal";
 import { api } from "../lib/api";
 import { formatDate, formatMoney, formatPercent, toNumber } from "../lib/formatters";
 import { INVESTMENT_TYPE_LABELS, INVESTMENT_TYPE_OPTIONS } from "../lib/investmentProfiles";
+import { invalidateInvestmentData } from "../lib/queryInvalidation";
 import type { MovimentoInvestimento, Posicao, TipoAtivo } from "../lib/types";
 import { currentMonth } from "../lib/utils";
 
@@ -92,13 +93,13 @@ export function InvestimentosPage() {
     refetchInterval: 60_000,
     retry: false,
   });
-  const comprar = useMutation({ mutationFn: api.comprar, onSuccess: () => queryClient.invalidateQueries() });
-  const vender = useMutation({ mutationFn: api.vender, onSuccess: () => queryClient.invalidateQueries() });
+  const comprar = useMutation({ mutationFn: api.comprar, onSuccess: () => invalidateInvestmentData(queryClient) });
+  const vender = useMutation({ mutationFn: api.vender, onSuccess: () => invalidateInvestmentData(queryClient) });
   const atualizarMovimento = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.atualizarMovimentoInvestimento(id, payload),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => invalidateInvestmentData(queryClient),
   });
-  const excluirMovimento = useMutation({ mutationFn: api.excluirMovimentoInvestimento, onSuccess: () => queryClient.invalidateQueries() });
+  const excluirMovimento = useMutation({ mutationFn: api.excluirMovimentoInvestimento, onSuccess: () => invalidateInvestmentData(queryClient) });
   const atualizarCotacoes = useMutation({
     mutationFn: api.atualizarCotacoesInvestimentos,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["posicoes"] }),

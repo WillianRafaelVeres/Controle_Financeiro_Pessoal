@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Dialog } from "../../components/ui/dialog";
 import { api } from "../../lib/api";
+import { invalidateLaunchData } from "../../lib/queryInvalidation";
 import type { NaturezaCategoria, TipoLancamento } from "../../lib/types";
 import { LancamentoForm } from "./LancamentoForm";
 
@@ -33,19 +34,7 @@ export function NovoLancamentoModal({ open, onClose, initialType = "GASTO" }: No
   const criarMetodo = useMutation({ mutationFn: api.criarMetodo });
 
   async function atualizarDadosRelacionados() {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["painel"] }),
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-      queryClient.invalidateQueries({ queryKey: ["lancamentos"] }),
-      queryClient.invalidateQueries({ queryKey: ["planejamento"] }),
-      queryClient.invalidateQueries({ queryKey: ["orcamentos"] }),
-      queryClient.invalidateQueries({ queryKey: ["cartoes"] }),
-      queryClient.invalidateQueries({ queryKey: ["contas"] }),
-      queryClient.invalidateQueries({ queryKey: ["compromissos"] }),
-      queryClient.invalidateQueries({ queryKey: ["contas_futuras"] }),
-      queryClient.invalidateQueries({ queryKey: ["caixinhas"] }),
-      queryClient.invalidateQueries({ queryKey: ["relatorios"] }),
-    ]);
+    await invalidateLaunchData(queryClient);
   }
 
   return (

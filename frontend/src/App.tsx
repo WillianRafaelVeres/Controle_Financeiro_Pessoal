@@ -26,7 +26,14 @@ import { RelatoriosPage } from "./pages/RelatoriosPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
+    },
+  },
 });
 
 function CurrentPage({ page, onNewLancamento }: { page: PageKey; onNewLancamento: () => void }) {

@@ -12,6 +12,7 @@ import { LancamentosTable } from "../features/lancamentos/LancamentosTable";
 import { NovoLancamentoModal } from "../features/lancamentos/NovoLancamentoModal";
 import { api } from "../lib/api";
 import type { Lancamento } from "../lib/types";
+import { invalidateLaunchData } from "../lib/queryInvalidation";
 import { currentMonth } from "../lib/utils";
 
 export function LancamentosPage() {
@@ -27,9 +28,9 @@ export function LancamentosPage() {
   const lancamentos = useQuery({ queryKey: ["lancamentos", month], queryFn: () => api.lancamentos(month.ano, month.mes) });
   const atualizar = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.atualizarLancamento(id, payload),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => invalidateLaunchData(queryClient),
   });
-  const excluir = useMutation({ mutationFn: api.excluirLancamento, onSuccess: () => queryClient.invalidateQueries() });
+  const excluir = useMutation({ mutationFn: api.excluirLancamento, onSuccess: () => invalidateLaunchData(queryClient) });
 
   const filtrados = (lancamentos.data ?? []).filter((item) => !tipoFiltro || item.tipo === tipoFiltro);
 

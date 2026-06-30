@@ -15,6 +15,7 @@ import { Select } from "../components/ui/select";
 import { Td, Th, Table } from "../components/ui/table";
 import { api } from "../lib/api";
 import { formatDate, formatMoney, toNumber } from "../lib/formatters";
+import { invalidateSettingsData } from "../lib/queryInvalidation";
 import type { Conta } from "../lib/types";
 
 const tiposConta = [
@@ -35,16 +36,16 @@ function entraNaConciliacao(conta: Conta) {
 export function ContasPage() {
   const queryClient = useQueryClient();
   const contas = useQuery({ queryKey: ["contas", "todas"], queryFn: () => api.contas(true) });
-  const criar = useMutation({ mutationFn: api.criarConta, onSuccess: () => queryClient.invalidateQueries() });
+  const criar = useMutation({ mutationFn: api.criarConta, onSuccess: () => invalidateSettingsData(queryClient) });
   const atualizar = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.atualizarConta(id, payload),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => invalidateSettingsData(queryClient),
   });
   const atualizarSaldo = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.atualizarSaldoConta(id, payload),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => invalidateSettingsData(queryClient),
   });
-  const inativar = useMutation({ mutationFn: api.inativarConta, onSuccess: () => queryClient.invalidateQueries() });
+  const inativar = useMutation({ mutationFn: api.inativarConta, onSuccess: () => invalidateSettingsData(queryClient) });
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Conta | null>(null);
   const [saldoConta, setSaldoConta] = useState<Conta | null>(null);

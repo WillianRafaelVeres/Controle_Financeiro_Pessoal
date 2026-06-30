@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Td, Th, Table } from "../components/ui/table";
 import { api } from "../lib/api";
 import { formatMoney } from "../lib/formatters";
+import { invalidateSettingsData } from "../lib/queryInvalidation";
 import type { Categoria, MetodoPagamento, NaturezaCategoria, Subcategoria, TipoMetodo } from "../lib/types";
 import { cn } from "../lib/utils";
 
@@ -30,7 +31,7 @@ export function ConfiguracoesPage() {
   const contas = useQuery({ queryKey: ["contas"], queryFn: () => api.contas() });
   const cartoes = useQuery({ queryKey: ["cartoes"], queryFn: api.cartoes });
   const diagnostico = useQuery({ queryKey: ["diagnostico"], queryFn: api.diagnostico });
-  const invalidate = () => queryClient.invalidateQueries();
+  const invalidate = () => invalidateSettingsData(queryClient);
   const mutations = {
     categoria: useMutation({ mutationFn: api.criarCategoria, onSuccess: invalidate }),
     subcategoria: useMutation({ mutationFn: api.criarSubcategoria, onSuccess: invalidate }),

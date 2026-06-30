@@ -15,6 +15,7 @@ import { DividendosForm } from "../features/investimentos/DividendosForm";
 import { api } from "../lib/api";
 import { formatDate, formatMoney, toNumber } from "../lib/formatters";
 import { INVESTMENT_TYPE_LABELS } from "../lib/investmentProfiles";
+import { invalidateInvestmentData } from "../lib/queryInvalidation";
 import type { Ativo, Dividendo, TipoProvento } from "../lib/types";
 
 const PROVENTO_OPTIONS: Array<{ value: TipoProvento; label: string }> = [
@@ -34,12 +35,12 @@ export function DividendosPage() {
   const queryClient = useQueryClient();
   const ativos = useQuery({ queryKey: ["ativos-dividendos"], queryFn: api.ativosDividendos });
   const dividendos = useQuery({ queryKey: ["dividendos"], queryFn: api.dividendos });
-  const criar = useMutation({ mutationFn: api.criarDividendo, onSuccess: () => queryClient.invalidateQueries() });
+  const criar = useMutation({ mutationFn: api.criarDividendo, onSuccess: () => invalidateInvestmentData(queryClient) });
   const atualizar = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.atualizarDividendo(id, payload),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => invalidateInvestmentData(queryClient),
   });
-  const excluir = useMutation({ mutationFn: api.excluirDividendo, onSuccess: () => queryClient.invalidateQueries() });
+  const excluir = useMutation({ mutationFn: api.excluirDividendo, onSuccess: () => invalidateInvestmentData(queryClient) });
   const [editingDividendo, setEditingDividendo] = useState<Dividendo | null>(null);
   const [deleteDividendo, setDeleteDividendo] = useState<Dividendo | null>(null);
   const [deleteError, setDeleteError] = useState("");

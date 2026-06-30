@@ -13,6 +13,7 @@ import { Input } from "../components/ui/input";
 import { Td, Th, Table } from "../components/ui/table";
 import { api } from "../lib/api";
 import { formatDate, formatMoney, toNumber } from "../lib/formatters";
+import { invalidateDollarData } from "../lib/queryInvalidation";
 import type { ExtratoDolar } from "../lib/types";
 
 export type ActionType = "ENVIO" | "RETIRADA";
@@ -27,13 +28,13 @@ export function ExteriorDolarPage() {
     refetchInterval: 60_000,
     retry: false,
   });
-  const movimento = useMutation({ mutationFn: api.dolarMovimento, onSuccess: () => queryClient.invalidateQueries() });
+  const movimento = useMutation({ mutationFn: api.dolarMovimento, onSuccess: () => invalidateDollarData(queryClient) });
   const atualizarMovimento = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.dolarAtualizarMovimento(id, payload),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => invalidateDollarData(queryClient),
   });
-  const excluirMovimento = useMutation({ mutationFn: api.dolarExcluirMovimento, onSuccess: () => queryClient.invalidateQueries() });
-  const informarSaldo = useMutation({ mutationFn: api.dolarInformarSaldo, onSuccess: () => queryClient.invalidateQueries() });
+  const excluirMovimento = useMutation({ mutationFn: api.dolarExcluirMovimento, onSuccess: () => invalidateDollarData(queryClient) });
+  const informarSaldo = useMutation({ mutationFn: api.dolarInformarSaldo, onSuccess: () => invalidateDollarData(queryClient) });
   const [action, setAction] = useState<ActionType | null>(null);
   const [editing, setEditing] = useState<ExtratoDolar | null>(null);
   const [editingAction, setEditingAction] = useState<ActionType | null>(null);

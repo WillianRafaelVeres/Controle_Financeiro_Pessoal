@@ -10,6 +10,7 @@ import { Dialog } from "../../components/ui/dialog";
 import { Td, Th, Table } from "../../components/ui/table";
 import { api } from "../../lib/api";
 import { formatMoney, formatPercent, toNumber } from "../../lib/formatters";
+import { invalidatePlanningData } from "../../lib/queryInvalidation";
 import type { NaturezaCategoria, OrcamentoLinha } from "../../lib/types";
 
 interface OrcamentoTableProps {
@@ -26,12 +27,12 @@ export function OrcamentoTable({ data, natureza }: OrcamentoTableProps) {
   const atualizarItem = useMutation({
     mutationFn: (payload: { itemId: string; valor: number; escopo: string }) =>
       api.atualizarItemOrcamento(payload.itemId, { valor_orcado: payload.valor, escopo: payload.escopo }),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => invalidatePlanningData(queryClient),
   });
 
   const removerItem = useMutation({
     mutationFn: (payload: { itemId: string; escopo: string }) => api.removerItemOrcamento(payload.itemId, payload.escopo),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => invalidatePlanningData(queryClient),
   });
 
   const grouped = useMemo(() => {

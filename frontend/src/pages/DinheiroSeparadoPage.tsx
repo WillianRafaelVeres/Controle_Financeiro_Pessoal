@@ -15,6 +15,7 @@ import { Select } from "../components/ui/select";
 import { Td, Th, Table } from "../components/ui/table";
 import { api } from "../lib/api";
 import { formatMoney, toNumber } from "../lib/formatters";
+import { invalidateLaunchData } from "../lib/queryInvalidation";
 import type { Caixinha } from "../lib/types";
 
 function todayIso() {
@@ -35,7 +36,7 @@ export function DinheiroSeparadoPage() {
 
   const usar = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.usarCaixinha(id, payload),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => invalidateLaunchData(queryClient),
   });
 
   const lista = useMemo(() => (caixinhas.data ?? []).filter((item) => toNumber(item.valor_total) > 0), [caixinhas.data]);

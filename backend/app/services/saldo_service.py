@@ -243,9 +243,9 @@ def calcular_gasto_real_mes(session: Session, ano: int, mes: int, categoria_id: 
 
 
 def calcular_orcamento_total_mes(session: Session, ano: int, mes: int) -> Decimal:
-    from app.services.orcamento_service import listar_itens_orcamento_mes
+    from app.services.orcamento_service import materializar_itens_orcamento_mes
 
-    listar_itens_orcamento_mes(session, ano, mes)
+    materializar_itens_orcamento_mes(session, ano, mes)
     value_itens = session.exec(
         select(func.sum(OrcamentoItem.valor_orcado)).where(
             OrcamentoItem.ano == ano,

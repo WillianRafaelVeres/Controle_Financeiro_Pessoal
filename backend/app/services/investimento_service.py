@@ -54,6 +54,8 @@ TESOURO_CSV_URL = (
 )
 _TESOURO_CACHE: dict = {"itens": None, "carregado_em": None}
 _TESOURO_CACHE_TTL = timedelta(hours=6)
+_BENCHMARK_CACHE: dict[str, dict] = {}
+_BENCHMARK_CACHE_TTL = timedelta(minutes=15)
 # Palavras genericas que nao ajudam a distinguir o titulo do Tesouro.
 _TESOURO_STOPWORDS = {"tesouro", "com", "de", "do", "da", "e"}
 TIPOS_COM_DIVIDENDOS = {TipoAtivo.ACAO_BR, TipoAtivo.FII, TipoAtivo.ETF_BR} | TIPOS_EXTERIOR
@@ -88,6 +90,21 @@ TIPO_ATIVO_LABELS = {
     TipoAtivo.PREVIDENCIA: "Previdencia",
     TipoAtivo.OUTRO: "Outro",
 }
+
+
+def _benchmark_cache_get(key: str) -> dict | None:
+    cached = _BENCHMARK_CACHE.get(key)
+    if not cached:
+        return None
+    if datetime.now(timezone.utc) - cached["carregado_em"] > _BENCHMARK_CACHE_TTL:
+        _BENCHMARK_CACHE.pop(key, None)
+        return None
+    return dict(cached["value"])
+
+
+def _benchmark_cache_set(key: str, value: dict) -> dict:
+    _BENCHMARK_CACHE[key] = {"value": dict(value), "carregado_em": datetime.now(timezone.utc)}
+    return dict(value)
 
 NOME_CATEGORIA_INVESTIMENTOS = "Investimentos"
 
@@ -341,6 +358,11 @@ def _buscar_preco_tesouro(ativo: Ativo) -> Decimal | None:
 
 
 def _buscar_indice_yahoo(simbolo: str) -> dict:
+    cache_key = f"yahoo:{simbolo}"
+    cached = _benchmark_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         response = httpx.get(
             f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(simbolo, safe='')}",
@@ -369,24 +391,29 @@ def _buscar_indice_yahoo(simbolo: str) -> dict:
             if market_time
             else None
         )
-        return {
+        return _benchmark_cache_set(cache_key, {
             "valor": price,
             "variacao_percentual": variacao,
             "fonte": "Yahoo Finance",
             "data": data,
             "erro": None,
-        }
+        })
     except Exception:
-        return {
+        return _benchmark_cache_set(cache_key, {
             "valor": None,
             "variacao_percentual": None,
             "fonte": "Yahoo Finance",
             "data": None,
             "erro": "Nao foi possivel buscar o indicador agora.",
-        }
+        })
 
 
 def _buscar_cdi_diario() -> dict:
+    cache_key = "bcb:cdi-diario"
+    cached = _benchmark_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         response = httpx.get(
             "https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados/ultimos/1",
@@ -399,21 +426,21 @@ def _buscar_cdi_diario() -> dict:
         valor = Decimal(str(item.get("valor") or "0"))
         if valor <= 0:
             raise ValueError("CDI indisponivel")
-        return {
+        return _benchmark_cache_set(cache_key, {
             "valor": valor,
             "variacao_percentual": valor,
             "fonte": "Banco Central SGS",
             "data": item.get("data"),
             "erro": None,
-        }
+        })
     except Exception:
-        return {
+        return _benchmark_cache_set(cache_key, {
             "valor": None,
             "variacao_percentual": None,
             "fonte": "Banco Central SGS",
             "data": None,
             "erro": "Nao foi possivel buscar o CDI diario agora.",
-        }
+        })
 
 
 def _cotacao_dolar_desempenho(session: Session) -> tuple[Decimal, dict]:
@@ -846,11 +873,13 @@ def _sincronizar_extrato_investimento_usd(
     session.add(extrato_existente)
 
 
-def _movimento_to_dict(session: Session, movimento: MovimentoInvestimento) -> dict:
-    ativo = session.get(Ativo, movimento.ativo_id)
+def _movimento_to_dict_com_cache(
+    movimento: MovimentoInvestimento,
+    ativo: Ativo | None,
+    conta: Conta | None,
+) -> dict:
     if not ativo:
         raise HTTPException(status_code=404, detail="Ativo nao encontrado para movimento.")
-    conta = session.get(Conta, movimento.conta_id) if movimento.conta_id else None
     valor_financeiro = _valor_financeiro_compra(movimento) if _movimento_entrada(movimento.tipo_movimento) else _valor_financeiro_venda(movimento)
     return {
         "id": movimento.id,
@@ -875,11 +904,31 @@ def _movimento_to_dict(session: Session, movimento: MovimentoInvestimento) -> di
     }
 
 
+def _movimento_to_dict(session: Session, movimento: MovimentoInvestimento) -> dict:
+    ativo = session.get(Ativo, movimento.ativo_id)
+    conta = session.get(Conta, movimento.conta_id) if movimento.conta_id else None
+    return _movimento_to_dict_com_cache(movimento, ativo, conta)
+
+
 def listar_movimentos(session: Session) -> list[dict]:
     movimentos = session.exec(
         select(MovimentoInvestimento).order_by(MovimentoInvestimento.data_movimento.desc(), MovimentoInvestimento.criado_em.desc())
     ).all()
-    return [_movimento_to_dict(session, movimento) for movimento in movimentos if session.get(Ativo, movimento.ativo_id)]
+    ativo_ids = {movimento.ativo_id for movimento in movimentos if movimento.ativo_id}
+    conta_ids = {movimento.conta_id for movimento in movimentos if movimento.conta_id}
+    ativos = {
+        ativo.id: ativo
+        for ativo in session.exec(select(Ativo).where(Ativo.id.in_(list(ativo_ids)))).all()
+    } if ativo_ids else {}
+    contas = {
+        conta.id: conta
+        for conta in session.exec(select(Conta).where(Conta.id.in_(list(conta_ids)))).all()
+    } if conta_ids else {}
+    return [
+        _movimento_to_dict_com_cache(movimento, ativos.get(movimento.ativo_id), contas.get(movimento.conta_id))
+        for movimento in movimentos
+        if movimento.ativo_id in ativos
+    ]
 
 
 def sincronizar_lancamentos_investimentos_brl_pendentes(session: Session, incluir_sem_conta: bool = False) -> int:
@@ -1008,15 +1057,11 @@ def excluir_movimento(session: Session, movimento_id: str) -> None:
     session.commit()
 
 
-def calcular_posicao(session: Session, ativo_id: str) -> dict:
-    ativo = session.get(Ativo, ativo_id)
-    if not ativo:
-        raise HTTPException(status_code=404, detail="Ativo nao encontrado.")
-    movimentos = session.exec(
-        select(MovimentoInvestimento).where(MovimentoInvestimento.ativo_id == ativo_id)
-        .order_by(MovimentoInvestimento.data_movimento, MovimentoInvestimento.criado_em)
-    ).all()
-    cotacao = _ultima_cotacao(session, ativo_id)
+def _calcular_posicao_ativo(
+    ativo: Ativo,
+    movimentos: list[MovimentoInvestimento],
+    cotacao: Cotacao | None,
+) -> dict:
     if _controle_por_valor(ativo):
         saldo_valor = Decimal("0.00")
         for movimento in movimentos:
@@ -1027,7 +1072,7 @@ def calcular_posicao(session: Session, ativo_id: str) -> dict:
         valor_aplicado = max(saldo_valor, Decimal("0.00"))
         valor_atual = cotacao.preco if cotacao and valor_aplicado > 0 else valor_aplicado
         return {
-            "ativo_id": ativo_id,
+            "ativo_id": ativo.id,
             "tipo_controle": _tipo_controle_efetivo(ativo),
             "quantidade_atual": None,
             "preco_medio": None,
@@ -1056,7 +1101,7 @@ def calcular_posicao(session: Session, ativo_id: str) -> dict:
     preco_atual = cotacao.preco if cotacao else preco_medio
     valor_atual = quantidade_atual * preco_atual
     return {
-        "ativo_id": ativo_id,
+        "ativo_id": ativo.id,
         "tipo_controle": _tipo_controle_efetivo(ativo),
         "quantidade_atual": quantidade_atual,
         "preco_medio": preco_medio,
@@ -1069,13 +1114,61 @@ def calcular_posicao(session: Session, ativo_id: str) -> dict:
     }
 
 
+def calcular_posicao(session: Session, ativo_id: str) -> dict:
+    ativo = session.get(Ativo, ativo_id)
+    if not ativo:
+        raise HTTPException(status_code=404, detail="Ativo nao encontrado.")
+    movimentos = session.exec(
+        select(MovimentoInvestimento)
+        .where(MovimentoInvestimento.ativo_id == ativo_id)
+        .order_by(MovimentoInvestimento.data_movimento, MovimentoInvestimento.criado_em)
+    ).all()
+    return _calcular_posicao_ativo(ativo, movimentos, _ultima_cotacao(session, ativo_id))
+
+
 def listar_posicoes(session: Session) -> list[dict]:
     ativos = session.exec(select(Ativo).where(Ativo.ativo.is_(True)).order_by(Ativo.ticker)).all()
+    ativos_visiveis = [ativo for ativo in ativos if ativo.tipo_ativo not in TIPOS_OCULTOS_POSICAO]
+    ativo_ids = [ativo.id for ativo in ativos_visiveis]
+    movimentos_por_ativo: dict[str, list[MovimentoInvestimento]] = {ativo_id: [] for ativo_id in ativo_ids}
+    cotacoes_por_ativo: dict[str, Cotacao] = {}
+    dividendos_por_ativo: dict[str, Decimal] = {}
+
+    if ativo_ids:
+        movimentos = session.exec(
+            select(MovimentoInvestimento)
+            .where(MovimentoInvestimento.ativo_id.in_(ativo_ids))
+            .order_by(MovimentoInvestimento.ativo_id, MovimentoInvestimento.data_movimento, MovimentoInvestimento.criado_em)
+        ).all()
+        for movimento in movimentos:
+            movimentos_por_ativo.setdefault(movimento.ativo_id, []).append(movimento)
+
+        cotacoes = session.exec(
+            select(Cotacao)
+            .where(Cotacao.ativo_id.in_(ativo_ids))
+            .order_by(Cotacao.ativo_id, Cotacao.data_cotacao.desc(), Cotacao.criado_em.desc())
+        ).all()
+        for cotacao in cotacoes:
+            if cotacao.ativo_id and cotacao.ativo_id not in cotacoes_por_ativo:
+                cotacoes_por_ativo[cotacao.ativo_id] = cotacao
+
+        ativos_com_dividendos = [
+            ativo.id for ativo in ativos_visiveis if _tipo_grupo(ativo.tipo_ativo) in TIPOS_COM_DIVIDENDOS
+        ]
+        if ativos_com_dividendos:
+            dividendos = session.exec(select(Dividendo).where(Dividendo.ativo_id.in_(ativos_com_dividendos))).all()
+            for dividendo in dividendos:
+                dividendos_por_ativo[dividendo.ativo_id] = (
+                    dividendos_por_ativo.get(dividendo.ativo_id, Decimal("0.00")) + dividendo.valor
+                )
+
     result = []
-    for ativo in ativos:
-        if ativo.tipo_ativo in TIPOS_OCULTOS_POSICAO:
-            continue
-        posicao = calcular_posicao(session, ativo.id)
+    for ativo in ativos_visiveis:
+        posicao = _calcular_posicao_ativo(
+            ativo,
+            movimentos_por_ativo.get(ativo.id, []),
+            cotacoes_por_ativo.get(ativo.id),
+        )
         posicao_aberta = (
             Decimal(str(posicao["valor_atual"])) > 0
             if _controle_por_valor(ativo)
@@ -1083,7 +1176,7 @@ def listar_posicoes(session: Session) -> list[dict]:
         )
         if posicao_aberta:
             tem_dividendos = _tipo_grupo(ativo.tipo_ativo) in TIPOS_COM_DIVIDENDOS
-            dividendos_recebidos = _dividendos_recebidos(session, ativo.id) if tem_dividendos else Decimal("0.00")
+            dividendos_recebidos = dividendos_por_ativo.get(ativo.id, Decimal("0.00")) if tem_dividendos else Decimal("0.00")
             valor_aportado = Decimal(str(posicao["valor_total_aportado"]))
             resultado = Decimal(str(posicao["lucro_prejuizo"]))
             resultado_com_dividendos = resultado + dividendos_recebidos

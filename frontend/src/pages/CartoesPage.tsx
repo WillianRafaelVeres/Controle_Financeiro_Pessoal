@@ -9,6 +9,7 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { CartaoResumoCard } from "../features/cartoes/CartaoResumoCard";
 import { CompromissosCartaoTable } from "../features/cartoes/CompromissosCartaoTable";
 import { api } from "../lib/api";
+import { invalidateCardData, invalidateLaunchData } from "../lib/queryInvalidation";
 
 export function CartoesPage() {
   const queryClient = useQueryClient();
@@ -27,15 +28,15 @@ export function CartoesPage() {
     });
   const atualizarCartao = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.atualizarCartao(id, payload),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => invalidateCardData(queryClient),
   });
   const pagarFatura = useMutation({
     mutationFn: ({ id, valor }: { id: string; valor: number }) => api.pagarFatura(id, valor),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => invalidateCardData(queryClient),
   });
   const separar = useMutation({
     mutationFn: ({ id, valor }: { id: string; valor: number }) => api.separarCompromisso(id, valor),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => invalidateLaunchData(queryClient),
   });
 
   return (

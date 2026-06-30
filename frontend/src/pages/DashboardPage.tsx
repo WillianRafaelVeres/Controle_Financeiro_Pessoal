@@ -14,6 +14,7 @@ import { DividendosForm } from "../features/investimentos/DividendosForm";
 import { NovoLancamentoModal } from "../features/lancamentos/NovoLancamentoModal";
 import { api } from "../lib/api";
 import { toNumber } from "../lib/formatters";
+import { invalidateDollarData, invalidateInvestmentData } from "../lib/queryInvalidation";
 import { currentMonth } from "../lib/utils";
 import { DolarActionDialog, type ActionType } from "./ExteriorDolarPage";
 
@@ -26,9 +27,9 @@ export function DashboardPage({ onNewLancamento }: { onNewLancamento?: () => voi
   const ativosDividendos = useQuery({ queryKey: ["ativos-dividendos", "dashboard"], queryFn: api.ativosDividendos });
   const cotacaoDolar = useQuery({ queryKey: ["dolar-cotacao-atual"], queryFn: api.dolarCotacaoAtual, retry: false });
 
-  const criarDividendo = useMutation({ mutationFn: api.criarDividendo, onSuccess: () => queryClient.invalidateQueries() });
-  const movimentoDolar = useMutation({ mutationFn: api.dolarMovimento, onSuccess: () => queryClient.invalidateQueries() });
-  const comprarAtivo = useMutation({ mutationFn: api.comprar, onSuccess: () => queryClient.invalidateQueries() });
+  const criarDividendo = useMutation({ mutationFn: api.criarDividendo, onSuccess: () => invalidateInvestmentData(queryClient) });
+  const movimentoDolar = useMutation({ mutationFn: api.dolarMovimento, onSuccess: () => invalidateDollarData(queryClient) });
+  const comprarAtivo = useMutation({ mutationFn: api.comprar, onSuccess: () => invalidateInvestmentData(queryClient) });
 
   const [localLancamentoOpen, setLocalLancamentoOpen] = useState(false);
   const [compraAtivoOpen, setCompraAtivoOpen] = useState(false);

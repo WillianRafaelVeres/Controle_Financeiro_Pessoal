@@ -12,6 +12,7 @@ import { AdicionarItemOrcamentoModal } from "../features/orcamento/AdicionarItem
 import { OrcamentoTable } from "../features/orcamento/OrcamentoTable";
 import { api } from "../lib/api";
 import { formatMoney, toNumber } from "../lib/formatters";
+import { invalidatePlanningData } from "../lib/queryInvalidation";
 import type { NaturezaCategoria, PlanejamentoNaoPlanejado } from "../lib/types";
 import { currentMonth } from "../lib/utils";
 
@@ -33,7 +34,7 @@ export function OrcamentoPage() {
 
   const copiarMes = useMutation({
     mutationFn: (modo: string) => api.copiarMesAnteriorOrcamento(month.ano, month.mes, modo),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => invalidatePlanningData(queryClient),
   });
 
   const resumo = planejamento.data;

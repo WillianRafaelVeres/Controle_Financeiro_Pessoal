@@ -103,7 +103,7 @@ def resumo_planejamento(session: Session, ano: int, mes: int) -> dict:
     itens_receitas = [item for item in itens if item.get("natureza") == NaturezaCategoria.RECEITA]
     itens_gastos = [item for item in itens if item.get("natureza") == NaturezaCategoria.GASTO]
     itens_investimentos = [item for item in itens if item.get("natureza") == NaturezaCategoria.INVESTIMENTO]
-    nao_planejados = listar_nao_planejados_mes(session, ano, mes)
+    nao_planejados = listar_nao_planejados_mes(session, ano, mes, itens_planejados=itens)
     receitas_nao_planejadas = [item for item in nao_planejados if item.get("natureza") == NaturezaCategoria.RECEITA]
     gastos_nao_planejados = [item for item in nao_planejados if item.get("natureza") == NaturezaCategoria.GASTO]
     investimentos_nao_planejados = [

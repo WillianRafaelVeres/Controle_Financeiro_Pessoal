@@ -10,7 +10,13 @@ from app.models.lancamento import Lancamento
 from app.models.orcamento import OrcamentoItem, OrcamentoItemPadrao, OrcamentoMensal, OrcamentoPadrao
 from app.models.subcategoria import Subcategoria
 from app.schemas.orcamento_schema import OrcamentoAlterar, OrcamentoCreate, OrcamentoItemCreate
-from app.services.saldo_service import calcular_gasto_real_mes, filtro_excluir_categoria_cartao_generica
+from app.services.saldo_service import (
+    calcular_gasto_real_mes,
+    filtro_excluir_categoria_cartao_generica,
+    ids_categorias_cartao_genericas,
+)
+
+ZERO = Decimal("0.00")
 
 
 def _decimal(value: object) -> Decimal:
@@ -51,6 +57,30 @@ def _identity_filters(model, source: OrcamentoItem | OrcamentoItemPadrao | Orcam
         model.categoria_id == source.categoria_id,
         model.subcategoria_id == source.subcategoria_id,
     ]
+
+
+def _categorias_por_id(session: Session, ids: set[str | None]) -> dict[str, Categoria]:
+    ids_validos = [id_ for id_ in ids if id_]
+    if not ids_validos:
+        return {}
+    categorias = session.exec(select(Categoria).where(Categoria.id.in_(ids_validos))).all()
+    return {categoria.id: categoria for categoria in categorias}
+
+
+def _subcategorias_por_id(session: Session, ids: set[str | None]) -> dict[str, Subcategoria]:
+    ids_validos = [id_ for id_ in ids if id_]
+    if not ids_validos:
+        return {}
+    subcategorias = session.exec(select(Subcategoria).where(Subcategoria.id.in_(ids_validos))).all()
+    return {subcategoria.id: subcategoria for subcategoria in subcategorias}
+
+
+def _natureza_lancamento(lancamento: Lancamento) -> NaturezaCategoria:
+    if lancamento.tipo == TipoLancamento.INVESTIMENTO:
+        return NaturezaCategoria.INVESTIMENTO
+    if lancamento.tipo == TipoLancamento.RECEITA:
+        return NaturezaCategoria.RECEITA
+    return NaturezaCategoria.GASTO
 
 
 def _nome_snapshots(session: Session, categoria_id: str | None, subcategoria_id: str | None) -> tuple[str | None, str | None]:
@@ -257,6 +287,10 @@ def _materializar_padroes_mes(session: Session, ano: int, mes: int) -> None:
         session.commit()
 
 
+def materializar_itens_orcamento_mes(session: Session, ano: int, mes: int) -> None:
+    _materializar_padroes_mes(session, ano, mes)
+
+
 def adicionar_item_orcamento(session: Session, payload: OrcamentoItemCreate) -> OrcamentoItem:
     _validate_item_payload(session, payload)
 
@@ -373,6 +407,99 @@ def _realizado_item(session: Session, item: OrcamentoItem, ano: int, mes: int) -
     return _decimal(session.exec(select(func.sum(Lancamento.valor)).where(*filtros)).one())
 
 
+def _agrupar_lancamentos_orcamento(
+    session: Session,
+    ano: int,
+    mes: int,
+    meses_historico: int = 12,
+) -> tuple[
+    dict[tuple[int, int, NaturezaCategoria, str | None], Decimal],
+    dict[tuple[int, int, NaturezaCategoria, str | None, str | None], Decimal],
+]:
+    meses_anteriores = _previous_months(ano, mes, meses_historico)
+    ano_inicial, mes_inicial = meses_anteriores[-1] if meses_anteriores else (ano, mes)
+    inicio, _ = month_bounds(ano_inicial, mes_inicial)
+    _, fim = month_bounds(ano, mes)
+    categorias_cartao = set(ids_categorias_cartao_genericas(session))
+
+    filtros = [
+        Lancamento.ativo.is_(True),
+        Lancamento.afeta_orcamento.is_(True),
+        Lancamento.transferencia_interna.is_(False),
+        Lancamento.data_lancamento >= inicio,
+        Lancamento.data_lancamento < fim,
+        Lancamento.tipo.in_(
+            [
+                TipoLancamento.RECEITA,
+                TipoLancamento.GASTO,
+                TipoLancamento.SEPARAR,
+                TipoLancamento.INVESTIMENTO,
+            ]
+        ),
+    ]
+
+    lancamentos = session.exec(select(Lancamento).where(*filtros)).all()
+    por_categoria: dict[tuple[int, int, NaturezaCategoria, str | None], Decimal] = {}
+    por_subcategoria: dict[tuple[int, int, NaturezaCategoria, str | None, str | None], Decimal] = {}
+
+    for lancamento in lancamentos:
+        if lancamento.cartao_id and lancamento.categoria_id in categorias_cartao:
+            continue
+
+        natureza = _natureza_lancamento(lancamento)
+        chave_categoria = (
+            lancamento.data_lancamento.year,
+            lancamento.data_lancamento.month,
+            natureza,
+            lancamento.categoria_id,
+        )
+        por_categoria[chave_categoria] = por_categoria.get(chave_categoria, ZERO) + lancamento.valor
+
+        if lancamento.subcategoria_id:
+            chave_subcategoria = (
+                lancamento.data_lancamento.year,
+                lancamento.data_lancamento.month,
+                natureza,
+                lancamento.categoria_id,
+                lancamento.subcategoria_id,
+            )
+            por_subcategoria[chave_subcategoria] = (
+                por_subcategoria.get(chave_subcategoria, ZERO) + lancamento.valor
+            )
+
+    return por_categoria, por_subcategoria
+
+
+def _realizado_item_agregado(
+    item: OrcamentoItem,
+    por_categoria: dict[tuple[int, int, NaturezaCategoria, str | None], Decimal],
+    por_subcategoria: dict[tuple[int, int, NaturezaCategoria, str | None, str | None], Decimal],
+    ano: int,
+    mes: int,
+) -> Decimal:
+    if item.tipo_item == TipoItemOrcamento.SUBCATEGORIA and item.subcategoria_id:
+        return por_subcategoria.get((ano, mes, item.natureza, item.categoria_id, item.subcategoria_id), ZERO)
+    return por_categoria.get((ano, mes, item.natureza, item.categoria_id), ZERO)
+
+
+def _media_historica_item_agregada(
+    item: OrcamentoItem,
+    por_categoria: dict[tuple[int, int, NaturezaCategoria, str | None], Decimal],
+    por_subcategoria: dict[tuple[int, int, NaturezaCategoria, str | None, str | None], Decimal],
+    ano: int,
+    mes: int,
+    quantidade_meses: int,
+) -> Decimal:
+    valores = [
+        _realizado_item_agregado(item, por_categoria, por_subcategoria, ano_ref, mes_ref)
+        for ano_ref, mes_ref in _previous_months(ano, mes, quantidade_meses)
+    ]
+    valores_com_dados = [valor for valor in valores if valor > 0]
+    if not valores_com_dados:
+        return ZERO
+    return sum(valores_com_dados, ZERO) / Decimal(len(valores_com_dados))
+
+
 def _situacao(item: OrcamentoItem, realizado: Decimal) -> str:
     if item.valor_orcado <= 0:
         return "SEM_PLANEJAMENTO"
@@ -405,13 +532,17 @@ def listar_itens_orcamento_mes(session: Session, ano: int, mes: int) -> list[dic
         .order_by(OrcamentoItem.natureza, OrcamentoItem.categoria_id, OrcamentoItem.subcategoria_id)
     ).all()
 
+    categorias = _categorias_por_id(session, {item.categoria_id for item in itens})
+    subcategorias = _subcategorias_por_id(session, {item.subcategoria_id for item in itens})
+    por_categoria, por_subcategoria = _agrupar_lancamentos_orcamento(session, ano, mes)
+
     result: list[dict] = []
     for item in itens:
-        categoria = session.get(Categoria, item.categoria_id)
-        subcategoria = session.get(Subcategoria, item.subcategoria_id) if item.subcategoria_id else None
+        categoria = categorias.get(item.categoria_id)
+        subcategoria = subcategorias.get(item.subcategoria_id) if item.subcategoria_id else None
         categoria_nome = item.categoria_nome_snapshot or (categoria.nome if categoria else "")
         subcategoria_nome = item.subcategoria_nome_snapshot or (subcategoria.nome if subcategoria else None)
-        realizado = _realizado_item(session, item, ano, mes)
+        realizado = _realizado_item_agregado(item, por_categoria, por_subcategoria, ano, mes)
         diferenca = item.valor_orcado - realizado
         percentual = Decimal("0.00") if item.valor_orcado == 0 else (realizado / item.valor_orcado) * Decimal("100")
 
@@ -432,9 +563,9 @@ def listar_itens_orcamento_mes(session: Session, ano: int, mes: int) -> list[dic
                 "gasto_real": realizado,
                 "diferenca": diferenca,
                 "percentual_usado": percentual,
-                "media_3_meses": _media_historica_item(session, item, 3),
-                "media_6_meses": _media_historica_item(session, item, 6),
-                "media_12_meses": _media_historica_item(session, item, 12),
+                "media_3_meses": _media_historica_item_agregada(item, por_categoria, por_subcategoria, ano, mes, 3),
+                "media_6_meses": _media_historica_item_agregada(item, por_categoria, por_subcategoria, ano, mes, 6),
+                "media_12_meses": _media_historica_item_agregada(item, por_categoria, por_subcategoria, ano, mes, 12),
                 "situacao": _situacao(item, realizado),
             }
         )
@@ -510,17 +641,25 @@ def copiar_itens_mes_anterior(session: Session, ano: int, mes: int, modo: str = 
     return criados
 
 
-def listar_nao_planejados_mes(session: Session, ano: int, mes: int) -> list[dict]:
-    itens_planejados = listar_itens_orcamento_mes(session, ano, mes)
-    planejados = [
-        {
-            "natureza": item["natureza"],
-            "tipo_item": item["tipo_item"],
-            "categoria_id": item["categoria_id"],
-            "subcategoria_id": item["subcategoria_id"],
-        }
+def listar_nao_planejados_mes(
+    session: Session,
+    ano: int,
+    mes: int,
+    itens_planejados: list[dict] | None = None,
+) -> list[dict]:
+    if itens_planejados is None:
+        itens_planejados = listar_itens_orcamento_mes(session, ano, mes)
+
+    categorias_planejadas = {
+        (item["natureza"], item["categoria_id"])
         for item in itens_planejados
-    ]
+        if item["tipo_item"] == TipoItemOrcamento.CATEGORIA
+    }
+    subcategorias_planejadas = {
+        (item["natureza"], item["categoria_id"], item["subcategoria_id"])
+        for item in itens_planejados
+        if item["tipo_item"] == TipoItemOrcamento.SUBCATEGORIA
+    }
 
     inicio, fim = month_bounds(ano, mes)
     filtros_lancamentos = [
@@ -538,48 +677,41 @@ def listar_nao_planejados_mes(session: Session, ano: int, mes: int) -> list[dict
         select(Lancamento).where(*filtros_lancamentos)
     ).all()
 
-    def natureza_lancamento(lancamento: Lancamento) -> NaturezaCategoria:
-        if lancamento.tipo == TipoLancamento.INVESTIMENTO:
-            return NaturezaCategoria.INVESTIMENTO
-        if lancamento.tipo == TipoLancamento.RECEITA:
-            return NaturezaCategoria.RECEITA
-        return NaturezaCategoria.GASTO
-
     def esta_planejado(lancamento: Lancamento) -> bool:
-        natureza = natureza_lancamento(lancamento)
-        for item in planejados:
-            if item["natureza"] != natureza:
-                continue
-            if item["tipo_item"] == TipoItemOrcamento.CATEGORIA and item["categoria_id"] == lancamento.categoria_id:
-                return True
-            if (
-                item["tipo_item"] == TipoItemOrcamento.SUBCATEGORIA
-                and item["categoria_id"] == lancamento.categoria_id
-                and item["subcategoria_id"] == lancamento.subcategoria_id
-            ):
-                return True
-        return False
+        natureza = _natureza_lancamento(lancamento)
+        return (natureza, lancamento.categoria_id) in categorias_planejadas or (
+            natureza,
+            lancamento.categoria_id,
+            lancamento.subcategoria_id,
+        ) in subcategorias_planejadas
 
     grupos: dict[tuple[NaturezaCategoria, str | None, str | None], dict] = {}
     for lancamento in lancamentos:
         if esta_planejado(lancamento):
             continue
-        natureza = natureza_lancamento(lancamento)
+        natureza = _natureza_lancamento(lancamento)
         chave = (natureza, lancamento.categoria_id, lancamento.subcategoria_id)
         if chave not in grupos:
-            categoria = session.get(Categoria, lancamento.categoria_id) if lancamento.categoria_id else None
-            subcategoria = session.get(Subcategoria, lancamento.subcategoria_id) if lancamento.subcategoria_id else None
             grupos[chave] = {
                 "natureza": natureza,
                 "categoria_id": lancamento.categoria_id,
-                "categoria": lancamento.categoria_nome_snapshot or (categoria.nome if categoria else "Sem categoria"),
+                "categoria_snapshot": lancamento.categoria_nome_snapshot,
                 "subcategoria_id": lancamento.subcategoria_id,
-                "subcategoria": lancamento.subcategoria_nome_snapshot or (subcategoria.nome if subcategoria else None),
-                "valor_realizado": Decimal("0.00"),
+                "subcategoria_snapshot": lancamento.subcategoria_nome_snapshot,
+                "valor_realizado": ZERO,
                 "quantidade_lancamentos": 0,
             }
         grupos[chave]["valor_realizado"] += lancamento.valor
         grupos[chave]["quantidade_lancamentos"] += 1
+
+    categorias = _categorias_por_id(session, {grupo["categoria_id"] for grupo in grupos.values()})
+    subcategorias = _subcategorias_por_id(session, {grupo["subcategoria_id"] for grupo in grupos.values()})
+
+    for grupo in grupos.values():
+        categoria = categorias.get(grupo["categoria_id"])
+        subcategoria = subcategorias.get(grupo["subcategoria_id"])
+        grupo["categoria"] = grupo.pop("categoria_snapshot") or (categoria.nome if categoria else "Sem categoria")
+        grupo["subcategoria"] = grupo.pop("subcategoria_snapshot") or (subcategoria.nome if subcategoria else None)
 
     return sorted(grupos.values(), key=lambda item: (str(item["natureza"]), item["categoria"], item["subcategoria"] or ""))
 

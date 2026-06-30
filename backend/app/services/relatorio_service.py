@@ -38,22 +38,25 @@ def gastos_por_metodo(session: Session, ano: int, mes: int) -> list[dict]:
         Lancamento.data_lancamento < fim,
     ]
 
-    total = _decimal(session.exec(select(func.sum(Lancamento.valor)).where(*filtros_base)).one())
+    lancamentos = session.exec(select(Lancamento).where(*filtros_base)).all()
+    total = sum((lancamento.valor for lancamento in lancamentos), Decimal("0.00"))
+    totais_metodos: dict[str, Decimal] = {}
+    totais_cartoes: dict[str, Decimal] = {}
+    for lancamento in lancamentos:
+        if lancamento.cartao_id:
+            totais_cartoes[lancamento.cartao_id] = totais_cartoes.get(lancamento.cartao_id, Decimal("0.00")) + lancamento.valor
+        elif lancamento.metodo_pagamento_id:
+            totais_metodos[lancamento.metodo_pagamento_id] = (
+                totais_metodos.get(lancamento.metodo_pagamento_id, Decimal("0.00")) + lancamento.valor
+            )
+
     result: list[dict] = []
 
     metodos = session.exec(select(MetodoPagamento).where(MetodoPagamento.ativo.is_(True)).order_by(MetodoPagamento.nome)).all()
     for metodo in metodos:
         if metodo.tipo_metodo == TipoMetodo.CARTAO_CREDITO:
             continue
-        valor = _decimal(
-            session.exec(
-                select(func.sum(Lancamento.valor)).where(
-                    *filtros_base,
-                    Lancamento.cartao_id.is_(None),
-                    Lancamento.metodo_pagamento_id == metodo.id,
-                )
-            ).one()
-        )
+        valor = totais_metodos.get(metodo.id, Decimal("0.00"))
         if valor > 0:
             result.append(
                 {
@@ -66,14 +69,7 @@ def gastos_por_metodo(session: Session, ano: int, mes: int) -> list[dict]:
 
     cartoes = session.exec(select(Cartao).where(Cartao.ativo.is_(True)).order_by(Cartao.nome)).all()
     for cartao in cartoes:
-        valor = _decimal(
-            session.exec(
-                select(func.sum(Lancamento.valor)).where(
-                    *filtros_base,
-                    Lancamento.cartao_id == cartao.id,
-                )
-            ).one()
-        )
+        valor = totais_cartoes.get(cartao.id, Decimal("0.00"))
         if valor > 0:
             result.append(
                 {
@@ -192,7 +188,7 @@ def gerar_insights(session: Session, ano: int, mes: int) -> list[dict]:
         )
 
     nao_planejados = listar_nao_planejados_mes(session, ano, mes)
-    soma_nao_planejados = _decimal(sum([item.get("valor", 0) for item in nao_planejados]))
+    soma_nao_planejados = _decimal(sum([item.get("valor_realizado", 0) for item in nao_planejados]))
 
     if soma_nao_planejados > 0:
         percentual_nao_planejado = (soma_nao_planejados / gasto * 100) if gasto > 0 else Decimal("0.00")

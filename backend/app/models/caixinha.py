@@ -2,10 +2,10 @@ from decimal import Decimal
 
 from sqlmodel import Field
 
-from app.models.base import IdMixin, TimestampMixin, money_column
+from app.models.base import IdMixin, TimestampMixin, UserOwnedMixin, money_column
 
 
-class Caixinha(IdMixin, TimestampMixin, table=True):
+class Caixinha(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "caixinhas"
 
     nome: str = Field(index=True, max_length=100)

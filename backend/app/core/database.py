@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -271,9 +271,13 @@ def get_session(request: Request) -> Generator[Session, None, None]:
     # scope every query/insert to this user. In desktop/local mode there is no
     # authenticated user, so user_id stays None and no filtering is applied.
     user_id = getattr(request.state, "user_id", None)
+    if settings.auth_enabled and user_id is None:
+        raise HTTPException(status_code=401, detail="Usuario nao autenticado.")
     with Session(engine) as session:
         if user_id is not None:
             session.info[SESSION_USER_KEY] = user_id
+            if settings.using_postgres:
+                session.execute(text("select set_config('request.jwt.claim.sub', :user_id, true)"), {"user_id": user_id})
             if user_id not in _initialized_users:
                 ensure_user_initialized(session, user_id)
                 _initialized_users.add(user_id)

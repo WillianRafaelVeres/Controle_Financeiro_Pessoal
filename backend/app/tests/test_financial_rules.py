@@ -22,6 +22,8 @@ from app.models.base import (
     TipoMovimentoInvestimento,
     TipoProvento,
 )
+from app.core.tenancy import SESSION_USER_KEY
+from app.models.caixinha import Caixinha
 from app.models.cartao import Cartao
 from app.models.categoria import Categoria
 from app.models.compromisso_cartao import CompromissoCartao
@@ -131,6 +133,41 @@ def seed_basico(session: Session):
     session.add(cartao)
     session.commit()
     return conta, categoria, subcategoria, pix, cartao_metodo, cartao
+
+
+def test_tenancy_isola_caixinhas_por_usuario():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(engine)
+
+    with Session(engine) as session_a:
+        session_a.info[SESSION_USER_KEY] = "user-a"
+        caixinha_a = Caixinha(nome="Reserva A")
+        session_a.add(caixinha_a)
+        session_a.commit()
+        session_a.refresh(caixinha_a)
+        assert caixinha_a.user_id == "user-a"
+
+    with Session(engine) as session_b:
+        session_b.info[SESSION_USER_KEY] = "user-b"
+        caixinha_b = Caixinha(nome="Reserva B")
+        session_b.add(caixinha_b)
+        session_b.commit()
+        session_b.refresh(caixinha_b)
+        assert caixinha_b.user_id == "user-b"
+
+    with Session(engine) as session_a:
+        session_a.info[SESSION_USER_KEY] = "user-a"
+        assert [item.nome for item in session_a.exec(select(Caixinha).order_by(Caixinha.nome)).all()] == ["Reserva A"]
+
+    with Session(engine) as session_b:
+        session_b.info[SESSION_USER_KEY] = "user-b"
+        assert [item.nome for item in session_b.exec(select(Caixinha).order_by(Caixinha.nome)).all()] == ["Reserva B"]
+
+    SQLModel.metadata.drop_all(engine)
 
 
 def test_lancamento_pix_reduz_saldo_livre(session: Session):

@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$databaseUrl = "postgresql://postgres.qmglaobhnbgxgcfucxtj:$DatabasePassword@aws-0-sa-east-1.pooler.supabase.com:5432/postgres"
+$databaseUrl = "postgresql://postgres.qfvwkydpysbgatlhakee:$DatabasePassword@aws-1-us-east-1.pooler.supabase.com:5432/postgres"
 
 if ($Desktop) {
   $targetDir = Join-Path $env:APPDATA "CentralFinanceira"

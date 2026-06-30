@@ -109,16 +109,28 @@ Para resetar o banco desktop, feche o aplicativo e remova `%APPDATA%/CentralFina
 O projeto Supabase configurado para este app e:
 
 ```text
-https://qmglaobhnbgxgcfucxtj.supabase.co
+https://qfvwkydpysbgatlhakee.supabase.co
 ```
 
 No Render, configure a variavel de ambiente `DATABASE_URL` com a connection string do **Shared Pooler - Session mode**:
 
 ```text
-postgresql://postgres.qmglaobhnbgxgcfucxtj:SENHA_DO_BANCO@aws-0-sa-east-1.pooler.supabase.com:5432/postgres
+postgresql://postgres.qfvwkydpysbgatlhakee:SENHA_DO_BANCO@aws-1-us-east-1.pooler.supabase.com:5432/postgres
 ```
 
 Render normalmente precisa do pooler porque a conexao direta do Supabase usa IPv6 em projetos Free. A senha do banco fica somente no painel do Supabase/Render; nao coloque esse valor no Git.
+
+Para o modo web multiusuario, mantenha tambem estas variaveis no Render:
+
+```text
+AUTH_ENABLED=true
+SUPABASE_URL=https://qfvwkydpysbgatlhakee.supabase.co
+SUPABASE_ANON_KEY=...
+VITE_SUPABASE_URL=https://qfvwkydpysbgatlhakee.supabase.co
+VITE_SUPABASE_ANON_KEY=...
+```
+
+O backend valida o JWT do Supabase em cada chamada `/api`, grava `user_id` em novos registros e filtra automaticamente as tabelas por usuario. No banco Supabase, as tabelas financeiras tambem devem ficar com RLS ativo e politica por `auth.uid() = user_id`.
 
 Para desenvolvimento local:
 

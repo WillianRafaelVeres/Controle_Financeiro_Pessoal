@@ -139,6 +139,8 @@ Site URL: https://controle-financeiro-pessoal-jz43.onrender.com
 Redirect URL: https://controle-financeiro-pessoal-jz43.onrender.com/reset-password
 ```
 
+Se o link do e-mail abrir `localhost:3000/#access_token...`, o Supabase Auth ainda esta usando uma URL local como fallback. Revise em Authentication > URL Configuration se o Site URL e o Redirect URL permitido estao apontando para o Render. No Render, nao defina `VITE_PASSWORD_RESET_REDIRECT_URL` como `localhost`.
+
 Para desenvolvimento local:
 
 ```powershell

@@ -50,13 +50,40 @@ describe("supabase auth helpers", () => {
   });
 
   it("envia recuperacao de senha com redirect configurado", async () => {
-    const { PASSWORD_RESET_REDIRECT_URL, sendPasswordReset } = await loadModule();
+    const { getPasswordResetRedirectUrl, sendPasswordReset } = await loadModule();
 
     await sendPasswordReset("pessoa@email.com");
 
     expect(mocks.auth.resetPasswordForEmail).toHaveBeenCalledWith("pessoa@email.com", {
-      redirectTo: PASSWORD_RESET_REDIRECT_URL,
+      redirectTo: getPasswordResetRedirectUrl(),
     });
+  });
+
+  it("usa a origem atual hospedada para o redirect de recuperacao", async () => {
+    const { getPasswordResetRedirectUrl } = await loadModule();
+
+    expect(getPasswordResetRedirectUrl({
+      hostname: "controle-financeiro-pessoal-jz43.onrender.com",
+      origin: "https://controle-financeiro-pessoal-jz43.onrender.com",
+    })).toBe("https://controle-financeiro-pessoal-jz43.onrender.com/reset-password");
+  });
+
+  it("ignora redirect localhost configurado quando o app esta hospedado", async () => {
+    vi.stubEnv("VITE_PASSWORD_RESET_REDIRECT_URL", "http://localhost:3000");
+    const { getPasswordResetRedirectUrl } = await loadModule();
+
+    expect(getPasswordResetRedirectUrl({
+      hostname: "controle-financeiro-pessoal-jz43.onrender.com",
+      origin: "https://controle-financeiro-pessoal-jz43.onrender.com",
+    })).toBe("https://controle-financeiro-pessoal-jz43.onrender.com/reset-password");
+  });
+
+  it("detecta link de recuperacao no hash ou na query", async () => {
+    const { hasPasswordRecoveryParams } = await loadModule();
+
+    expect(hasPasswordRecoveryParams({ hash: "#access_token=token&type=recovery" })).toBe(true);
+    expect(hasPasswordRecoveryParams({ search: "?type=recovery" })).toBe(true);
+    expect(hasPasswordRecoveryParams({ hash: "#type=signup" })).toBe(false);
   });
 
   it("altera a senha do usuario autenticado pelo link", async () => {

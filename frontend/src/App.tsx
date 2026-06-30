@@ -5,7 +5,7 @@ import { AppShell } from "./components/layout/AppShell";
 import { BackendBootGate } from "./components/layout/BackendBootGate";
 import { NovoLancamentoModal } from "./features/lancamentos/NovoLancamentoModal";
 import type { BackendBootResult } from "./lib/apiBase";
-import { getAccessToken, isSupabaseConfigured, PASSWORD_RESET_PATH, signOut } from "./lib/supabase";
+import { getAccessToken, hasPasswordRecoveryParams, isSupabaseConfigured, PASSWORD_RESET_PATH, signOut } from "./lib/supabase";
 import { CartoesPage } from "./pages/CartoesPage";
 import { ConfiguracoesPage } from "./pages/ConfiguracoesPage";
 import { ContasFuturasPage } from "./pages/ContasFuturasPage";
@@ -53,14 +53,16 @@ type AuthState = "checking" | "authenticated" | "unauthenticated";
 
 export default function App() {
   const [page, setPage] = useState<PageKey>("dashboard");
-  const [routePath, setRoutePath] = useState(() => window.location.pathname);
+  const [routePath, setRoutePath] = useState(() =>
+    hasPasswordRecoveryParams() ? PASSWORD_RESET_PATH : window.location.pathname
+  );
   const [boot, setBoot] = useState<BackendBootResult | null>(null);
   const [novoLancamentoOpen, setNovoLancamentoOpen] = useState(false);
   const [loginMessage, setLoginMessage] = useState("");
   const [authState, setAuthState] = useState<AuthState>(
     isSupabaseConfigured ? "checking" : "authenticated"
   );
-  const isPasswordResetRoute = routePath === PASSWORD_RESET_PATH;
+  const isPasswordResetRoute = routePath === PASSWORD_RESET_PATH || hasPasswordRecoveryParams();
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;

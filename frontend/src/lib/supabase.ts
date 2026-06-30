@@ -5,8 +5,10 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undef
 const LEGACY_SESSION_KEY = "central_financeira_session";
 
 export const PASSWORD_RESET_PATH = "/reset-password";
+const configuredPasswordResetRedirectUrl = (import.meta.env.VITE_PASSWORD_RESET_REDIRECT_URL as string | undefined)?.trim();
+
 export const PASSWORD_RESET_REDIRECT_URL =
-  (import.meta.env.VITE_PASSWORD_RESET_REDIRECT_URL as string | undefined) ||
+  configuredPasswordResetRedirectUrl ||
   "https://controle-financeiro-pessoal-jz43.onrender.com/reset-password";
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
@@ -52,6 +54,55 @@ function clearLegacySession() {
   localStorage.removeItem(LEGACY_SESSION_KEY);
 }
 
+interface BrowserLocationLike {
+  hash?: string;
+  hostname?: string;
+  origin?: string;
+  search?: string;
+}
+
+function isLocalHostname(hostname?: string): boolean {
+  if (!hostname) return false;
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1";
+}
+
+function isLocalUrl(value: string): boolean {
+  try {
+    return isLocalHostname(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function browserLocation(): BrowserLocationLike | undefined {
+  return typeof window === "undefined" ? undefined : window.location;
+}
+
+export function getPasswordResetRedirectUrl(location = browserLocation()): string {
+  const currentOrigin = location?.origin && location.origin !== "null" ? location.origin : undefined;
+  const currentHostname = location?.hostname;
+  const currentOriginRedirectUrl =
+    currentOrigin && !isLocalHostname(currentHostname)
+      ? `${currentOrigin}${PASSWORD_RESET_PATH}`
+      : undefined;
+
+  if (currentOriginRedirectUrl && (!configuredPasswordResetRedirectUrl || isLocalUrl(configuredPasswordResetRedirectUrl))) {
+    return currentOriginRedirectUrl;
+  }
+
+  return configuredPasswordResetRedirectUrl || currentOriginRedirectUrl || PASSWORD_RESET_REDIRECT_URL;
+}
+
+function hasRecoveryType(value?: string): boolean {
+  if (!value) return false;
+  const params = new URLSearchParams(value.replace(/^[#?]/, ""));
+  return params.get("type") === "recovery";
+}
+
+export function hasPasswordRecoveryParams(location = browserLocation()): boolean {
+  return hasRecoveryType(location?.hash) || hasRecoveryType(location?.search);
+}
+
 export async function signIn(email: string, password: string): Promise<string> {
   const { data, error } = await getClient().auth.signInWithPassword({ email: email.trim(), password });
   if (error) throw new Error(error.message);
@@ -88,7 +139,7 @@ export async function getAccessToken(): Promise<string | null> {
 
 export async function sendPasswordReset(email: string): Promise<void> {
   const { error } = await getClient().auth.resetPasswordForEmail(email.trim(), {
-    redirectTo: PASSWORD_RESET_REDIRECT_URL,
+    redirectTo: getPasswordResetRedirectUrl(),
   });
   if (error) throw new Error(error.message);
 }

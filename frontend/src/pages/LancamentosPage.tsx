@@ -21,10 +21,7 @@ export function LancamentosPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Lancamento | null>(null);
   const [tipoFiltro, setTipoFiltro] = useState("");
-  const categorias = useQuery({ queryKey: ["categorias", "all"], queryFn: () => api.categorias(undefined, true) });
-  const subcategorias = useQuery({ queryKey: ["subcategorias", "all"], queryFn: () => api.subcategorias(undefined, true) });
-  const metodos = useQuery({ queryKey: ["metodos"], queryFn: api.metodos });
-  const cartoes = useQuery({ queryKey: ["cartoes"], queryFn: api.cartoes });
+  const opcoes = useQuery({ queryKey: ["lancamentos", "opcoes"], queryFn: api.lancamentoOpcoes });
   const lancamentos = useQuery({ queryKey: ["lancamentos", month], queryFn: () => api.lancamentos(month.ano, month.mes) });
   const atualizar = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.atualizarLancamento(id, payload),
@@ -67,10 +64,10 @@ export function LancamentosPage() {
       <SectionCard title="Histórico do período" description="Todos os lançamentos do mês selecionado.">
         <LancamentosTable
           lancamentos={filtrados}
-          categorias={categorias.data ?? []}
-          subcategorias={subcategorias.data ?? []}
-          metodos={metodos.data ?? []}
-          cartoes={cartoes.data ?? []}
+          categorias={opcoes.data?.categorias ?? []}
+          subcategorias={opcoes.data?.subcategorias ?? []}
+          metodos={opcoes.data?.metodos ?? []}
+          cartoes={opcoes.data?.cartoes ?? []}
           onEdit={setEditing}
           onDelete={(lancamento) => {
             if (window.confirm("Excluir este lançamento?")) excluir.mutate(lancamento.id);
@@ -79,9 +76,9 @@ export function LancamentosPage() {
       </SectionCard>
       <EditarLancamentoModal
         lancamento={editing}
-        categorias={categorias.data ?? []}
-        subcategorias={subcategorias.data ?? []}
-        metodos={metodos.data ?? []}
+        categorias={opcoes.data?.categorias ?? []}
+        subcategorias={opcoes.data?.subcategorias ?? []}
+        metodos={opcoes.data?.metodos ?? []}
         onClose={() => setEditing(null)}
         onSubmit={async (id, payload) => {
           await atualizar.mutateAsync({ id, payload });

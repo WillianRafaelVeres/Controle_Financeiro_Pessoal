@@ -14,6 +14,7 @@ import type {
   HistoricoDesempenhoInvestimento,
   HistoricoProventosInvestimentos,
   Lancamento,
+  LancamentoOpcoes,
   MetodoPagamento,
   MovimentoInvestimento,
   OrcamentoLinha,
@@ -137,6 +138,7 @@ export const api = {
     apiFetch(`/cartoes/${cartaoId}/pagar-fatura`, { method: "POST", body: JSON.stringify({ valor_pago }) }),
 
   lancamentos: (ano: number, mes: number) => apiFetch<Lancamento[]>("/lancamentos", {}, { ano, mes }),
+  lancamentoOpcoes: () => apiFetch<LancamentoOpcoes>("/lancamentos/opcoes"),
   criarLancamento: (payload: Record<string, unknown>) =>
     apiFetch<Lancamento>("/lancamentos", { method: "POST", body: JSON.stringify(payload) }),
   atualizarLancamento: (id: string, payload: Record<string, unknown>) =>

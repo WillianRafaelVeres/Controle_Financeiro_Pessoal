@@ -105,14 +105,12 @@ export function DesempenhoPage() {
   const desempenho = useQuery({
     queryKey: ["investimentos", "desempenho"],
     queryFn: api.desempenhoInvestimentos,
-    refetchInterval: 60_000,
     retry: false,
   });
   const historico = useQuery({
     queryKey: ["investimentos", "desempenho", "historico", periodo],
     queryFn: () => api.historicoDesempenhoInvestimentos(periodo),
     enabled: visao === "patrimonio" && Boolean(desempenho.data),
-    refetchInterval: 60_000,
     retry: false,
   });
   const ativos = useQuery({
@@ -127,9 +125,8 @@ export function DesempenhoPage() {
         tipo_ativo: tipoAtivoFiltro,
         ativo_id: ativoFiltro,
         tipo_provento: tipoProventoFiltro,
-      }),
+    }),
     enabled: visao === "proventos",
-    refetchInterval: 60_000,
     retry: false,
   });
 

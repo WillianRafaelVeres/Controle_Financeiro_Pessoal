@@ -38,7 +38,6 @@ function mockApi() {
     investimentos: 0,
     diferenca_conciliacao: 0,
   });
-  vi.spyOn(api, "conciliacao").mockResolvedValue({ status: "Tudo conciliado.", diferenca_nao_explicada: 0 });
   vi.spyOn(api, "dashboardGraficos").mockResolvedValue({ gastos_por_categoria: [], receitas_vs_gastos: [] });
   vi.spyOn(api, "dolarResumo").mockResolvedValue({
     saldo_teorico_usd: 0,
@@ -70,7 +69,27 @@ function mockApi() {
       diferenca_limite: 0,
     },
   ]);
+  vi.spyOn(api, "lancamentoOpcoes").mockResolvedValue({
+    categorias: [
+      { id: "cat-gasto", nome: "Moradia", natureza: "GASTO", ativa: true },
+      { id: "cat-inv", nome: "Investimentos", natureza: "INVESTIMENTO", ativa: true },
+    ],
+    subcategorias: [
+      { id: "sub-gasto", nome: "Aluguel", categoria_id: "cat-gasto", natureza: "GASTO", ativa: true },
+      { id: "sub-inv", nome: "Acoes Brasil", categoria_id: "cat-inv", natureza: "INVESTIMENTO", ativa: true },
+    ],
+    metodos: [{ id: "met-cartao", nome: "Cartao", tipo_metodo: "CARTAO_CREDITO", ativo: true }],
+    cartoes: [{ id: "card-1", nome: "XP" }],
+  });
   vi.spyOn(api, "ativosDividendos").mockResolvedValue([]);
+  vi.spyOn(api, "dolarCotacaoAtual").mockResolvedValue({
+    cotacao_brl: 0,
+    compra_brl: 0,
+    venda_brl: 0,
+    data_cotacao: "2026-06-30",
+    fonte: "mock",
+    erro: null,
+  });
 }
 
 describe("Dashboard quick actions", () => {

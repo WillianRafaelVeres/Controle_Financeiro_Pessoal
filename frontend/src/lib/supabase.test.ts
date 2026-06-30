@@ -123,6 +123,19 @@ describe("supabase auth helpers", () => {
     expect(mocks.auth.updateUser).toHaveBeenCalledWith({ password: "nova-senha" });
   });
 
+  it("reaproveita token em memoria enquanto a sessao esta valida", async () => {
+    mocks.auth.getSession.mockResolvedValue({
+      data: { session: { access_token: "token-cache", expires_at: Math.floor(Date.now() / 1000) + 3600 } },
+      error: null,
+    });
+    const { getAccessToken } = await loadModule();
+
+    await expect(getAccessToken()).resolves.toBe("token-cache");
+    await expect(getAccessToken()).resolves.toBe("token-cache");
+
+    expect(mocks.auth.getSession).toHaveBeenCalledTimes(1);
+  });
+
   it("logout limpa a sessao legada", async () => {
     localStorage.setItem("central_financeira_session", JSON.stringify({ access_token: "old-token" }));
     const { signOut } = await loadModule();

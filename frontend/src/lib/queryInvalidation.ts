@@ -28,7 +28,6 @@ export function invalidateInvestmentData(queryClient: QueryClient) {
   return invalidateMany(queryClient, [
     ["posicoes"],
     ["investimentos"],
-    ["investimentos-cotacoes-auto"],
     ["dividendos"],
     ["painel"],
     ["dashboard"],
@@ -54,7 +53,7 @@ export function invalidateDollarData(queryClient: QueryClient) {
 }
 
 export function invalidateCardData(queryClient: QueryClient) {
-  return invalidateMany(queryClient, [["cartoes"], ["compromissos"], ["painel"], ["dashboard"], ["relatorios"]]);
+  return invalidateMany(queryClient, [["cartoes"], ["lancamentos", "opcoes"], ["compromissos"], ["painel"], ["dashboard"], ["relatorios"]]);
 }
 
 export function invalidateSettingsData(queryClient: QueryClient) {
@@ -64,6 +63,7 @@ export function invalidateSettingsData(queryClient: QueryClient) {
     ["metodos"],
     ["contas"],
     ["cartoes"],
+    ["lancamentos", "opcoes"],
     ["diagnostico"],
     ["lancamentos"],
     ["planejamento"],

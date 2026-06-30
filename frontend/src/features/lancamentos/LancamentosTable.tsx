@@ -8,14 +8,14 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Td, Th } from "../../components/ui/table";
 import { formatDate, formatMoney } from "../../lib/formatters";
-import type { CartaoResumo, Categoria, Lancamento, MetodoPagamento, Subcategoria } from "../../lib/types";
+import type { CartaoOpcao, Categoria, Lancamento, MetodoPagamento, Subcategoria } from "../../lib/types";
 
 interface LancamentosTableProps {
   lancamentos: Lancamento[];
   categorias: Categoria[];
   subcategorias: Subcategoria[];
   metodos: MetodoPagamento[];
-  cartoes?: CartaoResumo[];
+  cartoes?: CartaoOpcao[];
   onEdit?: (lancamento: Lancamento) => void;
   onDelete?: (lancamento: Lancamento) => void;
 }

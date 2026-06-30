@@ -14,18 +14,11 @@ interface NovoLancamentoModalProps {
 
 export function NovoLancamentoModal({ open, onClose, initialType = "GASTO" }: NovoLancamentoModalProps) {
   const queryClient = useQueryClient();
-  const categorias = useQuery({
-    queryKey: ["categorias", "novo-lancamento"],
-    queryFn: () => api.categorias(undefined, true),
+  const opcoes = useQuery({
+    queryKey: ["lancamentos", "opcoes"],
+    queryFn: api.lancamentoOpcoes,
     enabled: open,
   });
-  const subcategorias = useQuery({
-    queryKey: ["subcategorias", "novo-lancamento"],
-    queryFn: () => api.subcategorias(undefined, true),
-    enabled: open,
-  });
-  const metodos = useQuery({ queryKey: ["metodos", "novo-lancamento"], queryFn: api.metodos, enabled: open });
-  const cartoes = useQuery({ queryKey: ["cartoes", "novo-lancamento"], queryFn: api.cartoes, enabled: open });
 
   const criarLancamento = useMutation({ mutationFn: api.criarLancamento });
   const criarContaFutura = useMutation({ mutationFn: api.criarContaFutura });
@@ -40,10 +33,10 @@ export function NovoLancamentoModal({ open, onClose, initialType = "GASTO" }: No
   return (
     <Dialog open={open} title="Novo lancamento" onClose={onClose} className="max-w-6xl">
       <LancamentoForm
-        categorias={categorias.data ?? []}
-        subcategorias={subcategorias.data ?? []}
-        metodos={metodos.data ?? []}
-        cartoes={cartoes.data ?? []}
+        categorias={opcoes.data?.categorias ?? []}
+        subcategorias={opcoes.data?.subcategorias ?? []}
+        metodos={opcoes.data?.metodos ?? []}
+        cartoes={opcoes.data?.cartoes ?? []}
         initialType={initialType}
         onSubmit={async (payload) => {
           await criarLancamento.mutateAsync(payload);
@@ -57,17 +50,26 @@ export function NovoLancamentoModal({ open, onClose, initialType = "GASTO" }: No
         }}
         onCreateCategoria={async (nome, natureza: NaturezaCategoria) => {
           const categoria = await criarCategoria.mutateAsync({ nome, natureza });
-          await queryClient.invalidateQueries({ queryKey: ["categorias"] });
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["categorias"] }),
+            queryClient.invalidateQueries({ queryKey: ["lancamentos", "opcoes"] }),
+          ]);
           return { id: categoria.id, label: categoria.nome };
         }}
         onCreateSubcategoria={async (nome, categoria_id) => {
           const subcategoria = await criarSubcategoria.mutateAsync({ nome, categoria_id });
-          await queryClient.invalidateQueries({ queryKey: ["subcategorias"] });
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["subcategorias"] }),
+            queryClient.invalidateQueries({ queryKey: ["lancamentos", "opcoes"] }),
+          ]);
           return { id: subcategoria.id, label: subcategoria.nome };
         }}
         onCreateMetodo={async (nome) => {
           const metodo = await criarMetodo.mutateAsync({ nome });
-          await queryClient.invalidateQueries({ queryKey: ["metodos"] });
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["metodos"] }),
+            queryClient.invalidateQueries({ queryKey: ["lancamentos", "opcoes"] }),
+          ]);
           return { id: metodo.id, label: metodo.nome };
         }}
       />

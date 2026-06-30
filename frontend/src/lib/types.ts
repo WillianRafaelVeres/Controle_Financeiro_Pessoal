@@ -113,6 +113,19 @@ export interface CartaoResumo {
   cor_visual?: string;
 }
 
+export interface CartaoOpcao {
+  id: string;
+  nome: string;
+  cor_visual?: string;
+}
+
+export interface LancamentoOpcoes {
+  categorias: Categoria[];
+  subcategorias: Subcategoria[];
+  metodos: MetodoPagamento[];
+  cartoes: CartaoOpcao[];
+}
+
 export interface Lancamento {
   id: string;
   data_lancamento: string;

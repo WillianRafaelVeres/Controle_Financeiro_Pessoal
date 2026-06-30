@@ -1,6 +1,5 @@
 from decimal import Decimal
 
-from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.models.base import TipoLancamento, TipoMetodo, month_bounds
@@ -8,7 +7,7 @@ from app.models.cartao import Cartao
 from app.models.lancamento import Lancamento
 from app.models.metodo_pagamento import MetodoPagamento
 from app.services.dashboard_service import graficos_dashboard
-from app.services.financeiro_service import despesas_mes, investimentos_mes, receitas_mes
+from app.services.financeiro_service import totais_lancamentos_mes, totais_lancamentos_periodo
 from app.services.investimento_service import listar_historico_desempenho
 from app.services.orcamento_service import listar_nao_planejados_mes, listar_orcamento_mes
 
@@ -95,11 +94,13 @@ def evolucao_mensal(session: Session, ano_inicio: int, mes_inicio: int, ano_fim:
             mes_atual = 1
             ano_atual += 1
 
+    totais_por_mes = totais_lancamentos_periodo(session, ano_inicio, mes_inicio, ano_fim, mes_fim)
     result = []
     for ano, mes in meses:
-        receita = receitas_mes(session, ano, mes)
-        gasto = despesas_mes(session, ano, mes)
-        investimento = investimentos_mes(session, ano, mes)
+        totais = totais_por_mes[(ano, mes)]
+        receita = totais["receitas"]
+        gasto = totais["despesas"]
+        investimento = totais["investimentos"]
         result.append(
             {
                 "ano": ano,
@@ -142,8 +143,9 @@ def projetar_patrimonio(session: Session, aporte_mensal: Decimal, taxa_anual: De
 
 def gerar_insights(session: Session, ano: int, mes: int) -> list[dict]:
     insights = []
-    receita = receitas_mes(session, ano, mes)
-    gasto = despesas_mes(session, ano, mes)
+    totais = totais_lancamentos_mes(session, ano, mes)
+    receita = totais["receitas"]
+    gasto = totais["despesas"]
 
     taxa_economia = ((receita - gasto) / receita * 100) if receita > 0 else Decimal("0.00")
 

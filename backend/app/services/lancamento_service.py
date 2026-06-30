@@ -137,7 +137,14 @@ def criar_lancamento(session: Session, payload: LancamentoCreate) -> Lancamento:
         return lancamento
 
     if payload.cartao:
-        return _criar_lancamento_cartao(session, payload, data_lancamento, metodo)
+        return _criar_lancamento_cartao(
+            session,
+            payload,
+            data_lancamento,
+            metodo,
+            categoria_snapshot,
+            subcategoria_snapshot,
+        )
 
     investimento_exterior = _movimento_investimento_exterior(session, payload)
     afeta_orcamento = payload.tipo in {
@@ -203,6 +210,8 @@ def _criar_lancamento_cartao(
     payload: LancamentoCreate,
     data_lancamento: date,
     metodo: MetodoPagamento | None,
+    categoria_snapshot: str | None,
+    subcategoria_snapshot: str | None,
 ) -> Lancamento:
     if payload.tipo != TipoLancamento.GASTO:
         raise HTTPException(status_code=422, detail="Lancamento de cartao deve ser do tipo GASTO.")
@@ -229,8 +238,8 @@ def _criar_lancamento_cartao(
         valor_original=payload.valor,
         categoria_id=payload.categoria_id,
         subcategoria_id=payload.subcategoria_id,
-        categoria_nome_snapshot=session.get(Categoria, payload.categoria_id).nome if payload.categoria_id and session.get(Categoria, payload.categoria_id) else None,
-        subcategoria_nome_snapshot=session.get(Subcategoria, payload.subcategoria_id).nome if payload.subcategoria_id and session.get(Subcategoria, payload.subcategoria_id) else None,
+        categoria_nome_snapshot=categoria_snapshot,
+        subcategoria_nome_snapshot=subcategoria_snapshot,
         metodo_pagamento_id=payload.metodo_pagamento_id,
         conta_id=payload.conta_id,
         cartao_id=cartao.id,
@@ -395,3 +404,18 @@ def listar_lancamentos(session: Session, ano: int | None = None, mes: int | None
         inicio, fim = month_bounds(ano, mes)
         statement = statement.where(Lancamento.data_lancamento >= inicio, Lancamento.data_lancamento < fim)
     return session.exec(statement.order_by(Lancamento.data_lancamento.desc(), Lancamento.criado_em.desc())).all()
+
+
+def listar_opcoes_lancamento(session: Session) -> dict:
+    categorias = session.exec(select(Categoria).order_by(Categoria.nome)).all()
+    subcategorias = session.exec(select(Subcategoria).order_by(Subcategoria.nome)).all()
+    metodos = session.exec(
+        select(MetodoPagamento).where(MetodoPagamento.ativo.is_(True)).order_by(MetodoPagamento.nome)
+    ).all()
+    cartoes = session.exec(select(Cartao).where(Cartao.ativo.is_(True)).order_by(Cartao.nome)).all()
+    return {
+        "categorias": categorias,
+        "subcategorias": subcategorias,
+        "metodos": metodos,
+        "cartoes": [{"id": cartao.id, "nome": cartao.nome, "cor_visual": cartao.cor_visual} for cartao in cartoes],
+    }

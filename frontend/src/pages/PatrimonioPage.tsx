@@ -134,7 +134,6 @@ export function PatrimonioPage() {
   const patrimonio = useQuery({
     queryKey: ["investimentos", "desempenho", "patrimonio"],
     queryFn: api.desempenhoInvestimentos,
-    refetchInterval: 60_000,
     retry: false,
   });
   const [groupBy, setGroupBy] = useState<GroupBy>("ativo");

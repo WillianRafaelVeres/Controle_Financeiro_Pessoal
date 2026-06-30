@@ -87,12 +87,6 @@ export function InvestimentosPage() {
   });
   const cotacaoDolar = useQuery({ queryKey: ["dolar-cotacao-atual"], queryFn: api.dolarCotacaoAtual, refetchInterval: 60_000, retry: false });
   const movimentos = useQuery({ queryKey: ["investimentos", "movimentos"], queryFn: api.movimentosInvestimentos });
-  const cotacoesAutomaticas = useQuery({
-    queryKey: ["investimentos-cotacoes-auto"],
-    queryFn: api.atualizarCotacoesInvestimentos,
-    refetchInterval: 60_000,
-    retry: false,
-  });
   const comprar = useMutation({ mutationFn: api.comprar, onSuccess: () => invalidateInvestmentData(queryClient) });
   const vender = useMutation({ mutationFn: api.vender, onSuccess: () => invalidateInvestmentData(queryClient) });
   const atualizarMovimento = useMutation({
@@ -114,11 +108,6 @@ export function InvestimentosPage() {
   const [reservaMeses, setReservaMeses] = useState(() => localStorage.getItem(RESERVA_MESES_KEY) || "6");
   const dolarCotacao = toNumber(cotacaoDolar.data?.cotacao_brl);
   const gastoProjetadoMes = toNumber(planejamento.data?.gastos_planejados);
-
-  useEffect(() => {
-    if (!cotacoesAutomaticas.dataUpdatedAt) return;
-    queryClient.invalidateQueries({ queryKey: ["posicoes"] });
-  }, [cotacoesAutomaticas.dataUpdatedAt, queryClient]);
 
   useEffect(() => {
     localStorage.setItem(RESERVA_MESES_KEY, reservaMeses);

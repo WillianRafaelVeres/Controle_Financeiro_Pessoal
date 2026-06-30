@@ -2,8 +2,13 @@ import { CheckCircle2, TriangleAlert } from "lucide-react";
 
 import { SectionCard } from "../../components/finance/SectionCard";
 import { formatMoney, toNumber } from "../../lib/formatters";
+import type { DashboardResumo } from "../../lib/types";
 
-export function ConciliacaoBox({ data }: { data?: Record<string, string | number> }) {
+type ConciliacaoData = Partial<DashboardResumo> & {
+  diferenca_nao_explicada?: string | number;
+};
+
+export function ConciliacaoBox({ data }: { data?: ConciliacaoData }) {
   const diferenca = toNumber(data?.diferenca_nao_explicada ?? data?.diferenca_conciliacao);
   const saldoFinal = data?.saldo_final ?? data?.saldo_explicado;
   const ok = Math.abs(diferenca) < 0.01;

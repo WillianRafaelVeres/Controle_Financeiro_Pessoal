@@ -295,10 +295,50 @@ def calcular_limite_utilizado_total(session: Session, cartao_id: str) -> Decimal
 
 def resumo_cartoes(session: Session) -> list[dict]:
     cartoes = session.exec(select(Cartao).where(Cartao.ativo.is_(True)).order_by(Cartao.nome)).all()
+    cartao_ids = [cartao.id for cartao in cartoes]
+    separacoes_por_cartao: dict[str, Decimal] = {}
+    pagamentos_por_cartao: dict[str, Decimal] = {}
+    futuro_por_cartao: dict[str, Decimal] = {}
+
+    if cartao_ids:
+        separacoes = session.exec(
+            select(Lancamento.cartao_id, func.sum(Lancamento.valor))
+            .where(
+                Lancamento.ativo.is_(True),
+                Lancamento.tipo == TipoLancamento.GASTO,
+                Lancamento.cartao_id.in_(cartao_ids),
+                or_(Lancamento.afeta_saldo_livre.is_(True), Lancamento.caixinha_id.is_not(None)),
+            )
+            .group_by(Lancamento.cartao_id)
+        ).all()
+        separacoes_por_cartao = {cartao_id: _decimal(valor) for cartao_id, valor in separacoes if cartao_id}
+
+        pagamentos = session.exec(
+            select(PagamentoFatura.cartao_id, func.sum(PagamentoFatura.valor_pago))
+            .where(PagamentoFatura.cartao_id.in_(cartao_ids))
+            .group_by(PagamentoFatura.cartao_id)
+        ).all()
+        pagamentos_por_cartao = {cartao_id: _decimal(valor) for cartao_id, valor in pagamentos if cartao_id}
+
+        futuros = session.exec(
+            select(CompromissoCartao.cartao_id, func.sum(CompromissoCartao.valor_em_aberto))
+            .where(
+                CompromissoCartao.ativo.is_(True),
+                CompromissoCartao.valor_em_aberto > 0,
+                CompromissoCartao.cartao_id.in_(cartao_ids),
+            )
+            .group_by(CompromissoCartao.cartao_id)
+        ).all()
+        futuro_por_cartao = {cartao_id: _decimal(valor) for cartao_id, valor in futuros if cartao_id}
+
     result = []
     for cartao in cartoes:
-        reservado = calcular_reservado_cartao(session, cartao.id)
-        futuro = calcular_compromisso_futuro_cartao(session, cartao.id)
+        reservado = max(
+            separacoes_por_cartao.get(cartao.id, Decimal("0.00"))
+            - pagamentos_por_cartao.get(cartao.id, Decimal("0.00")),
+            Decimal("0.00"),
+        )
+        futuro = futuro_por_cartao.get(cartao.id, Decimal("0.00"))
         limite_sistema = reservado + futuro
         result.append(
             {

@@ -5,6 +5,9 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undef
 const LEGACY_SESSION_KEY = "central_financeira_session";
 const PASSWORD_RECOVERY_REQUEST_KEY = "central_financeira_password_recovery_requested_at";
 const PASSWORD_RECOVERY_REQUEST_TTL_MS = 1000 * 60 * 30;
+let cachedAccessToken: string | null = null;
+let cachedAccessTokenExpiresAt = 0;
+let accessTokenRequest: Promise<string | null> | null = null;
 
 export const PASSWORD_RESET_PATH = "/reset-password";
 const configuredPasswordResetRedirectUrl = (import.meta.env.VITE_PASSWORD_RESET_REDIRECT_URL as string | undefined)?.trim();
@@ -33,6 +36,30 @@ interface LegacySession {
 function getClient(): SupabaseClient {
   if (!supabase) throw new Error("Supabase nao configurado.");
   return supabase;
+}
+
+function rememberSession(session: Session | null) {
+  cachedAccessToken = session?.access_token ?? null;
+  cachedAccessTokenExpiresAt = session?.expires_at
+    ? session.expires_at * 1000
+    : session?.access_token
+      ? Date.now() + 60_000
+      : 0;
+}
+
+function clearCachedAccessToken() {
+  cachedAccessToken = null;
+  cachedAccessTokenExpiresAt = 0;
+  accessTokenRequest = null;
+}
+
+function validCachedAccessToken(): string | null {
+  if (!cachedAccessToken) return null;
+  if (cachedAccessTokenExpiresAt && cachedAccessTokenExpiresAt <= Date.now() + 30_000) {
+    clearCachedAccessToken();
+    return null;
+  }
+  return cachedAccessToken;
 }
 
 function readLegacySession(): LegacySession | null {
@@ -150,6 +177,7 @@ export async function signIn(email: string, password: string): Promise<string> {
   const { data, error } = await getClient().auth.signInWithPassword({ email: email.trim(), password });
   if (error) throw new Error(error.message);
   if (!data.session?.access_token) throw new Error("Sem token na resposta.");
+  rememberSession(data.session);
   clearLegacySession();
   return data.session.access_token;
 }
@@ -165,6 +193,7 @@ export async function signOut(): Promise<void> {
   } catch {
     // ignore
   }
+  clearCachedAccessToken();
   clearLegacySession();
   clearPasswordRecoveryRequest();
 }
@@ -173,6 +202,7 @@ export async function getCurrentSession(): Promise<Session | null> {
   if (!supabase) return null;
   const { data, error } = await supabase.auth.getSession();
   if (error) return null;
+  rememberSession(data.session);
   return data.session;
 }
 
@@ -184,6 +214,7 @@ export async function getRecoverySession(): Promise<Session | null> {
   if (code) {
     const { data, error } = await getClient().auth.exchangeCodeForSession(code);
     if (error) return null;
+    rememberSession(data.session);
     return data.session;
   }
 
@@ -195,12 +226,25 @@ export async function getRecoverySession(): Promise<Session | null> {
     type: "recovery" as EmailOtpType,
   });
   if (error) return null;
+  rememberSession(data.session);
   return data.session;
 }
 
 export async function getAccessToken(): Promise<string | null> {
-  const session = await getCurrentSession();
-  return session?.access_token ?? legacyAccessToken();
+  const cached = validCachedAccessToken();
+  if (cached) return cached;
+  if (accessTokenRequest) return accessTokenRequest;
+
+  accessTokenRequest = (async () => {
+    const session = await getCurrentSession();
+    return session?.access_token ?? legacyAccessToken();
+  })();
+
+  try {
+    return await accessTokenRequest;
+  } finally {
+    accessTokenRequest = null;
+  }
 }
 
 export async function sendPasswordReset(email: string): Promise<void> {
@@ -218,6 +262,9 @@ export async function updatePassword(password: string): Promise<void> {
 
 export function onAuthStateChange(callback: (event: AuthChangeEvent, session: Session | null) => void): () => void {
   if (!supabase) return () => undefined;
-  const { data } = supabase.auth.onAuthStateChange(callback);
+  const { data } = supabase.auth.onAuthStateChange((event, session) => {
+    rememberSession(session);
+    callback(event, session);
+  });
   return () => data.subscription.unsubscribe();
 }

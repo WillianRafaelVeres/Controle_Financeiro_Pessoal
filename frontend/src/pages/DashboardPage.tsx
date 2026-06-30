@@ -21,28 +21,26 @@ import { DolarActionDialog, type ActionType } from "./ExteriorDolarPage";
 export function DashboardPage({ onNewLancamento }: { onNewLancamento?: () => void }) {
   const queryClient = useQueryClient();
   const month = currentMonth();
-  const resumo = useQuery({ queryKey: ["painel", "resumo", month], queryFn: () => api.painelResumo(month.ano, month.mes) });
-  const conciliacao = useQuery({ queryKey: ["dashboard", "conciliacao"], queryFn: api.conciliacao });
-  const graficos = useQuery({ queryKey: ["dashboard", "graficos", month], queryFn: () => api.dashboardGraficos(month.ano, month.mes) });
-  const ativosDividendos = useQuery({ queryKey: ["ativos-dividendos", "dashboard"], queryFn: api.ativosDividendos });
-  const cotacaoDolar = useQuery({ queryKey: ["dolar-cotacao-atual"], queryFn: api.dolarCotacaoAtual, retry: false });
-
-  const criarDividendo = useMutation({ mutationFn: api.criarDividendo, onSuccess: () => invalidateInvestmentData(queryClient) });
-  const movimentoDolar = useMutation({ mutationFn: api.dolarMovimento, onSuccess: () => invalidateDollarData(queryClient) });
-  const comprarAtivo = useMutation({ mutationFn: api.comprar, onSuccess: () => invalidateInvestmentData(queryClient) });
-
   const [localLancamentoOpen, setLocalLancamentoOpen] = useState(false);
   const [compraAtivoOpen, setCompraAtivoOpen] = useState(false);
   const [dividendoOpen, setDividendoOpen] = useState(false);
   const [dolarAction, setDolarAction] = useState<ActionType | null>(null);
   const abrirLancamento = onNewLancamento ?? (() => setLocalLancamentoOpen(true));
+  const resumo = useQuery({ queryKey: ["painel", "resumo", month], queryFn: () => api.painelResumo(month.ano, month.mes) });
+  const graficos = useQuery({ queryKey: ["dashboard", "graficos", month], queryFn: () => api.dashboardGraficos(month.ano, month.mes) });
+  const ativosDividendos = useQuery({ queryKey: ["ativos-dividendos", "dashboard"], queryFn: api.ativosDividendos, enabled: dividendoOpen });
+  const cotacaoDolar = useQuery({ queryKey: ["dolar-cotacao-atual"], queryFn: api.dolarCotacaoAtual, enabled: Boolean(dolarAction), retry: false });
+
+  const criarDividendo = useMutation({ mutationFn: api.criarDividendo, onSuccess: () => invalidateInvestmentData(queryClient) });
+  const movimentoDolar = useMutation({ mutationFn: api.dolarMovimento, onSuccess: () => invalidateDollarData(queryClient) });
+  const comprarAtivo = useMutation({ mutationFn: api.comprar, onSuccess: () => invalidateInvestmentData(queryClient) });
 
   return (
     <div className="space-y-3">
       <DashboardCards resumo={resumo.data} />
 
       <div className="grid items-start gap-3 xl:grid-cols-[minmax(320px,1fr)_minmax(280px,0.82fr)]">
-        <ConciliacaoBox data={conciliacao.data} />
+        <ConciliacaoBox data={resumo.data} />
         <SectionCard title="Ações rápidas" description="Registre as movimentações mais comuns." className="self-start">
           <div className="grid gap-3 sm:grid-cols-2">
             <Button className="min-h-16 justify-center rounded-2xl text-sm shadow-[0_18px_42px_rgba(34,197,94,0.32)] sm:flex-col sm:gap-2" aria-label="Novo lancamento" onClick={abrirLancamento}>

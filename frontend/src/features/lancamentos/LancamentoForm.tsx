@@ -18,7 +18,7 @@ import {
 } from "../../lib/investmentProfiles";
 import { toNumber } from "../../lib/formatters";
 import type {
-  CartaoResumo,
+  CartaoOpcao,
   Categoria,
   MetodoPagamento,
   NaturezaCategoria,
@@ -32,7 +32,7 @@ interface LancamentoFormProps {
   categorias: Categoria[];
   subcategorias: Subcategoria[];
   metodos: MetodoPagamento[];
-  cartoes: CartaoResumo[];
+  cartoes: CartaoOpcao[];
   onSubmit: (payload: Record<string, unknown>) => Promise<void>;
   onCreateContaFutura?: (payload: Record<string, unknown>) => Promise<void>;
   onCreateCategoria: (nome: string, natureza: NaturezaCategoria) => Promise<ComboOption>;

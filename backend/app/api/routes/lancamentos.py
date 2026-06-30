@@ -4,7 +4,13 @@ from sqlmodel import Session
 from app.core.database import get_session
 from app.models.lancamento import Lancamento
 from app.schemas.lancamento_schema import LancamentoCreate, LancamentoUpdate
-from app.services.lancamento_service import atualizar_lancamento, criar_lancamento, excluir_lancamento, listar_lancamentos
+from app.services.lancamento_service import (
+    atualizar_lancamento,
+    criar_lancamento,
+    excluir_lancamento,
+    listar_lancamentos,
+    listar_opcoes_lancamento,
+)
 
 router = APIRouter(prefix="/lancamentos", tags=["lancamentos"])
 
@@ -12,6 +18,11 @@ router = APIRouter(prefix="/lancamentos", tags=["lancamentos"])
 @router.get("")
 def listar(ano: int | None = None, mes: int | None = None, session: Session = Depends(get_session)) -> list[Lancamento]:
     return listar_lancamentos(session, ano, mes)
+
+
+@router.get("/opcoes")
+def opcoes(session: Session = Depends(get_session)) -> dict:
+    return listar_opcoes_lancamento(session)
 
 
 @router.post("")

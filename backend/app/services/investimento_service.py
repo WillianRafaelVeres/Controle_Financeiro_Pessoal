@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 
 from app.models.base import (
     Moeda,
+    NaturezaCategoria,
     TipoAtivo,
     TipoControleInvestimento,
     TipoLancamento,
@@ -26,6 +27,8 @@ from app.models.historico_investimento import HistoricoInvestimentoMensal
 from app.models.investimento import Ativo, MovimentoInvestimento
 from app.models.lancamento import Lancamento
 from app.models.conta import Conta
+from app.models.categoria import Categoria
+from app.models.subcategoria import Subcategoria
 from app.schemas.investimento_schema import MovimentoInvestimentoCreate, MovimentoInvestimentoUpdate
 from app.services.dividendo_service import dividendos_recebidos_brl
 from app.services.exterior_dolar_service import buscar_cotacao_dolar_atual, registrar_movimento_dolar, resumo_dolar, saldo_teorico_usd
@@ -85,6 +88,8 @@ TIPO_ATIVO_LABELS = {
     TipoAtivo.PREVIDENCIA: "Previdencia",
     TipoAtivo.OUTRO: "Outro",
 }
+
+NOME_CATEGORIA_INVESTIMENTOS = "Investimentos"
 
 
 def _moeda_padrao(tipo_ativo: TipoAtivo) -> Moeda:
@@ -440,6 +445,63 @@ def _tipo_grupo(tipo_ativo: TipoAtivo) -> TipoAtivo:
     return tipo_ativo
 
 
+def _normalizar_nome_categoria(nome: str) -> str:
+    sem_acentos = unicodedata.normalize("NFD", nome.strip().lower())
+    return "".join(char for char in sem_acentos if unicodedata.category(char) != "Mn")
+
+
+def _label_tipo_ativo(tipo_ativo: TipoAtivo) -> str:
+    return TIPO_ATIVO_LABELS.get(_tipo_grupo(tipo_ativo), tipo_ativo.value)
+
+
+def _categoria_investimentos(session: Session) -> Categoria:
+    categorias = session.exec(
+        select(Categoria)
+        .where(Categoria.natureza == NaturezaCategoria.INVESTIMENTO)
+        .order_by(Categoria.nome, Categoria.criado_em)
+    ).all()
+    for categoria in categorias:
+        if _normalizar_nome_categoria(categoria.nome) == _normalizar_nome_categoria(NOME_CATEGORIA_INVESTIMENTOS):
+            if not categoria.ativa:
+                categoria.ativa = True
+                categoria.inativado_em = None
+                categoria.motivo_inativacao = None
+                categoria.atualizado_em = now_utc()
+                session.add(categoria)
+                session.flush()
+            return categoria
+    for categoria in categorias:
+        if categoria.ativa:
+            return categoria
+
+    categoria = Categoria(nome=NOME_CATEGORIA_INVESTIMENTOS, natureza=NaturezaCategoria.INVESTIMENTO)
+    session.add(categoria)
+    session.flush()
+    return categoria
+
+
+def _subcategoria_tipo_investimento(session: Session, categoria: Categoria, tipo_ativo: TipoAtivo) -> Subcategoria:
+    nome = _label_tipo_ativo(tipo_ativo)
+    normalizado = _normalizar_nome_categoria(nome)
+    subcategorias = session.exec(select(Subcategoria).where(Subcategoria.categoria_id == categoria.id)).all()
+    for subcategoria in subcategorias:
+        if _normalizar_nome_categoria(subcategoria.nome) == normalizado:
+            if not subcategoria.ativa:
+                subcategoria.ativa = True
+                subcategoria.inativado_em = None
+                subcategoria.motivo_inativacao = None
+            subcategoria.natureza = NaturezaCategoria.INVESTIMENTO
+            subcategoria.atualizado_em = now_utc()
+            session.add(subcategoria)
+            session.flush()
+            return subcategoria
+
+    subcategoria = Subcategoria(nome=nome, categoria_id=categoria.id, natureza=NaturezaCategoria.INVESTIMENTO)
+    session.add(subcategoria)
+    session.flush()
+    return subcategoria
+
+
 def _registrar_snapshot_mensal(session: Session, desempenho: dict, data_referencia: date | None = None) -> HistoricoInvestimentoMensal:
     referencia = data_referencia or date.today()
     snapshot = session.exec(
@@ -691,12 +753,18 @@ def _sincronizar_lancamento_investimento_brl(
     tipo_lancamento = TipoLancamento.INVESTIMENTO if entrada else TipoLancamento.AJUSTE
     origem_sistema = "INVESTIMENTO_COMPRA" if entrada else "INVESTIMENTO_RESGATE"
     afeta_orcamento = entrada
+    categoria_investimento = _categoria_investimentos(session)
+    subcategoria_investimento = _subcategoria_tipo_investimento(session, categoria_investimento, ativo.tipo_ativo)
     if not lancamento:
         lancamento = Lancamento(
             data_lancamento=movimento.data_movimento,
             tipo=tipo_lancamento,
             valor=valor_financeiro,
             valor_original=valor_financeiro,
+            categoria_id=categoria_investimento.id,
+            subcategoria_id=subcategoria_investimento.id,
+            categoria_nome_snapshot=categoria_investimento.nome,
+            subcategoria_nome_snapshot=subcategoria_investimento.nome,
             conta_id=movimento.conta_id,
             observacao=descricao,
             origem_sistema=origem_sistema,
@@ -709,6 +777,10 @@ def _sincronizar_lancamento_investimento_brl(
         lancamento.tipo = tipo_lancamento
         lancamento.valor = valor_financeiro
         lancamento.valor_original = valor_financeiro
+        lancamento.categoria_id = categoria_investimento.id
+        lancamento.subcategoria_id = subcategoria_investimento.id
+        lancamento.categoria_nome_snapshot = categoria_investimento.nome
+        lancamento.subcategoria_nome_snapshot = subcategoria_investimento.nome
         lancamento.conta_id = movimento.conta_id
         lancamento.observacao = descricao
         lancamento.origem_sistema = origem_sistema

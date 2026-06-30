@@ -50,12 +50,19 @@ export function ConfiguracoesPage() {
   const [ordenacaoCategorias, setOrdenacaoCategorias] = useState<CategoriaSort>({ campo: "nome", direcao: "asc" });
 
   const categoriasVisiveis = useMemo(
-    () => (categorias.data ?? []).filter((item) => item.ativa),
+    () => (categorias.data ?? []).filter((item) => item.ativa && item.natureza !== "INVESTIMENTO"),
     [categorias.data],
   );
   const subcategoriasVisiveis = useMemo(
-    () => (subcategorias.data ?? []).filter((item) => item.ativa),
-    [subcategorias.data],
+    () =>
+      (subcategorias.data ?? []).filter(
+        (item) => item.ativa && item.natureza !== "INVESTIMENTO" && categoriasVisiveis.some((categoria) => categoria.id === item.categoria_id),
+      ),
+    [subcategorias.data, categoriasVisiveis],
+  );
+  const categoriasCadastro = useMemo(
+    () => (categorias.data ?? []).filter((item) => item.ativa && item.natureza !== "INVESTIMENTO"),
+    [categorias.data],
   );
   const categoriasOrdenadas = useMemo(() => {
     const naturezaPeso: Record<NaturezaCategoria, number> = { GASTO: 1, RECEITA: 2, INVESTIMENTO: 3 };
@@ -202,7 +209,7 @@ export function ConfiguracoesPage() {
       <AddDialog
         modal={modal}
         onClose={fecharModal}
-        categorias={(categorias.data ?? []).filter((item) => item.ativa)}
+        categorias={categoriasCadastro}
         categoriaPadraoSubcategoria={categoriaPadraoSubcategoria}
         onCreateCategoria={(payload) => mutations.categoria.mutateAsync(payload)}
         onCreateSubcategoria={(payload) => mutations.subcategoria.mutateAsync(payload)}
@@ -545,7 +552,6 @@ function AddDialog({
             <Select value={form.natureza ?? "GASTO"} onChange={(event) => setForm({ ...form, natureza: event.target.value })}>
               <option value="GASTO">Gasto</option>
               <option value="RECEITA">Receita</option>
-              <option value="INVESTIMENTO">Investimento</option>
             </Select>
           </label>
         )}

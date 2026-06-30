@@ -1963,6 +1963,54 @@ def test_lancamento_investimento_cria_movimento_e_conta_no_planejamento_sem_gast
     assert session.get(Ativo, movimentos[0].ativo_id).ticker == "BBAS3"
 
 
+def test_compra_investimento_brl_sincroniza_categoria_de_planejamento(session: Session):
+    conta = Conta(nome="Conta", saldo_inicial=Decimal("3000.00"))
+    session.add(conta)
+    session.commit()
+
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ticker="BBAS3",
+            nome="Banco do Brasil",
+            tipo_ativo=TipoAtivo.ACAO_BR,
+            quantidade=Decimal("50.00"),
+            preco_unitario=Decimal("20.00"),
+            conta_id=conta.id,
+            data_movimento=date(2026, 5, 20),
+        ),
+    )
+
+    lancamento = session.exec(select(Lancamento).where(Lancamento.tipo == TipoLancamento.INVESTIMENTO)).one()
+    categoria = session.get(Categoria, lancamento.categoria_id)
+    subcategoria = session.get(Subcategoria, lancamento.subcategoria_id)
+
+    assert categoria is not None
+    assert subcategoria is not None
+    assert categoria.nome == "Investimentos"
+    assert categoria.natureza == NaturezaCategoria.INVESTIMENTO
+    assert subcategoria.nome == "Acao BR"
+    assert subcategoria.natureza == NaturezaCategoria.INVESTIMENTO
+
+    adicionar_item_orcamento(
+        session,
+        OrcamentoItemCreate(
+            ano=2026,
+            mes=5,
+            tipo_item=TipoItemOrcamento.SUBCATEGORIA,
+            natureza=NaturezaCategoria.INVESTIMENTO,
+            categoria_id=categoria.id,
+            subcategoria_id=subcategoria.id,
+            valor_orcado=Decimal("1000.00"),
+        ),
+    )
+
+    planejamento = resumo_planejamento(session, 2026, 5)
+
+    assert planejamento["investimentos_executados"] == Decimal("1000.00")
+    assert planejamento["investimentos_nao_planejados_total"] == Decimal("0.00")
+
+
 def test_conciliacao_considera_lancamento_de_investimento(session: Session):
     conta = Conta(nome="Conta", saldo_inicial=Decimal("2000.00"), saldo_atual_informado=Decimal("1000.00"))
     categoria = Categoria(nome="Investimentos", natureza=NaturezaCategoria.INVESTIMENTO)

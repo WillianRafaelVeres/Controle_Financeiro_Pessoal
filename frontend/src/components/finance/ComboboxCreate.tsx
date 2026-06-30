@@ -45,6 +45,24 @@ function normalize(value: string) {
     .trim();
 }
 
+function matchScore(option: ComboOption, normalizedQuery: string) {
+  if (!normalizedQuery) return 0;
+
+  const label = normalize(option.label);
+  const description = normalize(option.description ?? "");
+  const labelWords = label.split(/\s+/);
+  const descriptionWords = description.split(/\s+/);
+
+  if (label === normalizedQuery) return 0;
+  if (label.startsWith(normalizedQuery)) return 1;
+  if (labelWords.some((word) => word.startsWith(normalizedQuery))) return 2;
+  if (label.includes(normalizedQuery)) return 3;
+  if (description.startsWith(normalizedQuery) || descriptionWords.some((word) => word.startsWith(normalizedQuery))) return 4;
+  if (description.includes(normalizedQuery)) return 5;
+
+  return null;
+}
+
 export function ComboboxCreate({
   label,
   placeholder = "Pesquisar",
@@ -75,13 +93,15 @@ export function ComboboxCreate({
     const normalized = normalize(query);
     if (!normalized) return options;
     return options
-      .filter((option) => normalize(`${option.label} ${option.description ?? ""}`).includes(normalized))
+      .map((option, index) => ({ option, index, score: matchScore(option, normalized) }))
+      .filter((item): item is { option: ComboOption; index: number; score: number } => item.score !== null)
       .sort((a, b) => {
-        // quem "comeca com" o texto digitado aparece primeiro
-        const aStarts = normalize(a.label).startsWith(normalized) ? 0 : 1;
-        const bStarts = normalize(b.label).startsWith(normalized) ? 0 : 1;
-        return aStarts - bStarts;
-      });
+        const byScore = a.score - b.score;
+        if (byScore !== 0) return byScore;
+        const byLabel = a.option.label.localeCompare(b.option.label, "pt-BR", { sensitivity: "base" });
+        return byLabel || a.index - b.index;
+      })
+      .map((item) => item.option);
   }, [options, query]);
   const canCreate =
     Boolean(onCreatePersist) &&
@@ -102,7 +122,7 @@ export function ComboboxCreate({
     const gap = 6;
     const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
     const spaceAbove = rect.top - viewportPadding;
-    const openBelow = spaceBelow >= 220 || spaceBelow >= spaceAbove;
+    const openBelow = spaceBelow >= 140 || spaceBelow >= spaceAbove;
     const availableSpace = Math.max(140, (openBelow ? spaceBelow : spaceAbove) - gap);
     const maxHeight = Math.min(360, availableSpace);
     const width = Math.min(Math.max(rect.width, 260), window.innerWidth - viewportPadding * 2);
@@ -222,9 +242,8 @@ export function ComboboxCreate({
           <div
             ref={dropdownRef}
             role="listbox"
-            className="overflow-y-auto rounded-xl border border-white/15 bg-slate-950/95 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-white/[0.06] backdrop-blur-xl"
+            className="fixed overflow-y-auto rounded-xl border border-white/15 bg-slate-950/95 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-white/[0.06] backdrop-blur-xl"
             style={{
-              position: "fixed",
               zIndex: 9000,
               left: dropdownPosition.left,
               top: dropdownPosition.top,

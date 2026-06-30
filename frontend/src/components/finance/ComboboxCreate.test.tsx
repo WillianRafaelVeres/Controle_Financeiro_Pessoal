@@ -46,6 +46,28 @@ describe("ComboboxCreate", () => {
     expect(top).toBeLessThan(520); // colado no campo, longe do rodape (841px)
   });
 
+  it("prefere abrir abaixo quando ainda ha espaco util abaixo do campo", async () => {
+    vi.mocked(Element.prototype.getBoundingClientRect).mockReturnValue({
+      top: 300,
+      bottom: 340,
+      left: 950,
+      right: 1240,
+      width: 290,
+      height: 40,
+      x: 950,
+      y: 300,
+      toJSON: () => ({}),
+    } as DOMRect);
+    Object.defineProperty(window, "innerHeight", { value: 500, configurable: true });
+
+    render(<ComboboxCreate label="Item" options={options} onSelect={vi.fn()} />);
+
+    fireEvent.focus(screen.getByRole("combobox", { name: "Item" }));
+    const listbox = await screen.findByRole("listbox");
+
+    expect(parseFloat(listbox.style.top)).toBeGreaterThanOrEqual(340);
+  });
+
   it("mostra todas as opcoes ao abrir", async () => {
     render(<ComboboxCreate label="Item" options={options} onSelect={vi.fn()} />);
 
@@ -65,6 +87,29 @@ describe("ComboboxCreate", () => {
       .getAllByRole("button")
       .map((button) => button.textContent);
     expect(labels).toEqual(["Alimentacao", "Aluguel"]);
+  });
+
+  it("ranqueia sugestoes conforme a proximidade do texto digitado", async () => {
+    render(
+      <ComboboxCreate
+        label="Item"
+        options={[
+          { id: "1", label: "Supermercado" },
+          { id: "2", label: "Plano Mercado" },
+          { id: "3", label: "Mercado" },
+        ]}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByRole("combobox", { name: "Item" });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "mer" } });
+
+    const labels = within(screen.getByRole("listbox"))
+      .getAllByRole("button")
+      .map((button) => button.textContent);
+    expect(labels).toEqual(["Mercado", "Plano Mercado", "Supermercado"]);
   });
 
   it("seleciona a opcao clicada", async () => {

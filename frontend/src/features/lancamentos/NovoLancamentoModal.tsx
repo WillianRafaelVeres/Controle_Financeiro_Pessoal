@@ -26,8 +26,8 @@ export function NovoLancamentoModal({ open, onClose, initialType = "GASTO" }: No
   const criarSubcategoria = useMutation({ mutationFn: api.criarSubcategoria });
   const criarMetodo = useMutation({ mutationFn: api.criarMetodo });
 
-  async function atualizarDadosRelacionados() {
-    await invalidateLaunchData(queryClient);
+  function atualizarDadosRelacionados() {
+    invalidateLaunchData(queryClient);
   }
 
   return (
@@ -40,12 +40,12 @@ export function NovoLancamentoModal({ open, onClose, initialType = "GASTO" }: No
         initialType={initialType}
         onSubmit={async (payload) => {
           await criarLancamento.mutateAsync(payload);
-          await atualizarDadosRelacionados();
+          atualizarDadosRelacionados();
           onClose();
         }}
         onCreateContaFutura={async (payload) => {
           await criarContaFutura.mutateAsync(payload);
-          await atualizarDadosRelacionados();
+          atualizarDadosRelacionados();
           onClose();
         }}
         onCreateCategoria={async (nome, natureza: NaturezaCategoria) => {

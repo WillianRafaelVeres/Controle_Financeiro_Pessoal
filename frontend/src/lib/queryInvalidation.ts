@@ -1,7 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 
 function invalidateMany(queryClient: QueryClient, queryKeys: unknown[][]) {
-  return Promise.all(queryKeys.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
+  void Promise.allSettled(queryKeys.map((queryKey) => queryClient.invalidateQueries({ queryKey, refetchType: "active" })));
 }
 
 export function invalidatePlanningData(queryClient: QueryClient) {

@@ -57,6 +57,7 @@ _TESOURO_CACHE: dict = {"itens": None, "carregado_em": None}
 _TESOURO_CACHE_TTL = timedelta(hours=6)
 _BENCHMARK_CACHE: dict[str, dict] = {}
 _BENCHMARK_CACHE_TTL = timedelta(minutes=15)
+_PERMITE_NULL_QUANTIDADE_CACHE: dict[str, bool] = {}
 # Palavras genericas que nao ajudam a distinguir o titulo do Tesouro.
 _TESOURO_STOPWORDS = {"tesouro", "com", "de", "do", "da", "e"}
 TIPOS_COM_DIVIDENDOS = {TipoAtivo.ACAO_BR, TipoAtivo.FII, TipoAtivo.ETF_BR} | TIPOS_EXTERIOR
@@ -108,6 +109,8 @@ def _benchmark_cache_set(key: str, value: dict) -> dict:
     return dict(value)
 
 NOME_CATEGORIA_INVESTIMENTOS = "Investimentos"
+SESSION_INVESTIMENTO_CATEGORIA_KEY = "investimento_categoria"
+SESSION_INVESTIMENTO_SUBCATEGORIAS_KEY = "investimento_subcategorias"
 
 
 def _moeda_padrao(tipo_ativo: TipoAtivo) -> Moeda:
@@ -148,7 +151,20 @@ def _tipo_controle_efetivo(ativo: Ativo) -> TipoControleInvestimento:
     return TipoControleInvestimento.VALOR if _controle_por_valor(ativo) else TipoControleInvestimento.QUANTIDADE
 
 
+def _schema_cache_key(session: Session) -> str:
+    bind = session.get_bind()
+    engine = getattr(bind, "engine", bind)
+    url = getattr(engine, "url", None)
+    if url is not None:
+        return url.render_as_string(hide_password=True)
+    return repr(engine)
+
+
 def _permite_null_quantidade(session: Session) -> bool:
+    cache_key = _schema_cache_key(session)
+    cached = _PERMITE_NULL_QUANTIDADE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     try:
         from sqlalchemy import inspect
 
@@ -156,13 +172,16 @@ def _permite_null_quantidade(session: Session) -> bool:
         columns = {item["name"]: item for item in inspector.get_columns("movimentos_investimento")}
         quantidade = columns.get("quantidade")
         preco_unitario = columns.get("preco_unitario")
-        return bool(
+        permite = bool(
             quantidade
             and preco_unitario
             and quantidade.get("nullable")
             and preco_unitario.get("nullable")
         )
+        _PERMITE_NULL_QUANTIDADE_CACHE[cache_key] = permite
+        return permite
     except Exception:
+        _PERMITE_NULL_QUANTIDADE_CACHE[cache_key] = False
         return False
 
 
@@ -508,6 +527,10 @@ def _label_tipo_ativo(tipo_ativo: TipoAtivo) -> str:
 
 
 def _categoria_investimentos(session: Session) -> Categoria:
+    cached = session.info.get(SESSION_INVESTIMENTO_CATEGORIA_KEY)
+    if isinstance(cached, Categoria):
+        return cached
+
     categorias = session.exec(
         select(Categoria)
         .where(Categoria.natureza == NaturezaCategoria.INVESTIMENTO)
@@ -522,20 +545,29 @@ def _categoria_investimentos(session: Session) -> Categoria:
                 categoria.atualizado_em = now_utc()
                 session.add(categoria)
                 session.flush()
+            session.info[SESSION_INVESTIMENTO_CATEGORIA_KEY] = categoria
             return categoria
     for categoria in categorias:
         if categoria.ativa:
+            session.info[SESSION_INVESTIMENTO_CATEGORIA_KEY] = categoria
             return categoria
 
     categoria = Categoria(nome=NOME_CATEGORIA_INVESTIMENTOS, natureza=NaturezaCategoria.INVESTIMENTO)
     session.add(categoria)
     session.flush()
+    session.info[SESSION_INVESTIMENTO_CATEGORIA_KEY] = categoria
     return categoria
 
 
 def _subcategoria_tipo_investimento(session: Session, categoria: Categoria, tipo_ativo: TipoAtivo) -> Subcategoria:
     nome = _label_tipo_ativo(tipo_ativo)
     normalizado = _normalizar_nome_categoria(nome)
+    cache_key = (categoria.id, normalizado)
+    cache = session.info.setdefault(SESSION_INVESTIMENTO_SUBCATEGORIAS_KEY, {})
+    cached = cache.get(cache_key)
+    if isinstance(cached, Subcategoria):
+        return cached
+
     subcategorias = session.exec(select(Subcategoria).where(Subcategoria.categoria_id == categoria.id)).all()
     for subcategoria in subcategorias:
         if _normalizar_nome_categoria(subcategoria.nome) == normalizado:
@@ -547,11 +579,13 @@ def _subcategoria_tipo_investimento(session: Session, categoria: Categoria, tipo
             subcategoria.atualizado_em = now_utc()
             session.add(subcategoria)
             session.flush()
+            cache[cache_key] = subcategoria
             return subcategoria
 
     subcategoria = Subcategoria(nome=nome, categoria_id=categoria.id, natureza=NaturezaCategoria.INVESTIMENTO)
     session.add(subcategoria)
     session.flush()
+    cache[cache_key] = subcategoria
     return subcategoria
 
 

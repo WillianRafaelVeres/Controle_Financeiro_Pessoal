@@ -1633,38 +1633,79 @@ def test_desempenho_converte_posicao_usd_por_dolar_atual(session: Session, monke
     assert snapshot["lucro_prejuizo_brl"] == Decimal("150.00")
 
 
-def test_compra_sem_ticker_agrupa_por_tipo_e_corretora(session: Session):
+def test_compra_sem_ticker_agrupa_por_nome_e_corretora(session: Session):
     primeira = comprar(
         session,
         MovimentoInvestimentoCreate(
-            tipo_ativo=TipoAtivo.PREVIDENCIA,
-            corretora="XP",
-            nome="Previdencia XP",
+            tipo_ativo=TipoAtivo.CAIXINHA_CDB,
+            corretora="Banco",
+            nome="Caixinha viagem",
             valor_total=Decimal("500.00"),
         ),
     )
     segunda = comprar(
         session,
         MovimentoInvestimentoCreate(
-            tipo_ativo=TipoAtivo.PREVIDENCIA,
-            corretora="XP",
+            tipo_ativo=TipoAtivo.CAIXINHA_CDB,
+            corretora="Banco",
+            nome="Caixinha casa",
             valor_total=Decimal("500.00"),
         ),
     )
+    terceiro_aporte = comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            tipo_ativo=TipoAtivo.CAIXINHA_CDB,
+            corretora="Banco",
+            nome="Caixinha viagem",
+            valor_total=Decimal("250.00"),
+        ),
+    )
 
-    ativo = session.get(Ativo, primeira.ativo_id)
-    assert ativo is not None
-    assert segunda.ativo_id == ativo.id
-    assert ativo.ticker == "PREVIDENCIA_XP"
-    assert ativo.moeda == "BRL"
-    assert ativo.corretora == "XP"
-    assert ativo.tipo_controle == TipoControleInvestimento.VALOR
+    ativo_viagem = session.get(Ativo, primeira.ativo_id)
+    ativo_casa = session.get(Ativo, segunda.ativo_id)
+    assert ativo_viagem is not None
+    assert ativo_casa is not None
+    assert segunda.ativo_id != ativo_viagem.id
+    assert terceiro_aporte.ativo_id == ativo_viagem.id
+    assert ativo_viagem.ticker == "CAIXINHA_CDB_BANCO_CAIXINHA_VIAGEM"
+    assert ativo_casa.ticker == "CAIXINHA_CDB_BANCO_CAIXINHA_CASA"
+    assert ativo_viagem.moeda == "BRL"
+    assert ativo_viagem.corretora == "Banco"
+    assert ativo_viagem.tipo_controle == TipoControleInvestimento.VALOR
 
-    posicoes = listar_posicoes(session)
-    assert len(posicoes) == 1
-    assert posicoes[0]["quantidade_atual"] is None
-    assert posicoes[0]["valor_total_aportado"] == Decimal("1000.0000")
-    assert posicoes[0]["corretora"] == "XP"
+    posicoes = {posicao["nome"]: posicao for posicao in listar_posicoes(session)}
+    assert set(posicoes) == {"Caixinha viagem", "Caixinha casa"}
+    assert posicoes["Caixinha viagem"]["quantidade_atual"] is None
+    assert posicoes["Caixinha viagem"]["valor_total_aportado"] == Decimal("750.0000")
+    assert posicoes["Caixinha casa"]["valor_total_aportado"] == Decimal("500.00")
+    assert posicoes["Caixinha viagem"]["corretora"] == "Banco"
+
+
+def test_compra_sem_ticker_reaproveita_ativo_legacy_quando_nome_bate(session: Session):
+    ativo_legacy = Ativo(
+        ticker="CAIXINHA_CDB_BANCO",
+        nome="Caixinha viagem",
+        tipo_ativo=TipoAtivo.CAIXINHA_CDB,
+        tipo_controle=TipoControleInvestimento.VALOR,
+        corretora="Banco",
+    )
+    session.add(ativo_legacy)
+    session.commit()
+    session.refresh(ativo_legacy)
+
+    aporte = comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            tipo_ativo=TipoAtivo.CAIXINHA_CDB,
+            corretora="Banco",
+            nome="Caixinha viagem",
+            valor_total=Decimal("200.00"),
+        ),
+    )
+
+    assert aporte.ativo_id == ativo_legacy.id
+    assert session.exec(select(Ativo).where(Ativo.tipo_ativo == TipoAtivo.CAIXINHA_CDB)).all() == [ativo_legacy]
 
 
 def test_categoria_e_subcategoria_nao_entram_no_orcamento_automaticamente(session: Session):

@@ -199,7 +199,14 @@ export function CompraAtivoModal({
         </label>
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-500">Instituicao/corretora</span>
-          <Input value={form.corretora} onChange={(event) => setForm({ ...form, corretora: event.target.value })} placeholder="Ex.: XP, Inter, Santander" />
+          <Input
+            value={form.corretora}
+            onChange={(event) => {
+              if (controleValor) setAtivoId("");
+              setForm({ ...form, corretora: event.target.value });
+            }}
+            placeholder="Ex.: XP, Inter, Santander"
+          />
         </label>
         {tickerObrigatorio && (
           <label className="relative space-y-1">

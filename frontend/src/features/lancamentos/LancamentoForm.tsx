@@ -11,6 +11,7 @@ import { Textarea } from "../../components/ui/textarea";
 import {
   defaultCurrencyForInvestment,
   INVESTMENT_TYPE_OPTIONS,
+  isValueControlledInvestment,
   needsTicker,
   readInvestmentBrokerPrefs,
   saveInvestmentBrokerPref,
@@ -76,6 +77,7 @@ export function LancamentoForm({
   const [destinoInvestimento, setDestinoInvestimento] = useState("RESERVA");
   const [tipoAtivo, setTipoAtivo] = useState<TipoAtivo>("ACAO_BR");
   const [ticker, setTicker] = useState("");
+  const [nomeInvestimento, setNomeInvestimento] = useState("");
   const [corretoraInvestimento, setCorretoraInvestimento] = useState("");
   const [quantidade, setQuantidade] = useState("");
   const [precoUnitario, setPrecoUnitario] = useState("");
@@ -113,6 +115,7 @@ export function LancamentoForm({
   const isCartao = tipo === "GASTO" && !isContaFutura && (Boolean(selectedCartaoId) || metodoSelecionado?.tipo_metodo === "CARTAO_CREDITO");
   const valorNumber = toNumber(valor);
   const tickerInvestimentoObrigatorio = needsTicker(tipoAtivo);
+  const investimentoControladoPorValor = isValueControlledInvestment(tipoAtivo);
   const moedaInvestimento = defaultCurrencyForInvestment(tipoAtivo);
 
   useEffect(() => {
@@ -151,6 +154,7 @@ export function LancamentoForm({
     setShowDate(false);
     setDestinoInvestimento("RESERVA");
     setTicker("");
+    setNomeInvestimento("");
     setCorretoraInvestimento(readInvestmentBrokerPrefs()[tipoAtivo] ?? "");
     setQuantidade("");
     setPrecoUnitario("");
@@ -169,9 +173,12 @@ export function LancamentoForm({
       tipo === "INVESTIMENTO" && destinoInvestimento === "COMPRA_ATIVO"
         ? {
             ticker: tickerInvestimentoObrigatorio ? ticker.trim() : null,
+            nome: investimentoControladoPorValor ? nomeInvestimento.trim() : ticker.trim(),
             tipo_ativo: tipoAtivo,
-            quantidade: toNumber(quantidade || 1),
-            preco_unitario: toNumber(precoUnitario || valorNumber),
+            tipo_controle: investimentoControladoPorValor ? "VALOR" : "QUANTIDADE",
+            quantidade: investimentoControladoPorValor ? null : toNumber(quantidade || 1),
+            preco_unitario: investimentoControladoPorValor ? null : toNumber(precoUnitario || valorNumber),
+            valor_total: investimentoControladoPorValor ? valorNumber : null,
             corretora: corretoraInvestimento.trim() || null,
             observacao: obs || null,
           }
@@ -254,6 +261,10 @@ export function LancamentoForm({
       alert("Informe o ticker do ativo.");
       return;
     }
+    if (tipo === "INVESTIMENTO" && destinoInvestimento === "COMPRA_ATIVO" && investimentoControladoPorValor && !nomeInvestimento.trim()) {
+      alert("Informe o nome do investimento.");
+      return;
+    }
     if (tipo === "GASTO" && isCartao) {
       if (!selectedCartaoId) {
         alert("Selecione um cartao cadastrado como metodo de pagamento.");
@@ -284,6 +295,7 @@ export function LancamentoForm({
   function changeTipoAtivo(value: TipoAtivo) {
     setTipoAtivo(value);
     setTicker("");
+    setNomeInvestimento("");
     setCorretoraInvestimento(readInvestmentBrokerPrefs()[value] ?? "");
   }
 
@@ -453,16 +465,31 @@ export function LancamentoForm({
                     <Input value={ticker} onChange={(event) => setTicker(event.target.value.toUpperCase())} placeholder={tickerPlaceholder(tipoAtivo)} />
                   </label>
                 )}
-                <label className="space-y-1">
-                  <span className="text-xs font-medium text-slate-500">Quantidade</span>
-                  <Input type="number" min="0" step="0.0001" value={quantidade} onChange={(event) => setQuantidade(event.target.value)} />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-xs font-medium text-slate-500">Preco unitario</span>
-                  <MoneyInput value={precoUnitario} onChange={(event) => setPrecoUnitario(event.target.value)} />
-                </label>
+                {investimentoControladoPorValor ? (
+                  <label className="space-y-1">
+                    <span className="text-xs font-medium text-slate-500">Nome do investimento</span>
+                    <Input
+                      value={nomeInvestimento}
+                      onChange={(event) => setNomeInvestimento(event.target.value)}
+                      placeholder="Ex.: Caixinha viagem, Reserva Nubank"
+                    />
+                  </label>
+                ) : (
+                  <>
+                    <label className="space-y-1">
+                      <span className="text-xs font-medium text-slate-500">Quantidade</span>
+                      <Input type="number" min="0" step="0.0001" value={quantidade} onChange={(event) => setQuantidade(event.target.value)} />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-xs font-medium text-slate-500">Preco unitario</span>
+                      <MoneyInput value={precoUnitario} onChange={(event) => setPrecoUnitario(event.target.value)} />
+                    </label>
+                  </>
+                )}
                 <div className="flex items-center rounded-md border border-slate-800 bg-slate-950/50 px-2.5 py-2 text-xs text-slate-500 xl:col-span-2">
-                  Moeda definida automaticamente: {moedaInvestimento}. Data do investimento: data do lancamento.
+                  {investimentoControladoPorValor
+                    ? `Moeda definida automaticamente: ${moedaInvestimento}. Valor do investimento: valor do lancamento.`
+                    : `Moeda definida automaticamente: ${moedaInvestimento}. Data do investimento: data do lancamento.`}
                 </div>
               </>
             )}

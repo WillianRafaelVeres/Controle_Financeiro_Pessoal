@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LancamentoForm } from "./LancamentoForm";
@@ -67,5 +67,47 @@ describe("LancamentoForm item e sub-item", () => {
     fireEvent.click(screen.getByRole("button", { name: "Adicionar" }));
 
     expect(await screen.findByText(/Selecione ou crie um item salvo antes de criar sub-item/i)).toBeInTheDocument();
+  });
+
+  it("envia nome do investimento para compra por valor", async () => {
+    const onSubmit = vi.fn(async () => undefined);
+    render(
+      <LancamentoForm
+        categorias={categorias}
+        subcategorias={subcategorias}
+        metodos={[{ id: "met-pix", nome: "Pix", tipo_metodo: "PIX", ativo: true }]}
+        cartoes={[]}
+        onSubmit={onSubmit}
+        onCreateCategoria={vi.fn(async (nome) => ({ id: `cat-${nome}`, label: nome }))}
+        onCreateSubcategoria={vi.fn(async (nome) => ({ id: `sub-${nome}`, label: nome }))}
+        onCreateMetodo={vi.fn(async (nome) => ({ id: `met-${nome}`, label: nome }))}
+        initialType="INVESTIMENTO"
+        allowInvestment
+        lockType
+      />,
+    );
+
+    fireEvent.change(screen.getAllByRole("textbox")[0], { target: { value: "500" } });
+    fireEvent.change(screen.getByLabelText("Destino"), { target: { value: "COMPRA_ATIVO" } });
+    fireEvent.change(screen.getByLabelText("Tipo ativo"), { target: { value: "CAIXINHA_CDB" } });
+    fireEvent.change(screen.getByPlaceholderText("Ex.: XP, Inter, Santander"), { target: { value: "Banco" } });
+    fireEvent.change(screen.getByPlaceholderText("Ex.: Caixinha viagem, Reserva Nubank"), {
+      target: { value: "Caixinha viagem" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /salvar/i }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        movimento_investimento: expect.objectContaining({
+          tipo_ativo: "CAIXINHA_CDB",
+          tipo_controle: "VALOR",
+          ticker: null,
+          nome: "Caixinha viagem",
+          valor_total: 500,
+          corretora: "Banco",
+        }),
+      }),
+    );
   });
 });

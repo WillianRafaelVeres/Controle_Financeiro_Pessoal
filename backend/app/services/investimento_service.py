@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import io
 import re
 import unicodedata
@@ -169,6 +170,15 @@ def _normalizar_texto(valor: str | None) -> str:
     return " ".join((valor or "").strip().split())
 
 
+def _normalizar_comparacao(valor: str | None) -> str:
+    base = unicodedata.normalize("NFD", _normalizar_texto(valor).lower())
+    return "".join(char for char in base if unicodedata.category(char) != "Mn")
+
+
+def _mesmo_texto(esquerda: str | None, direita: str | None) -> bool:
+    return _normalizar_comparacao(esquerda) == _normalizar_comparacao(direita)
+
+
 def _slug(valor: str) -> str:
     permitido = []
     for char in valor.upper():
@@ -179,8 +189,24 @@ def _slug(valor: str) -> str:
     return "".join(permitido).strip("_")
 
 
-def _ticker_operacional(tipo_ativo: TipoAtivo, corretora: str | None) -> str:
+def _limitar_ticker_operacional(slug: str) -> str:
+    if len(slug) <= 40:
+        return slug
+    digest = hashlib.sha1(slug.encode("utf-8")).hexdigest()[:6].upper()
+    prefixo = slug[: 40 - len(digest) - 1].rstrip("_")
+    return f"{prefixo}_{digest}" if prefixo else digest
+
+
+def _ticker_operacional_legacy(tipo_ativo: TipoAtivo, corretora: str | None) -> str:
     return (_slug(f"{tipo_ativo.value}_{corretora or 'GERAL'}") or tipo_ativo.value)[:40]
+
+
+def _ticker_operacional(tipo_ativo: TipoAtivo, corretora: str | None, nome: str | None = None) -> str:
+    partes = [tipo_ativo.value, corretora or "GERAL"]
+    if nome and not _mesmo_texto(nome, corretora):
+        partes.append(nome)
+    slug = _slug("_".join(partes)) or tipo_ativo.value
+    return _limitar_ticker_operacional(slug)
 
 
 def _ultima_cotacao(session: Session, ativo_id: str) -> Cotacao | None:
@@ -566,20 +592,49 @@ def _snapshot_to_dict(snapshot: HistoricoInvestimentoMensal, periodo: str | None
     }
 
 
+def _aplicar_dados_ativo_existente(ativo: Ativo, payload: MovimentoInvestimentoCreate, corretora: str) -> Ativo:
+    if corretora:
+        ativo.corretora = corretora
+    if payload.tipo_controle:
+        ativo.tipo_controle = payload.tipo_controle
+    elif ativo.tipo_ativo in TIPOS_CONTROLE_VALOR:
+        ativo.tipo_controle = TipoControleInvestimento.VALOR
+    elif not getattr(ativo, "tipo_controle", None):
+        ativo.tipo_controle = _tipo_controle_padrao(ativo.tipo_ativo)
+    return ativo
+
+
+def _buscar_ativo_sem_ticker(
+    session: Session,
+    tipo_ativo: TipoAtivo,
+    corretora: str,
+    nome: str,
+) -> tuple[Ativo | None, str]:
+    ticker = _ticker_operacional(tipo_ativo, corretora, nome)
+    ativo = session.exec(select(Ativo).where(Ativo.ticker == ticker, Ativo.tipo_ativo == tipo_ativo)).first()
+    if ativo:
+        return ativo, ticker
+
+    ticker_legacy = _ticker_operacional_legacy(tipo_ativo, corretora)
+    if ticker_legacy != ticker:
+        ativo_legacy = session.exec(
+            select(Ativo).where(Ativo.ticker == ticker_legacy, Ativo.tipo_ativo == tipo_ativo)
+        ).first()
+        if ativo_legacy and _mesmo_texto(ativo_legacy.nome, nome) and (
+            not corretora or not ativo_legacy.corretora or _mesmo_texto(ativo_legacy.corretora, corretora)
+        ):
+            return ativo_legacy, ticker
+
+    return None, ticker
+
+
 def _obter_ou_criar_ativo(session: Session, payload: MovimentoInvestimentoCreate) -> Ativo:
     if payload.ativo_id:
         ativo = session.get(Ativo, payload.ativo_id)
         if not ativo or not ativo.ativo:
             raise HTTPException(status_code=404, detail="Ativo nao encontrado.")
         corretora = _normalizar_texto(payload.corretora)
-        if corretora:
-            ativo.corretora = corretora
-        if payload.tipo_controle:
-            ativo.tipo_controle = payload.tipo_controle
-        elif ativo.tipo_ativo in TIPOS_CONTROLE_VALOR:
-            ativo.tipo_controle = TipoControleInvestimento.VALOR
-        elif not getattr(ativo, "tipo_controle", None):
-            ativo.tipo_controle = _tipo_controle_padrao(ativo.tipo_ativo)
+        _aplicar_dados_ativo_existente(ativo, payload, corretora)
         session.add(ativo)
         return ativo
     if not payload.tipo_ativo:
@@ -590,23 +645,22 @@ def _obter_ou_criar_ativo(session: Session, payload: MovimentoInvestimentoCreate
     if not payload.ticker and payload.tipo_ativo not in TIPOS_SEM_TICKER:
         raise HTTPException(status_code=422, detail="Informe ticker para este tipo de ativo.")
     corretora = _normalizar_texto(payload.corretora)
-    ticker = payload.ticker.upper().strip() if payload.ticker else _ticker_operacional(payload.tipo_ativo, corretora)
-    ativo = session.exec(select(Ativo).where(Ativo.ticker == ticker)).first()
+    nome = _normalizar_texto(payload.nome)
+    if payload.tipo_ativo in TIPOS_SEM_TICKER and not payload.ticker:
+        if not nome:
+            raise HTTPException(status_code=422, detail="Informe o nome do investimento.")
+        ativo, ticker = _buscar_ativo_sem_ticker(session, payload.tipo_ativo, corretora, nome)
+    else:
+        ticker = payload.ticker.upper().strip()
+        ativo = session.exec(select(Ativo).where(Ativo.ticker == ticker)).first()
     if ativo:
-        if corretora:
-            ativo.corretora = corretora
-        if payload.tipo_controle:
-            ativo.tipo_controle = payload.tipo_controle
-        elif ativo.tipo_ativo in TIPOS_CONTROLE_VALOR:
-            ativo.tipo_controle = TipoControleInvestimento.VALOR
-        elif not getattr(ativo, "tipo_controle", None):
-            ativo.tipo_controle = _tipo_controle_padrao(ativo.tipo_ativo)
+        _aplicar_dados_ativo_existente(ativo, payload, corretora)
         session.add(ativo)
         return ativo
     moeda = _moeda_padrao(payload.tipo_ativo)
     ativo = Ativo(
         ticker=ticker,
-        nome=_normalizar_texto(payload.nome) or _normalizar_texto(corretora) or payload.tipo_ativo.value.replace("_", " ").title(),
+        nome=nome or _normalizar_texto(corretora) or payload.tipo_ativo.value.replace("_", " ").title(),
         tipo_ativo=payload.tipo_ativo,
         tipo_controle=payload.tipo_controle or _tipo_controle_padrao(payload.tipo_ativo),
         moeda=moeda,

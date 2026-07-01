@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DollarSign, Minus, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { EmptyState } from "../components/finance/EmptyState";
 import { MoneyInput } from "../components/finance/MoneyInput";
@@ -11,10 +11,11 @@ import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Td, Th, Table } from "../components/ui/table";
+import { MovimentoInvestimentoDialog } from "../features/investimentos/MovimentoInvestimentoDialog";
 import { api } from "../lib/api";
 import { formatDate, formatMoney, toNumber } from "../lib/formatters";
-import { invalidateDollarData } from "../lib/queryInvalidation";
-import type { ExtratoDolar } from "../lib/types";
+import { invalidateDollarData, invalidateInvestmentData } from "../lib/queryInvalidation";
+import type { ExtratoDolar, MovimentoInvestimento } from "../lib/types";
 
 export type ActionType = "ENVIO" | "RETIRADA";
 
@@ -22,6 +23,16 @@ export function ExteriorDolarPage() {
   const queryClient = useQueryClient();
   const resumo = useQuery({ queryKey: ["dolar-resumo"], queryFn: api.dolarResumo });
   const extrato = useQuery({ queryKey: ["dolar-extrato"], queryFn: api.dolarExtrato });
+  const temInvestimentoExterior = (extrato.data ?? []).some((item) => item.origem === "INVESTIMENTO" && item.referencia_id);
+  const movimentosInvestimentos = useQuery({
+    queryKey: ["investimentos", "movimentos", "exterior-dolar"],
+    queryFn: api.movimentosInvestimentos,
+    enabled: temInvestimentoExterior,
+  });
+  const movimentosPorId = useMemo(
+    () => new Map((movimentosInvestimentos.data ?? []).map((movimento) => [movimento.id, movimento] as const)),
+    [movimentosInvestimentos.data],
+  );
   const cotacaoAtual = useQuery({
     queryKey: ["dolar-cotacao-atual"],
     queryFn: api.dolarCotacaoAtual,
@@ -33,11 +44,16 @@ export function ExteriorDolarPage() {
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.dolarAtualizarMovimento(id, payload),
     onSuccess: () => invalidateDollarData(queryClient),
   });
+  const atualizarInvestimento = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.atualizarMovimentoInvestimento(id, payload),
+    onSuccess: () => invalidateInvestmentData(queryClient),
+  });
   const excluirMovimento = useMutation({ mutationFn: api.dolarExcluirMovimento, onSuccess: () => invalidateDollarData(queryClient) });
   const informarSaldo = useMutation({ mutationFn: api.dolarInformarSaldo, onSuccess: () => invalidateDollarData(queryClient) });
   const [action, setAction] = useState<ActionType | null>(null);
   const [editing, setEditing] = useState<ExtratoDolar | null>(null);
   const [editingAction, setEditingAction] = useState<ActionType | null>(null);
+  const [editingInvestimento, setEditingInvestimento] = useState<MovimentoInvestimento | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExtratoDolar | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [saldoRealUsd, setSaldoRealUsd] = useState("");
@@ -192,6 +208,9 @@ export function ExteriorDolarPage() {
               {(extrato.data ?? []).map((item) => {
                 const actionType = actionFromItem(item);
                 const editable = Boolean(item.editavel || item.origem === "MANUAL");
+                const movimentoInvestimento = item.origem === "INVESTIMENTO" && item.referencia_id
+                  ? movimentosPorId.get(item.referencia_id)
+                  : undefined;
                 return (
                   <tr key={item.id}>
                     <Td>{formatDate(item.data_movimento)}</Td>
@@ -204,16 +223,29 @@ export function ExteriorDolarPage() {
                     <Td className="font-medium text-slate-100">{formatMoney(item.saldo_acumulado_usd, "USD")}</Td>
                     <Td>{item.origem}</Td>
                     <Td className="text-center">
-                      {editable ? (
+                      {editable || movimentoInvestimento ? (
                         <div className="inline-flex items-center gap-1">
                           {actionType && (
                             <Button size="icon" variant="secondary" title="Editar movimento" aria-label="Editar movimento" onClick={() => editar(item)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
                           )}
-                          <Button size="icon" variant="ghost" title="Excluir movimento" aria-label="Excluir movimento" onClick={() => pedirExclusao(item)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {movimentoInvestimento && (
+                            <Button
+                              size="icon"
+                              variant="secondary"
+                              title="Editar investimento exterior"
+                              aria-label="Editar investimento exterior"
+                              onClick={() => setEditingInvestimento(movimentoInvestimento)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {editable && (
+                            <Button size="icon" variant="ghost" title="Excluir movimento" aria-label="Excluir movimento" onClick={() => pedirExclusao(item)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       ) : (
                         <span className="text-xs text-slate-600">-</span>
@@ -244,6 +276,11 @@ export function ExteriorDolarPage() {
           editing ? atualizarMovimento.mutateAsync({ id: editing.id, payload }).then(() => undefined) : Promise.resolve()
         }
         cotacaoAtual={cotacaoReferencia}
+      />
+      <MovimentoInvestimentoDialog
+        movimento={editingInvestimento}
+        onClose={() => setEditingInvestimento(null)}
+        onSubmit={(id, payload) => atualizarInvestimento.mutateAsync({ id, payload }).then(() => undefined)}
       />
       <Dialog open={deleteTarget !== null} title="Excluir movimento em dolar" onClose={() => setDeleteTarget(null)}>
         <div className="space-y-3">

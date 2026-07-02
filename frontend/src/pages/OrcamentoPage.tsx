@@ -85,7 +85,7 @@ export function OrcamentoPage() {
     <div className="space-y-2">
       <SectionCard
         title="Planejamento mensal"
-        description="Planejado x executado, sem misturar gastos comuns com investimentos."
+        description="Entradas, saidas reais e quanto ainda falta executar do planejado."
         action={
           <div className="flex flex-wrap gap-2">
             <MonthSelector ano={month.ano} mes={month.mes} onChange={setMonth} />
@@ -227,16 +227,38 @@ function ResumoMes({
   investimentosNaoPlanejadosTotal: number;
   investimentosRealizados: number;
 }) {
-  const saldoPrevisto = receitasPlanejadas - gastosPlanejados;
-  const saldoAtual = receitasRealizadas - gastosRealizados;
+  const saidasPlanejadas = gastosPlanejados + investimentosPlanejados;
+  const saidasPlanejadasRealizadas = gastosPlanejadosRealizados + investimentosPlanejadosRealizados;
+  const saidasNaoPlanejadasTotal = gastosNaoPlanejadosTotal + investimentosNaoPlanejadosTotal;
+  const saidasRealizadas = gastosRealizados + investimentosRealizados;
+  const saldoPrevisto = receitasPlanejadas - saidasPlanejadas;
+  const saldoAtual = receitasRealizadas - saidasRealizadas;
+  const gastosPlanejadosRestantes = Math.max(gastosPlanejados - gastosPlanejadosRealizados, 0);
+  const investimentosPlanejadosRestantes = Math.max(investimentosPlanejados - investimentosPlanejadosRealizados, 0);
+  const saidasPlanejadasRestantes = gastosPlanejadosRestantes + investimentosPlanejadosRestantes;
+  const saidasPlanejadasCumpridas =
+    Math.min(gastosPlanejados, gastosPlanejadosRealizados) +
+    Math.min(investimentosPlanejados, investimentosPlanejadosRealizados);
 
   return (
     <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_460px]">
       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-        <PlanningCard kind="receita" title="Recebimentos" planned={receitasPlanejadas} actual={receitasRealizadas} />
-        <PlanningCard kind="gasto" title="Gastos" planned={gastosPlanejados} actual={gastosRealizados} />
-        <PlanningCard kind="investimento" title="Investimentos" planned={investimentosPlanejados} actual={investimentosRealizados} />
-        <PlanningCard kind="saldo" title="Saldo operacional" planned={saldoPrevisto} actual={saldoAtual} />
+        <PlanningCard kind="receita" title="Entradas" planned={receitasPlanejadas} actual={receitasRealizadas} />
+        <PlanningCard
+          kind="saida"
+          title="Saidas totais"
+          planned={saidasPlanejadas}
+          actual={saidasRealizadas}
+          detail={`${formatMoney(gastosRealizados)} gastos + ${formatMoney(investimentosRealizados)} investimentos`}
+        />
+        <RemainingPlanCard
+          planned={saidasPlanejadas}
+          executed={saidasPlanejadasCumpridas}
+          remaining={saidasPlanejadasRestantes}
+          expensesRemaining={gastosPlanejadosRestantes}
+          investmentsRemaining={investimentosPlanejadosRestantes}
+        />
+        <PlanningCard kind="saldo" title="Resultado do mes" planned={saldoPrevisto} actual={saldoAtual} />
       </div>
       <div className="overflow-x-auto rounded-xl border border-slate-800 text-[12px]">
         <div className="min-w-[520px]">
@@ -254,6 +276,14 @@ function ResumoMes({
             inside={receitasPlanejadasRealizadas}
             outside={receitasNaoPlanejadasTotal}
             total={receitasRealizadas}
+          />
+          <ExecutionBreakdown
+            label="Saidas"
+            natureza="SAIDA"
+            planned={saidasPlanejadas}
+            inside={saidasPlanejadasRealizadas}
+            outside={saidasNaoPlanejadasTotal}
+            total={saidasRealizadas}
           />
           <ExecutionBreakdown
             label="Gastos"
@@ -277,13 +307,25 @@ function ResumoMes({
   );
 }
 
-type PlanningKind = "receita" | "gasto" | "investimento" | "saldo";
+type PlanningKind = "receita" | "saida" | "saldo";
 
-function PlanningCard({ kind, title, planned, actual }: { kind: PlanningKind; title: string; planned: number; actual: number }) {
+function PlanningCard({
+  kind,
+  title,
+  planned,
+  actual,
+  detail,
+}: {
+  kind: PlanningKind;
+  title: string;
+  planned: number;
+  actual: number;
+  detail?: string;
+}) {
   const status = planningStatus(kind, planned, actual);
   const progressBase = Math.abs(planned);
   const progress = progressBase > 0 ? Math.min(Math.abs(actual) / progressBase * 100, 100) : actual !== 0 ? 100 : 0;
-  const Icon = status.good ? CheckCircle2 : status.bad ? AlertTriangle : kind === "gasto" ? TrendingDown : TrendingUp;
+  const Icon = status.good ? CheckCircle2 : status.bad ? AlertTriangle : kind === "saida" ? TrendingDown : TrendingUp;
   const toneClass = status.bad
     ? "border-danger-600/35 bg-danger-600/10 text-danger-600"
     : status.good
@@ -298,6 +340,7 @@ function PlanningCard({ kind, title, planned, actual }: { kind: PlanningKind; ti
           <p className="text-[11px] font-semibold uppercase text-slate-500">{title}</p>
           <p className="mt-1 text-xl font-semibold text-slate-100">{formatMoney(actual)}</p>
           <p className="mt-0.5 text-xs text-slate-500">Planejado: {formatMoney(planned)}</p>
+          {detail ? <p className="mt-1 truncate text-[11px] text-slate-500">{detail}</p> : null}
         </div>
         <Icon className="h-5 w-5 shrink-0" />
       </div>
@@ -312,6 +355,51 @@ function PlanningCard({ kind, title, planned, actual }: { kind: PlanningKind; ti
   );
 }
 
+function RemainingPlanCard({
+  planned,
+  executed,
+  remaining,
+  expensesRemaining,
+  investmentsRemaining,
+}: {
+  planned: number;
+  executed: number;
+  remaining: number;
+  expensesRemaining: number;
+  investmentsRemaining: number;
+}) {
+  const progress = planned > 0 ? Math.min((executed / planned) * 100, 100) : remaining > 0 ? 100 : 0;
+  const completed = remaining <= 0 && planned > 0;
+  const toneClass = completed
+    ? "border-brand-500/25 bg-brand-500/10 text-brand-400"
+    : "border-amber-500/25 bg-amber-500/10 text-amber-300";
+  const barClass = completed ? "bg-brand-500" : "bg-amber-500";
+  const statusLabel = planned <= 0 ? "Sem saidas planejadas" : completed ? "Planejado executado" : "Ainda falta executar";
+
+  return (
+    <section className={`rounded-xl border p-3 ${toneClass}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase text-slate-500">Falta planejada</p>
+          <p className="mt-1 text-xl font-semibold text-slate-100">{formatMoney(remaining)}</p>
+          <p className="mt-0.5 text-xs text-slate-500">Executado do planejado: {formatMoney(executed)}</p>
+          <p className="mt-1 truncate text-[11px] text-slate-500">
+            Gastos {formatMoney(expensesRemaining)} + investimentos {formatMoney(investmentsRemaining)}
+          </p>
+        </div>
+        <Target className="h-5 w-5 shrink-0" />
+      </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
+        <div className={`h-full rounded-full ${barClass}`} style={{ width: `${progress}%` }} />
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+        <span className="font-medium">{statusLabel}</span>
+        <span className="text-slate-400">Planejado {formatMoney(planned)}</span>
+      </div>
+    </section>
+  );
+}
+
 function planningStatus(kind: PlanningKind, planned: number, actual: number) {
   if (kind === "receita") {
     const delta = actual - planned;
@@ -319,17 +407,11 @@ function planningStatus(kind: PlanningKind, planned: number, actual: number) {
     if (actual >= planned) return { good: true, bad: false, label: "Acima do planejado", deltaLabel: `+${formatMoney(delta)}` };
     return { good: false, bad: true, label: "Abaixo do planejado", deltaLabel: formatMoney(delta) };
   }
-  if (kind === "gasto") {
+  if (kind === "saida") {
     const sobra = planned - actual;
-    if (planned <= 0 && actual > 0) return { good: false, bad: true, label: "Gasto sem planejamento", deltaLabel: formatMoney(-actual) };
-    if (actual <= planned) return { good: true, bad: false, label: "Dentro do limite", deltaLabel: `Sobra ${formatMoney(sobra)}` };
-    return { good: false, bad: true, label: "Acima do limite", deltaLabel: formatMoney(sobra) };
-  }
-  if (kind === "investimento") {
-    const delta = actual - planned;
-    if (planned <= 0 && actual > 0) return { good: true, bad: false, label: "Investimento extra", deltaLabel: `+${formatMoney(delta)}` };
-    if (actual >= planned) return { good: true, bad: false, label: "Meta atingida", deltaLabel: `+${formatMoney(delta)}` };
-    return { good: false, bad: false, label: "Falta investir", deltaLabel: formatMoney(delta) };
+    if (planned <= 0 && actual > 0) return { good: false, bad: true, label: "Saida sem planejamento", deltaLabel: formatMoney(-actual) };
+    if (actual <= planned) return { good: true, bad: false, label: "Dentro do planejado", deltaLabel: `Sobra ${formatMoney(sobra)}` };
+    return { good: false, bad: true, label: "Acima do planejado", deltaLabel: formatMoney(sobra) };
   }
   const delta = actual - planned;
   if (actual >= planned) return { good: true, bad: false, label: "Melhor que o previsto", deltaLabel: `+${formatMoney(delta)}` };
@@ -338,7 +420,7 @@ function planningStatus(kind: PlanningKind, planned: number, actual: number) {
 
 function ExecutionBreakdown({ label, natureza, planned, inside, outside, total }: {
   label: string;
-  natureza: NaturezaCategoria;
+  natureza: NaturezaCategoria | "SAIDA";
   planned: number;
   inside: number;
   outside: number;
@@ -355,9 +437,9 @@ function ExecutionBreakdown({ label, natureza, planned, inside, outside, total }
   );
 }
 
-function outsideTone(natureza: NaturezaCategoria, value: number): "green" | "red" | "yellow" | undefined {
+function outsideTone(natureza: NaturezaCategoria | "SAIDA", value: number): "green" | "red" | "yellow" | undefined {
   if (value <= 0) return undefined;
-  if (natureza === "RECEITA" || natureza === "INVESTIMENTO") return "green";
+  if (natureza === "RECEITA") return "green";
   return "red";
 }
 

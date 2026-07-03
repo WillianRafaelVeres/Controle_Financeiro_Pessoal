@@ -28,7 +28,7 @@ SAIDAS = {
 
 COTACAO_USD_BRL_URL = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
 COTACAO_USD_BRL_HISTORICO_URL = "https://economia.awesomeapi.com.br/json/daily/USD-BRL/7"
-COTACAO_FALLBACK_URL = "https://api.frankfurter.app/latest?from=USD&to=BRL"
+COTACAO_FALLBACK_URL = "https://api.frankfurter.dev/v1/latest?from=USD&to=BRL"
 
 
 def saldo_teorico_usd(session: Session, ignorar_movimento_id: str | None = None) -> Decimal:
@@ -291,7 +291,12 @@ def _set_config_text(session: Session, chave: str, value: str) -> None:
 
 def _buscar_cotacao_awesomeapi() -> dict | None:
     try:
-        response = httpx.get(COTACAO_USD_BRL_URL, timeout=8, headers={"User-Agent": "CentralFinanceira/1.0"})
+        response = httpx.get(
+            COTACAO_USD_BRL_URL,
+            timeout=8,
+            headers={"User-Agent": "CentralFinanceira/1.0"},
+            follow_redirects=True,
+        )
         response.raise_for_status()
         item = response.json().get("USDBRL") or {}
         compra = Decimal(str(item.get("bid") or "0"))
@@ -315,7 +320,7 @@ def _buscar_cotacao_awesomeapi() -> dict | None:
 
 def _buscar_cotacao_frankfurter() -> dict | None:
     try:
-        response = httpx.get(COTACAO_FALLBACK_URL, timeout=8)
+        response = httpx.get(COTACAO_FALLBACK_URL, timeout=8, follow_redirects=True)
         response.raise_for_status()
         data = response.json()
         brl_rate = Decimal(str(data.get("rates", {}).get("BRL") or "0"))

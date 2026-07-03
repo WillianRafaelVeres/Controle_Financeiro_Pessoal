@@ -18,21 +18,24 @@ def _decimal(value: object) -> Decimal:
     return Decimal(str(value))
 
 
-def resumo_dashboard(session: Session, ano: int, mes: int) -> dict:
-    return resumo_painel(session, ano, mes)
+MESES_MEDIA_CATEGORIA = 6
 
 
-def graficos_dashboard(session: Session, ano: int, mes: int) -> dict:
-    inicio, fim = month_bounds(ano, mes)
-    categorias = session.exec(
-        select(Categoria).where(Categoria.natureza == NaturezaCategoria.GASTO).order_by(Categoria.nome)
-    ).all()
-    categorias_por_id = {categoria.id: categoria for categoria in categorias}
-    categorias_cartao = set(ids_categorias_cartao_genericas(session))
-    totais_categoria = {categoria.id: Decimal("0.00") for categoria in categorias}
-    gastos = Decimal("0.00")
+def _mes_deslocado(ano: int, mes: int, quantidade: int) -> tuple[int, int]:
+    indice = ano * 12 + (mes - 1) - quantidade
+    return indice // 12, indice % 12 + 1
 
-    lancamentos_gastos = session.exec(
+
+def _totais_gasto_categoria_periodo(
+    session: Session,
+    inicio,
+    fim,
+    categorias_cartao: set[str],
+    categoria_ids: list[str],
+) -> tuple[dict[str, Decimal], Decimal]:
+    totais = {categoria_id: Decimal("0.00") for categoria_id in categoria_ids}
+    total_geral = Decimal("0.00")
+    lancamentos = session.exec(
         select(Lancamento).where(
             Lancamento.ativo.is_(True),
             Lancamento.afeta_orcamento.is_(True),
@@ -42,16 +45,40 @@ def graficos_dashboard(session: Session, ano: int, mes: int) -> dict:
             Lancamento.tipo.in_([TipoLancamento.GASTO, TipoLancamento.SEPARAR]),
         )
     ).all()
-    for lancamento in lancamentos_gastos:
+    for lancamento in lancamentos:
         if lancamento.cartao_id and lancamento.categoria_id in categorias_cartao:
             continue
-        gastos += lancamento.valor
-        if lancamento.categoria_id in totais_categoria:
-            totais_categoria[lancamento.categoria_id] += lancamento.valor
+        total_geral += lancamento.valor
+        if lancamento.categoria_id in totais:
+            totais[lancamento.categoria_id] += lancamento.valor
+    return totais, total_geral
+
+
+def resumo_dashboard(session: Session, ano: int, mes: int) -> dict:
+    return resumo_painel(session, ano, mes)
+
+
+def graficos_dashboard(session: Session, ano: int, mes: int) -> dict:
+    inicio, fim = month_bounds(ano, mes)
+    categorias = session.exec(
+        select(Categoria).where(Categoria.natureza == NaturezaCategoria.GASTO).order_by(Categoria.nome)
+    ).all()
+    categoria_ids = [categoria.id for categoria in categorias]
+    categorias_cartao = set(ids_categorias_cartao_genericas(session))
+
+    totais_categoria, gastos = _totais_gasto_categoria_periodo(session, inicio, fim, categorias_cartao, categoria_ids)
+
+    ano_media, mes_media = _mes_deslocado(ano, mes, MESES_MEDIA_CATEGORIA)
+    inicio_media, _ = month_bounds(ano_media, mes_media)
+    totais_media, _ = _totais_gasto_categoria_periodo(session, inicio_media, inicio, categorias_cartao, categoria_ids)
 
     gastos_categoria = [
-        {"categoria": categoria.nome, "valor": totais_categoria.get(categoria.id, Decimal("0.00"))}
-        for categoria in categorias_por_id.values()
+        {
+            "categoria": categoria.nome,
+            "valor": totais_categoria.get(categoria.id, Decimal("0.00")),
+            "media": (totais_media.get(categoria.id, Decimal("0.00")) / MESES_MEDIA_CATEGORIA).quantize(Decimal("0.01")),
+        }
+        for categoria in categorias
     ]
     receitas = _decimal(
         session.exec(

@@ -39,6 +39,9 @@ export function ExteriorDolarPage() {
     refetchInterval: 60_000,
     retry: false,
   });
+  const cotacaoErro = cotacaoAtual.isError
+    ? "Nao foi possivel atualizar a cotacao agora. Tente novamente em instantes."
+    : cotacaoAtual.data?.erro;
   const movimento = useMutation({ mutationFn: api.dolarMovimento, onSuccess: () => invalidateDollarData(queryClient) });
   const atualizarMovimento = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.dolarAtualizarMovimento(id, payload),
@@ -147,6 +150,9 @@ export function ExteriorDolarPage() {
             <p className="mt-1 text-xs text-slate-400">{formatMoney(data?.saldo_teorico_usd, "USD")} convertidos pela cotacao atual</p>
           </div>
         </div>
+        {cotacaoErro && (
+          <p className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">{cotacaoErro}</p>
+        )}
       </section>
 
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">

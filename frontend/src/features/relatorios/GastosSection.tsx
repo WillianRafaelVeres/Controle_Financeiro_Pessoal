@@ -1,10 +1,29 @@
 import { useQuery } from "@tanstack/react-query";
-import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ComposedChart,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Scatter,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import { EmptyState } from "../../components/finance/EmptyState";
 import { SectionCard } from "../../components/finance/SectionCard";
 import { api } from "../../lib/api";
 import { formatMoney, toNumber } from "../../lib/formatters";
+
+function MediaMarker(props: { cx?: number; cy?: number; payload?: { media?: number } }) {
+  const { cx, cy, payload } = props;
+  if (cx == null || cy == null || !payload || toNumber(payload.media) <= 0) return null;
+  return <line x1={cx} y1={cy - 11} x2={cx} y2={cy + 11} stroke="#f8fafc" strokeWidth={2} strokeLinecap="round" />;
+}
 
 const axisStyle = { fill: "#8f9bad", fontSize: 11 };
 const tooltipStyle = { backgroundColor: "#111821", border: "1px solid #273343", borderRadius: 6, color: "#eef2f7" };
@@ -31,7 +50,7 @@ export function GastosSection({ ano, mes }: GastosSectionProps) {
   });
 
   const categoriaData = [...(gastosCategoria.data ?? [])]
-    .map((item) => ({ ...item, valor: toNumber(item.valor) }))
+    .map((item) => ({ ...item, valor: toNumber(item.valor), media: toNumber(item.media) }))
     .sort((a, b) => toNumber(b.valor) - toNumber(a.valor));
   const metodoData = [...(gastosPorMetodo.data ?? [])]
     .map((item) => ({ ...item, valor: toNumber(item.valor), percentual: toNumber(item.percentual) }))
@@ -39,23 +58,30 @@ export function GastosSection({ ano, mes }: GastosSectionProps) {
 
   return (
     <div className="space-y-4">
-      <SectionCard title="Gastos por categoria" description="Finalidade real dos gastos do periodo. Cartao aparece como metodo, nao como categoria.">
+      <SectionCard
+        title="Gastos por categoria"
+        description="Finalidade real dos gastos do periodo. Cartao aparece como metodo, nao como categoria. O traco branco marca a media dos ultimos 6 meses."
+      >
         {categoriaData.length === 0 ? (
           <EmptyState title="Sem dados" description="Nenhum gasto registrado neste periodo." />
         ) : (
           <div className="h-[320px]">
             <ResponsiveContainer>
-              <BarChart data={categoriaData} layout="vertical" margin={{ top: 8, right: 24, bottom: 8, left: 12 }}>
+              <ComposedChart data={categoriaData} layout="vertical" margin={{ top: 8, right: 24, bottom: 8, left: 12 }}>
                 <CartesianGrid stroke="#273343" strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" tick={axisStyle} axisLine={false} tickLine={false} tickFormatter={(value) => formatMoney(value as number)} />
                 <YAxis dataKey="categoria" type="category" tick={axisStyle} axisLine={false} tickLine={false} width={132} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(value) => formatMoney(value as number)} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  formatter={(value, name) => [formatMoney(value as number), name === "media" ? "Media (6 meses)" : "Gasto"]}
+                />
                 <Bar dataKey="valor" name="Gasto" radius={[0, 6, 6, 0]} fill="#16A34A">
                   {categoriaData.map((_, index) => (
                     <Cell key={`categoria-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Bar>
-              </BarChart>
+                <Scatter dataKey="media" name="media" fill="#f8fafc" shape={<MediaMarker />} legendType="none" />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         )}

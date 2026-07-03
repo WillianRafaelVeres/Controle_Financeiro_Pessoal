@@ -4,10 +4,11 @@ from decimal import Decimal
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from app.models.base import Moeda, TipoAtivo, TipoMovimentoDolar, TipoProvento, now_utc
+from app.models.base import Moeda, TipoAtivo, TipoLancamento, TipoMovimentoDolar, TipoProvento, now_utc
 from app.models.dividendo import Dividendo
 from app.models.extrato_dolar import ExtratoDolar
 from app.models.investimento import Ativo
+from app.models.lancamento import Lancamento
 from app.services.exterior_dolar_service import buscar_cotacao_dolar_data, registrar_movimento_dolar, resumo_dolar
 
 
@@ -124,6 +125,74 @@ def sincronizar_movimentos_dolar_dividendos_pendentes(session: Session) -> int:
     if sincronizados:
         session.flush()
     return sincronizados
+
+
+LANCAMENTO_JUROS_CONTA_ORIGEM = "DIVIDENDO_JUROS_CONTA"
+
+
+def _elegivel_lancamento_juros_conta(dividendo: Dividendo) -> bool:
+    return (
+        dividendo.ativo_id is None
+        and dividendo.tipo_provento == TipoProvento.JUROS_RENDA_FIXA
+        and bool(dividendo.conta_destino_id)
+    )
+
+
+def buscar_lancamento_juros_conta(session: Session, dividendo_id: str) -> Lancamento | None:
+    return session.exec(
+        select(Lancamento).where(
+            Lancamento.referencia_id == dividendo_id,
+            Lancamento.origem_sistema == LANCAMENTO_JUROS_CONTA_ORIGEM,
+        )
+    ).first()
+
+
+def sincronizar_lancamento_juros_conta(
+    session: Session,
+    dividendo: Dividendo,
+    lancamento_existente: Lancamento | None = None,
+) -> None:
+    if not _elegivel_lancamento_juros_conta(dividendo):
+        if lancamento_existente and lancamento_existente.ativo:
+            lancamento_existente.ativo = False
+            lancamento_existente.atualizado_em = now_utc()
+            session.add(lancamento_existente)
+        return
+
+    valor = valor_dividendo_brl(session, dividendo)
+    descricao = dividendo.observacao or JUROS_CONTA_NOME
+    if not lancamento_existente:
+        lancamento_existente = Lancamento(
+            data_lancamento=dividendo.data_recebimento,
+            tipo=TipoLancamento.DIVIDENDO,
+            valor=valor,
+            valor_original=valor,
+            conta_id=dividendo.conta_destino_id,
+            observacao=descricao,
+            origem_sistema=LANCAMENTO_JUROS_CONTA_ORIGEM,
+            referencia_id=dividendo.id,
+            afeta_saldo_livre=True,
+            afeta_orcamento=False,
+        )
+    else:
+        lancamento_existente.data_lancamento = dividendo.data_recebimento
+        lancamento_existente.valor = valor
+        lancamento_existente.valor_original = valor
+        lancamento_existente.conta_id = dividendo.conta_destino_id
+        lancamento_existente.observacao = descricao
+        lancamento_existente.afeta_saldo_livre = True
+        lancamento_existente.afeta_orcamento = False
+        lancamento_existente.ativo = True
+        lancamento_existente.atualizado_em = now_utc()
+    session.add(lancamento_existente)
+
+
+def desativar_lancamento_juros_conta(session: Session, dividendo_id: str) -> None:
+    lancamento = buscar_lancamento_juros_conta(session, dividendo_id)
+    if lancamento and lancamento.ativo:
+        lancamento.ativo = False
+        lancamento.atualizado_em = now_utc()
+        session.add(lancamento)
 
 
 def _tipo_grupo_provento(tipo_ativo: TipoAtivo) -> TipoAtivo:

@@ -37,7 +37,7 @@ from app.models.subcategoria import Subcategoria
 from app.schemas.cartao_schema import PagarFatura
 from app.schemas.caixinha_schema import UsarCaixinha
 from app.schemas.compromisso_cartao_schema import SepararCompromisso
-from app.schemas.dividendo_schema import DividendoCreate
+from app.schemas.dividendo_schema import DividendoCreate, DividendoUpdate
 from app.schemas.investimento_schema import MovimentoInvestimentoCreate, MovimentoInvestimentoUpdate
 from app.schemas.lancamento_schema import CartaoLancamentoInput, LancamentoCreate, LancamentoUpdate
 from app.schemas.orcamento_schema import OrcamentoAlterar, OrcamentoCreate, OrcamentoItemCreate
@@ -45,7 +45,11 @@ from app.schemas.conta_schema import ContaCreate, ContaSaldoCreate
 from app.schemas.conta_futura_schema import ContaFuturaCreate, PagarContaFutura
 from app.schemas.exterior_dolar_schema import MovimentoDolarCreate, MovimentoDolarUpdate
 from app.api.routes.contas import criar as criar_conta_route, atualizar_saldo as atualizar_saldo_conta_route
-from app.api.routes.dividendos import criar as criar_dividendo_route
+from app.api.routes.dividendos import (
+    atualizar as atualizar_dividendo_route,
+    criar as criar_dividendo_route,
+    excluir as excluir_dividendo_route,
+)
 from app.services.cartao_service import pagar_fatura, separar_compromisso
 from app.services.caixinha_service import listar_caixinhas, usar_caixinha
 from app.services.conta_futura_service import criar_conta_futura, pagar_conta_futura
@@ -82,6 +86,7 @@ from app.services.orcamento_service import (
     remover_item_orcamento,
     upsert_orcamento,
 )
+from app.services.dashboard_service import graficos_dashboard
 from app.services.saldo_service import (
     calcular_compromisso_futuro_cartao,
     calcular_gasto_real_mes,
@@ -1103,6 +1108,150 @@ def test_juros_de_conta_sem_ativo_entram_no_historico_de_proventos(session: Sess
     assert historico["por_tipo"][0]["tipo_provento"] == TipoProvento.JUROS_RENDA_FIXA.value
     assert historico["por_ativo"][0]["ticker"] == "Conta"
     assert historico["por_ativo"][0]["nome"] == "Juros da conta"
+
+
+def test_juros_de_conta_vinculado_a_conta_aumenta_saldo_livre_e_concilia(session: Session):
+    conta = Conta(nome="Conta rendimento", saldo_inicial=Decimal("1000.00"), saldo_atual_informado=Decimal("1012.34"))
+    session.add(conta)
+    session.commit()
+    session.refresh(conta)
+
+    assert calcular_saldo_livre(session) == Decimal("1000.00")
+
+    juros = criar_dividendo_route(
+        DividendoCreate(
+            tipo_provento=TipoProvento.JUROS_RENDA_FIXA,
+            data_recebimento=date(2026, 7, 3),
+            valor=Decimal("12.34"),
+            moeda=Moeda.BRL,
+            conta_destino_id=conta.id,
+            observacao="Juros da conta",
+        ),
+        session,
+    )
+
+    assert calcular_saldo_livre(session) == Decimal("1012.34")
+    lancamento = session.exec(
+        select(Lancamento).where(Lancamento.referencia_id == juros.id, Lancamento.origem_sistema == "DIVIDENDO_JUROS_CONTA")
+    ).one()
+    assert lancamento.conta_id == conta.id
+    assert lancamento.tipo == TipoLancamento.DIVIDENDO
+    assert lancamento.valor == Decimal("12.34")
+    assert lancamento.afeta_orcamento is False
+    assert conciliacao(session)["diferenca_nao_explicada"] == Decimal("0.00")
+
+
+def test_juros_de_conta_sem_conta_vinculada_nao_afeta_saldo_livre(session: Session):
+    saldo_antes = calcular_saldo_livre(session)
+
+    criar_dividendo_route(
+        DividendoCreate(
+            tipo_provento=TipoProvento.JUROS_RENDA_FIXA,
+            data_recebimento=date(2026, 7, 3),
+            valor=Decimal("12.34"),
+            moeda=Moeda.BRL,
+        ),
+        session,
+    )
+
+    assert calcular_saldo_livre(session) == saldo_antes
+
+
+def test_dividendo_normal_de_ativo_nao_afeta_saldo_livre(session: Session):
+    conta, *_ = seed_basico(session)
+    ativo = Ativo(ticker="BBAS3", nome="Banco do Brasil", tipo_ativo=TipoAtivo.ACAO_BR)
+    session.add(ativo)
+    session.commit()
+    session.refresh(ativo)
+    comprar(session, MovimentoInvestimentoCreate(ativo_id=ativo.id, quantidade=Decimal("10.00"), preco_unitario=Decimal("10.00")))
+    saldo_antes = calcular_saldo_livre(session)
+
+    criar_dividendo_route(
+        DividendoCreate(
+            ativo_id=ativo.id,
+            tipo_provento=TipoProvento.DIVIDENDO,
+            data_recebimento=date(2026, 5, 20),
+            valor=Decimal("20.00"),
+            moeda=Moeda.BRL,
+        ),
+        session,
+    )
+
+    assert calcular_saldo_livre(session) == saldo_antes
+    assert (
+        session.exec(select(Lancamento).where(Lancamento.origem_sistema == "DIVIDENDO_JUROS_CONTA")).first() is None
+    )
+
+
+def test_editar_e_excluir_juros_de_conta_sincroniza_lancamento(session: Session):
+    conta_a = Conta(nome="Conta A", saldo_inicial=Decimal("0.00"), saldo_atual_informado=Decimal("0.00"))
+    conta_b = Conta(nome="Conta B", saldo_inicial=Decimal("0.00"), saldo_atual_informado=Decimal("0.00"))
+    session.add(conta_a)
+    session.add(conta_b)
+    session.commit()
+    session.refresh(conta_a)
+    session.refresh(conta_b)
+
+    juros = criar_dividendo_route(
+        DividendoCreate(
+            tipo_provento=TipoProvento.JUROS_RENDA_FIXA,
+            data_recebimento=date(2026, 7, 3),
+            valor=Decimal("10.00"),
+            moeda=Moeda.BRL,
+            conta_destino_id=conta_a.id,
+        ),
+        session,
+    )
+    assert calcular_saldo_livre(session) == Decimal("10.00")
+
+    atualizar_dividendo_route(
+        juros.id,
+        DividendoUpdate(valor=Decimal("25.00"), conta_destino_id=conta_b.id),
+        session,
+    )
+
+    assert calcular_saldo_livre(session) == Decimal("25.00")
+    lancamento = session.exec(
+        select(Lancamento).where(Lancamento.referencia_id == juros.id, Lancamento.origem_sistema == "DIVIDENDO_JUROS_CONTA")
+    ).one()
+    assert lancamento.conta_id == conta_b.id
+    assert lancamento.valor == Decimal("25.00")
+    assert lancamento.ativo is True
+
+    excluir_dividendo_route(juros.id, session)
+
+    assert calcular_saldo_livre(session) == Decimal("0.00")
+    session.refresh(lancamento)
+    assert lancamento.ativo is False
+
+
+def test_gastos_por_categoria_inclui_media_dos_ultimos_6_meses(session: Session):
+    conta, categoria, subcategoria, pix, _, _ = seed_basico(session)
+
+    for data_lancamento, valor in [
+        (date(2026, 1, 9), Decimal("100.00")),
+        (date(2026, 2, 9), Decimal("200.00")),
+        (date(2026, 4, 9), Decimal("300.00")),
+        (date(2026, 7, 9), Decimal("50.00")),
+    ]:
+        criar_lancamento(
+            session,
+            LancamentoCreate(
+                valor=valor,
+                tipo=TipoLancamento.GASTO,
+                categoria_id=categoria.id,
+                subcategoria_id=subcategoria.id,
+                metodo_pagamento_id=pix.id,
+                conta_id=conta.id,
+                data_lancamento=data_lancamento,
+            ),
+        )
+
+    graficos = graficos_dashboard(session, 2026, 7)
+    item = next(linha for linha in graficos["gastos_por_categoria"] if linha["categoria"] == categoria.nome)
+
+    assert item["valor"] == Decimal("50.00")
+    assert item["media"] == Decimal("100.00")
 
 
 def test_sincronizacao_corrige_dividendo_usd_antigo_sem_extrato(session: Session):

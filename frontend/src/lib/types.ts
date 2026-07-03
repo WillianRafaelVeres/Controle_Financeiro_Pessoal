@@ -463,7 +463,7 @@ export interface Diagnostico {
 
 export interface Dividendo {
   id: string;
-  ativo_id: string;
+  ativo_id?: string | null;
   tipo_provento: string;
   data_recebimento: string;
   valor: string | number;

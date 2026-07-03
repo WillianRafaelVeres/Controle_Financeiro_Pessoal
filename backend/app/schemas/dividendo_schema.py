@@ -7,7 +7,7 @@ from app.models.base import Moeda, TipoProvento
 
 
 class DividendoCreate(SQLModel):
-    ativo_id: str
+    ativo_id: str | None = None
     tipo_provento: TipoProvento
     data_recebimento: date | None = None
     valor: Decimal

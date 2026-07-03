@@ -37,6 +37,11 @@ TIPO_PROVENTO_LABELS = {
     TipoProvento.OUTRO: "Outros",
 }
 
+JUROS_CONTA_ATIVO_ID = "juros-conta"
+JUROS_CONTA_TICKER = "Conta"
+JUROS_CONTA_NOME = "Juros da conta"
+JUROS_CONTA_TIPO_LABEL = "Conta"
+
 
 def _moeda_valor(moeda: Moeda | str | None) -> str:
     if hasattr(moeda, "value"):
@@ -103,7 +108,7 @@ def sincronizar_movimentos_dolar_dividendos_pendentes(session: Session) -> int:
     dividendos = session.exec(select(Dividendo).order_by(Dividendo.data_recebimento, Dividendo.criado_em)).all()
     sincronizados = 0
     for dividendo in dividendos:
-        ativo = session.get(Ativo, dividendo.ativo_id)
+        ativo = session.get(Ativo, dividendo.ativo_id) if dividendo.ativo_id else None
         movimento = session.exec(
             select(ExtratoDolar).where(ExtratoDolar.referencia_id == dividendo.id, ExtratoDolar.origem == "DIVIDENDO")
         ).first()
@@ -195,10 +200,11 @@ def listar_historico_proventos(
     quantidade = 0
 
     for dividendo in dividendos:
-        ativo = ativos.get(dividendo.ativo_id)
-        if not ativo:
+        ativo = ativos.get(dividendo.ativo_id) if dividendo.ativo_id else None
+        juros_conta = dividendo.ativo_id is None and dividendo.tipo_provento == TipoProvento.JUROS_RENDA_FIXA
+        if not ativo and not juros_conta:
             continue
-        grupo = _tipo_grupo_provento(ativo.tipo_ativo)
+        grupo = _tipo_grupo_provento(ativo.tipo_ativo) if ativo else TipoAtivo.OUTRO
         if tipo_ativo and _tipo_grupo_provento(tipo_ativo) != grupo:
             continue
         if ativo_id and dividendo.ativo_id != ativo_id:
@@ -241,7 +247,7 @@ def listar_historico_proventos(
             classe_key,
             {
                 "tipo_ativo": classe_key,
-                "tipo_label": TIPO_ATIVO_LABELS_PROVENTOS.get(grupo, grupo.value),
+                "tipo_label": JUROS_CONTA_TIPO_LABEL if juros_conta else TIPO_ATIVO_LABELS_PROVENTOS.get(grupo, grupo.value),
                 "total_brl": Decimal("0.00"),
                 "quantidade": 0,
             },
@@ -249,15 +255,16 @@ def listar_historico_proventos(
         classe_item["total_brl"] += valor_brl
         classe_item["quantidade"] += 1
 
+        ativo_key = ativo.id if ativo else JUROS_CONTA_ATIVO_ID
         ativo_item = por_ativo.setdefault(
-            ativo.id,
+            ativo_key,
             {
-                "ativo_id": ativo.id,
-                "ticker": ativo.ticker,
-                "nome": ativo.nome,
+                "ativo_id": ativo_key,
+                "ticker": ativo.ticker if ativo else JUROS_CONTA_TICKER,
+                "nome": ativo.nome if ativo else JUROS_CONTA_NOME,
                 "tipo_ativo": grupo.value,
-                "tipo_label": TIPO_ATIVO_LABELS_PROVENTOS.get(grupo, grupo.value),
-                "corretora": ativo.corretora,
+                "tipo_label": JUROS_CONTA_TIPO_LABEL if juros_conta else TIPO_ATIVO_LABELS_PROVENTOS.get(grupo, grupo.value),
+                "corretora": ativo.corretora if ativo else None,
                 "total_brl": Decimal("0.00"),
                 "quantidade": 0,
             },

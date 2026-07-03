@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Banknote, DollarSign, Plus, TrendingUp } from "lucide-react";
 import { useState } from "react";
 
-import { EmptyState } from "../components/finance/EmptyState";
 import { SectionCard } from "../components/finance/SectionCard";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
@@ -29,6 +28,7 @@ export function DashboardPage({ onNewLancamento }: { onNewLancamento?: () => voi
   const resumo = useQuery({ queryKey: ["painel", "resumo", month], queryFn: () => api.painelResumo(month.ano, month.mes) });
   const graficos = useQuery({ queryKey: ["dashboard", "graficos", month], queryFn: () => api.dashboardGraficos(month.ano, month.mes) });
   const ativosDividendos = useQuery({ queryKey: ["ativos-dividendos", "dashboard"], queryFn: api.ativosDividendos, enabled: dividendoOpen });
+  const contasDividendos = useQuery({ queryKey: ["contas", "dashboard", "dividendos"], queryFn: () => api.contas(false), enabled: dividendoOpen });
   const cotacaoDolar = useQuery({ queryKey: ["dolar-cotacao-atual"], queryFn: api.dolarCotacaoAtual, enabled: Boolean(dolarAction), retry: false });
 
   const criarDividendo = useMutation({ mutationFn: api.criarDividendo, onSuccess: () => invalidateInvestmentData(queryClient) });
@@ -70,21 +70,14 @@ export function DashboardPage({ onNewLancamento }: { onNewLancamento?: () => voi
       <CompraAtivoModal open={compraAtivoOpen} onClose={() => setCompraAtivoOpen(false)} onSubmit={(payload) => comprarAtivo.mutateAsync(payload).then(() => undefined)} />
 
       <Dialog open={dividendoOpen} title="Registrar dividendo" onClose={() => setDividendoOpen(false)} className="max-w-6xl">
-        {(ativosDividendos.data?.length ?? 0) === 0 ? (
-          <EmptyState
-            icon={<Banknote className="h-6 w-6" />}
-            title="Nenhum ativo em carteira"
-            description="Somente ativos com quantidade atual maior que zero aparecem na lista de dividendos."
-          />
-        ) : (
-          <DividendosForm
-            ativos={ativosDividendos.data ?? []}
-            onSubmit={async (payload) => {
-              await criarDividendo.mutateAsync(payload);
-              setDividendoOpen(false);
-            }}
-          />
-        )}
+        <DividendosForm
+          ativos={ativosDividendos.data ?? []}
+          contas={contasDividendos.data ?? []}
+          onSubmit={async (payload) => {
+            await criarDividendo.mutateAsync(payload);
+            setDividendoOpen(false);
+          }}
+        />
       </Dialog>
 
       <DolarActionDialog

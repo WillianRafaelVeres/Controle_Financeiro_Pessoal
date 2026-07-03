@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from app.core.database import get_session
-from app.models.base import TipoProvento
+from app.models.base import Moeda, TipoProvento
+from app.models.conta import Conta
 from app.models.dividendo import Dividendo
 from app.models.investimento import Ativo
 from app.schemas.dividendo_schema import DividendoCreate, DividendoUpdate
@@ -28,10 +29,32 @@ def ativos_disponiveis(session: Session = Depends(get_session)):
     return ativos_para_dividendos(session)
 
 
+def _validar_conta_destino(session: Session, conta_id: str | None) -> None:
+    if not conta_id:
+        return
+    conta = session.get(Conta, conta_id)
+    if not conta or not conta.ativa:
+        raise HTTPException(status_code=404, detail="Conta de destino nao encontrada.")
+
+
+def _validar_ativo_provento(payload: DividendoCreate, session: Session) -> Ativo | None:
+    _validar_conta_destino(session, payload.conta_destino_id)
+    if payload.ativo_id:
+        ativos = ativos_para_dividendos(session)
+        ativo = next((item for item in ativos if item.id == payload.ativo_id), None)
+        if not ativo:
+            raise HTTPException(status_code=422, detail="Dividendos so podem ser registrados para ativos em carteira.")
+        return ativo
+    if payload.tipo_provento != TipoProvento.JUROS_RENDA_FIXA:
+        raise HTTPException(status_code=422, detail="Provento sem ativo deve ser juros da conta.")
+    if payload.moeda != Moeda.BRL:
+        raise HTTPException(status_code=422, detail="Juros da conta devem ser registrados em BRL.")
+    return None
+
+
 @router.post("")
 def criar(payload: DividendoCreate, session: Session = Depends(get_session)) -> Dividendo:
-    if not any(ativo.id == payload.ativo_id for ativo in ativos_para_dividendos(session)):
-        raise HTTPException(status_code=422, detail="Dividendos so podem ser registrados para ativos em carteira.")
+    ativo = _validar_ativo_provento(payload, session)
     data_recebimento = payload.data_recebimento or date.today()
     conversao = calcular_conversao_provento(session, payload.valor, payload.moeda, data_recebimento)
     dividendo = Dividendo(
@@ -43,7 +66,6 @@ def criar(payload: DividendoCreate, session: Session = Depends(get_session)) -> 
     )
     session.add(dividendo)
     session.flush()
-    ativo = session.get(Ativo, payload.ativo_id)
     registrar_movimento_dolar_dividendo(session, dividendo, ativo)
     session.commit()
     session.refresh(dividendo)
@@ -57,13 +79,19 @@ def atualizar(dividendo_id: str, payload: DividendoUpdate, session: Session = De
         raise HTTPException(status_code=404, detail="Dividendo nao encontrado.")
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(dividendo, key, value)
+    if dividendo.ativo_id is None and dividendo.tipo_provento != TipoProvento.JUROS_RENDA_FIXA:
+        raise HTTPException(status_code=422, detail="Provento sem ativo deve ser juros da conta.")
+    if dividendo.ativo_id is None and dividendo.moeda != Moeda.BRL:
+        raise HTTPException(status_code=422, detail="Juros da conta devem ser registrados em BRL.")
+    _validar_conta_destino(session, dividendo.conta_destino_id)
     conversao = calcular_conversao_provento(session, dividendo.valor, dividendo.moeda, dividendo.data_recebimento)
     for key, value in conversao.items():
         setattr(dividendo, key, value)
     session.add(dividendo)
     session.flush()
     desativar_movimentos_dolar_dividendo(session, dividendo.id)
-    registrar_movimento_dolar_dividendo(session, dividendo, session.get(Ativo, dividendo.ativo_id))
+    ativo = session.get(Ativo, dividendo.ativo_id) if dividendo.ativo_id else None
+    registrar_movimento_dolar_dividendo(session, dividendo, ativo)
     session.commit()
     session.refresh(dividendo)
     return dividendo

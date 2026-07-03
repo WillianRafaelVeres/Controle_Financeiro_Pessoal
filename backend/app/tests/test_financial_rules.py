@@ -1077,6 +1077,34 @@ def test_proventos_usd_guardam_valor_brl_historico(session: Session, monkeypatch
     assert saldo_teorico_usd(session) == Decimal("170.00")
 
 
+def test_juros_de_conta_sem_ativo_entram_no_historico_de_proventos(session: Session):
+    conta = Conta(nome="Conta rendimento", saldo_inicial=Decimal("0.00"), saldo_atual_informado=Decimal("0.00"))
+    session.add(conta)
+    session.commit()
+    session.refresh(conta)
+
+    juros = criar_dividendo_route(
+        DividendoCreate(
+            tipo_provento=TipoProvento.JUROS_RENDA_FIXA,
+            data_recebimento=date(2026, 7, 3),
+            valor=Decimal("12.34"),
+            moeda=Moeda.BRL,
+            conta_destino_id=conta.id,
+            observacao="Juros da conta",
+        ),
+        session,
+    )
+
+    assert juros.ativo_id is None
+    assert juros.valor_brl == Decimal("12.34")
+    historico = listar_historico_proventos(session, "mensal")
+    assert historico["total_brl"] == Decimal("12.34")
+    assert historico["por_periodo"][0]["periodo"] == "07/2026"
+    assert historico["por_tipo"][0]["tipo_provento"] == TipoProvento.JUROS_RENDA_FIXA.value
+    assert historico["por_ativo"][0]["ticker"] == "Conta"
+    assert historico["por_ativo"][0]["nome"] == "Juros da conta"
+
+
 def test_sincronizacao_corrige_dividendo_usd_antigo_sem_extrato(session: Session):
     ativo = Ativo(ticker="IVV", nome="iShares Core S&P 500", tipo_ativo=TipoAtivo.EXTERIOR, moeda=Moeda.USD)
     session.add(ativo)

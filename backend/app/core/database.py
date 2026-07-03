@@ -87,6 +87,11 @@ def _ensure_schema_compatibility() -> None:
         add_column_if_missing("dividendos", "cotacao_brl", "NUMERIC(14, 6)")
         add_column_if_missing("dividendos", "data_cotacao", "DATE")
         add_column_if_missing("dividendos", "fonte_cotacao", "VARCHAR(80)")
+        add_column_if_missing("dividendos", "conta_destino_id", "VARCHAR")
+        ativo_id_column = next((item for item in inspector.get_columns("dividendos") if item["name"] == "ativo_id"), None)
+        if ativo_id_column and not ativo_id_column.get("nullable") and settings.using_postgres:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE dividendos ALTER COLUMN ativo_id DROP NOT NULL"))
 
     if "contas_futuras" in tables:
         add_column_if_missing("contas_futuras", "metodo_pagamento_id", "VARCHAR")

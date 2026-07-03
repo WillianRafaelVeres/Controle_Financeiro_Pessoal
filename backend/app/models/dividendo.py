@@ -10,7 +10,7 @@ from app.models.base import IdMixin, Moeda, TimestampMixin, TipoProvento, UserOw
 class Dividendo(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     __tablename__ = "dividendos"
 
-    ativo_id: str = Field(foreign_key="ativos.id", index=True)
+    ativo_id: str | None = Field(default=None, foreign_key="ativos.id", index=True)
     tipo_provento: TipoProvento = Field(index=True)
     data_recebimento: date = Field(index=True)
     valor: Decimal = Field(sa_column=money_column())

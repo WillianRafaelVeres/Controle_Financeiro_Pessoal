@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
-import { Banknote, Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 
 import { EmptyState } from "../components/finance/EmptyState";
 import { MoneyInput } from "../components/finance/MoneyInput";
@@ -16,7 +16,7 @@ import { api } from "../lib/api";
 import { formatDate, formatMoney, toNumber } from "../lib/formatters";
 import { INVESTMENT_TYPE_LABELS } from "../lib/investmentProfiles";
 import { invalidateInvestmentData } from "../lib/queryInvalidation";
-import type { Ativo, Dividendo, TipoProvento } from "../lib/types";
+import type { Ativo, Conta, Dividendo, TipoProvento } from "../lib/types";
 
 const PROVENTO_OPTIONS: Array<{ value: TipoProvento; label: string }> = [
   { value: "DIVIDENDO", label: "Dividendo" },
@@ -34,6 +34,7 @@ function proventoLabel(value: string) {
 export function DividendosPage() {
   const queryClient = useQueryClient();
   const ativos = useQuery({ queryKey: ["ativos-dividendos"], queryFn: api.ativosDividendos });
+  const contas = useQuery({ queryKey: ["contas", "dividendos"], queryFn: () => api.contas(false) });
   const dividendos = useQuery({ queryKey: ["dividendos"], queryFn: api.dividendos });
   const criar = useMutation({ mutationFn: api.criarDividendo, onSuccess: () => invalidateInvestmentData(queryClient) });
   const atualizar = useMutation({
@@ -44,7 +45,8 @@ export function DividendosPage() {
   const [editingDividendo, setEditingDividendo] = useState<Dividendo | null>(null);
   const [deleteDividendo, setDeleteDividendo] = useState<Dividendo | null>(null);
   const [deleteError, setDeleteError] = useState("");
-  const ativoPorId = (id: string) => ativos.data?.find((item) => item.id === id);
+  const ativoPorId = (id?: string | null) => ativos.data?.find((item) => item.id === id);
+  const contaPorId = (id?: string | null) => contas.data?.find((item) => item.id === id);
 
   async function confirmarExclusao() {
     if (!deleteDividendo) return;
@@ -59,24 +61,17 @@ export function DividendosPage() {
 
   return (
     <div className="space-y-2">
-      <PageHeader title="Dividendos" description="Registro de proventos apenas para ativos com posicao maior que zero." />
-      <SectionCard title="Novo dividendo" description="Escolha primeiro a classe, depois o ativo da carteira.">
-        {(ativos.data?.length ?? 0) === 0 ? (
-          <EmptyState
-            icon={<Banknote className="h-6 w-6" />}
-            title="Nenhum ativo em carteira"
-            description="Somente ativos com quantidade atual maior que zero aparecem na lista de dividendos."
-          />
-        ) : (
-          <DividendosForm
-            ativos={ativos.data ?? []}
-            onSubmit={async (payload) => {
-              await criar.mutateAsync(payload);
-            }}
-          />
-        )}
+      <PageHeader title="Dividendos" description="Registro de proventos de ativos e juros recebidos em contas." />
+      <SectionCard title="Novo recebimento" description="Registre dividendos da carteira ou juros pagos por uma conta.">
+        <DividendosForm
+          ativos={ativos.data ?? []}
+          contas={contas.data ?? []}
+          onSubmit={async (payload) => {
+            await criar.mutateAsync(payload);
+          }}
+        />
       </SectionCard>
-      <SectionCard title="Historico" description="Proventos registrados por ativo.">
+      <SectionCard title="Historico" description="Proventos registrados por ativo ou conta.">
         {(dividendos.data?.length ?? 0) === 0 ? (
           <EmptyState title="Sem dividendos registrados" description="Os proventos recebidos aparecerao neste historico." />
         ) : (
@@ -84,7 +79,7 @@ export function DividendosPage() {
             <thead>
               <tr>
                 <Th>Data</Th>
-                <Th>Ativo</Th>
+                <Th>Origem</Th>
                 <Th>Classe</Th>
                 <Th>Tipo</Th>
                 <Th className="text-right">Valor</Th>
@@ -95,14 +90,16 @@ export function DividendosPage() {
             <tbody>
               {(dividendos.data ?? []).map((item) => {
                 const ativo = ativoPorId(item.ativo_id);
+                const conta = contaPorId(item.conta_destino_id);
+                const jurosConta = !item.ativo_id && item.tipo_provento === "JUROS_RENDA_FIXA";
                 return (
                   <tr key={item.id}>
                     <Td>{formatDate(item.data_recebimento)}</Td>
                     <Td>
-                      <div className="font-semibold text-slate-100">{ativo?.ticker ?? "-"}</div>
-                      <div className="text-[11px] text-slate-500">{ativo?.nome ?? "Ativo removido"}</div>
+                      <div className="font-semibold text-slate-100">{jurosConta ? "Juros da conta" : ativo?.ticker ?? "-"}</div>
+                      <div className="text-[11px] text-slate-500">{jurosConta ? conta?.nome ?? "Sem conta vinculada" : ativo?.nome ?? "Ativo removido"}</div>
                     </Td>
-                    <Td>{ativo ? INVESTMENT_TYPE_LABELS[ativo.tipo_ativo] : "-"}</Td>
+                    <Td>{jurosConta ? "Conta" : ativo ? INVESTMENT_TYPE_LABELS[ativo.tipo_ativo] : "-"}</Td>
                     <Td>
                       <div>{proventoLabel(item.tipo_provento)}</div>
                       {item.observacao && <div className="mt-0.5 max-w-[220px] truncate text-[11px] text-slate-500">{item.observacao}</div>}
@@ -138,6 +135,7 @@ export function DividendosPage() {
       <DividendoDialog
         dividendo={editingDividendo}
         ativo={editingDividendo ? ativoPorId(editingDividendo.ativo_id) ?? null : null}
+        contas={contas.data ?? []}
         onClose={() => setEditingDividendo(null)}
         onSubmit={(id, payload) => atualizar.mutateAsync({ id, payload }).then(() => undefined)}
       />
@@ -147,7 +145,7 @@ export function DividendosPage() {
           {deleteDividendo && (
             <div className="rounded-md border border-slate-800 bg-slate-950/45 p-3 text-sm">
               <p className="font-semibold text-slate-100">
-                {ativoPorId(deleteDividendo.ativo_id)?.ticker ?? "Ativo"} - {proventoLabel(deleteDividendo.tipo_provento)}
+                {deleteDividendo.ativo_id ? ativoPorId(deleteDividendo.ativo_id)?.ticker ?? "Ativo" : "Juros da conta"} - {proventoLabel(deleteDividendo.tipo_provento)}
               </p>
               <p className="mt-1 text-slate-400">
                 {formatDate(deleteDividendo.data_recebimento)} - {formatMoney(deleteDividendo.valor, deleteDividendo.moeda === "USD" ? "USD" : "BRL")}
@@ -172,11 +170,13 @@ export function DividendosPage() {
 function DividendoDialog({
   dividendo,
   ativo,
+  contas,
   onClose,
   onSubmit,
 }: {
   dividendo: Dividendo | null;
   ativo: Ativo | null;
+  contas: Conta[];
   onClose: () => void;
   onSubmit: (id: string, payload: Record<string, unknown>) => Promise<void>;
 }) {
@@ -185,6 +185,7 @@ function DividendoDialog({
     valor: "",
     moeda: "BRL",
     tipo_provento: "DIVIDENDO" as TipoProvento,
+    conta_destino_id: "",
     observacao: "",
   });
   const [erro, setErro] = useState("");
@@ -197,6 +198,7 @@ function DividendoDialog({
       valor: String(toNumber(dividendo.valor)),
       moeda: dividendo.moeda || "BRL",
       tipo_provento: (dividendo.tipo_provento || "DIVIDENDO") as TipoProvento,
+      conta_destino_id: dividendo.conta_destino_id || "",
       observacao: dividendo.observacao || "",
     });
     setErro("");
@@ -205,6 +207,8 @@ function DividendoDialog({
 
   if (!dividendo) return null;
   const dividendoAtual = dividendo;
+  const jurosConta = !dividendoAtual.ativo_id && form.tipo_provento === "JUROS_RENDA_FIXA";
+  const contasAtivas = contas.filter((conta) => conta.ativa !== false && (conta.moeda ?? "BRL") === "BRL");
 
   function changeMoeda(moeda: string) {
     setForm((current) => ({
@@ -235,8 +239,9 @@ function DividendoDialog({
       await onSubmit(dividendoAtual.id, {
         data_recebimento: form.data_recebimento,
         valor: toNumber(form.valor),
-        moeda: form.moeda,
-        tipo_provento: form.tipo_provento,
+        moeda: jurosConta ? "BRL" : form.moeda,
+        tipo_provento: jurosConta ? "JUROS_RENDA_FIXA" : form.tipo_provento,
+        conta_destino_id: form.conta_destino_id || null,
         observacao: form.observacao.trim() || null,
       });
       onClose();
@@ -251,10 +256,11 @@ function DividendoDialog({
     <Dialog open={dividendo !== null} title="Editar dividendo" onClose={onClose} className="max-w-2xl">
       <form className="grid gap-3 sm:grid-cols-2" onSubmit={submit}>
         <div className="rounded-md border border-slate-800 bg-slate-950/45 p-3 sm:col-span-2">
-          <p className="text-sm font-semibold text-slate-100">{ativo ? `${ativo.ticker} - ${ativo.nome}` : "Ativo nao encontrado"}</p>
-          <p className="mt-1 text-xs text-slate-500">{ativo ? INVESTMENT_TYPE_LABELS[ativo.tipo_ativo] : dividendoAtual.ativo_id}</p>
+          <p className="text-sm font-semibold text-slate-100">{jurosConta ? "Juros da conta" : ativo ? `${ativo.ticker} - ${ativo.nome}` : "Ativo nao encontrado"}</p>
+          <p className="mt-1 text-xs text-slate-500">{jurosConta ? "Recebimento em conta" : ativo ? INVESTMENT_TYPE_LABELS[ativo.tipo_ativo] : dividendoAtual.ativo_id}</p>
         </div>
-        <label className="space-y-1">
+        {!jurosConta && (
+          <label className="space-y-1">
           <span className="text-xs font-medium text-slate-500">Provento</span>
           <Select value={form.tipo_provento} onChange={(event) => setForm({ ...form, tipo_provento: event.target.value as TipoProvento })}>
             {PROVENTO_OPTIONS.map((item) => (
@@ -263,17 +269,33 @@ function DividendoDialog({
               </option>
             ))}
           </Select>
-        </label>
-        <label className="space-y-1">
+          </label>
+        )}
+        {!jurosConta && (
+          <label className="space-y-1">
           <span className="text-xs font-medium text-slate-500">Moeda</span>
           <Select value={form.moeda} onChange={(event) => changeMoeda(event.target.value)}>
             <option value="BRL">BRL</option>
             <option value="USD">USD</option>
           </Select>
-        </label>
+          </label>
+        )}
+        {jurosConta && (
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-xs font-medium text-slate-500">Conta</span>
+            <Select value={form.conta_destino_id} onChange={(event) => setForm({ ...form, conta_destino_id: event.target.value })}>
+              <option value="">Sem conta vinculada</option>
+              {contasAtivas.map((conta) => (
+                <option key={conta.id} value={conta.id}>
+                  {conta.nome}
+                </option>
+              ))}
+            </Select>
+          </label>
+        )}
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-500">Valor</span>
-          <MoneyInput currency={form.moeda} value={form.valor} onChange={(event) => setForm({ ...form, valor: event.target.value })} required />
+          <MoneyInput currency={jurosConta ? "BRL" : form.moeda} value={form.valor} onChange={(event) => setForm({ ...form, valor: event.target.value })} required />
         </label>
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-500">Recebido em</span>

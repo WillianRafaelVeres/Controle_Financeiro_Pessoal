@@ -82,6 +82,7 @@ function mockApi() {
     cartoes: [{ id: "card-1", nome: "XP" }],
   });
   vi.spyOn(api, "ativosDividendos").mockResolvedValue([]);
+  vi.spyOn(api, "contas").mockResolvedValue([]);
   vi.spyOn(api, "dolarCotacaoAtual").mockResolvedValue({
     cotacao_brl: 0,
     compra_brl: 0,

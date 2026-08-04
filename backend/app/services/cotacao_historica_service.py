@@ -4,19 +4,20 @@ from decimal import Decimal
 from threading import Lock
 
 import httpx
-from fastapi import HTTPException
-from sqlmodel import Session
+from sqlmodel import Session, select
 
-from app.services.exterior_dolar_service import buscar_cotacao_dolar_atual
+from app.models.dividendo import Dividendo
+from app.services.exterior_dolar_service import buscar_cotacao_dolar_atual, resumo_dolar
 
 
 BCB_PTAX_PERIODO_URL = (
     "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/"
     "CotacaoDolarPeriodo(dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)"
 )
-AWESOMEAPI_HISTORICO_URL = "https://economia.awesomeapi.com.br/json/daily/USD-BRL/15"
+AWESOMEAPI_HISTORICO_URL = "https://economia.awesomeapi.com.br/json/daily/USD-BRL/40"
 TIMEOUT_HISTORICO_SEGUNDOS = 3.5
-JANELA_DIAS_ANTERIORES = 14
+JANELA_DIAS_ANTERIORES = 35
+MEDIA_DIAS = 30
 
 _cache_lock = Lock()
 _cache_mensal_bcb: dict[tuple[int, int], dict[date, dict]] = {}
@@ -77,7 +78,7 @@ def _buscar_mes_bcb(data_referencia: date) -> dict[date, dict]:
         params={
             "@dataInicial": f"'{inicio:%m-%d-%Y}'",
             "@dataFinalCotacao": f"'{fim:%m-%d-%Y}'",
-            "$top": "500",
+            "$top": "1000",
             "$format": "json",
             "$select": "cotacaoCompra,cotacaoVenda,dataHoraCotacao",
         },
@@ -149,11 +150,37 @@ def _buscar_data_awesome(data_referencia: date) -> dict:
     }
 
 
-def _resolver_no_mes(cotacoes: dict[date, dict], data_referencia: date) -> dict | None:
+def _resolver_dia_util_anterior(cotacoes: dict[date, dict], data_referencia: date) -> dict | None:
     datas = [data_item for data_item in cotacoes if data_item <= data_referencia]
     if not datas:
         return None
-    return dict(cotacoes[max(datas)])
+    data_encontrada = max(datas)
+    if (data_referencia - data_encontrada).days > 7:
+        return None
+    return dict(cotacoes[data_encontrada])
+
+
+def _media_30_dias(cotacoes: dict[date, dict], data_referencia: date) -> dict | None:
+    inicio = data_referencia - timedelta(days=MEDIA_DIAS)
+    validas = [
+        item
+        for data_item, item in cotacoes.items()
+        if inicio <= data_item <= data_referencia and Decimal(str(item.get("cotacao_brl") or "0")) > 0
+    ]
+    if not validas:
+        return None
+    quantidade = Decimal(len(validas))
+    compra = sum((Decimal(str(item.get("compra_brl") or item["cotacao_brl"])) for item in validas), Decimal("0")) / quantidade
+    venda = sum((Decimal(str(item.get("venda_brl") or item["cotacao_brl"])) for item in validas), Decimal("0")) / quantidade
+    return {
+        "cotacao_brl": venda,
+        "compra_brl": compra,
+        "venda_brl": venda,
+        "variacao_brl": Decimal("0.00"),
+        "percentual_variacao": Decimal("0.00"),
+        "data_cotacao": data_referencia,
+        "fonte": "BCB PTAX MEDIA 30D",
+    }
 
 
 def _buscar_atual_cacheada(session: Session) -> dict:
@@ -168,9 +195,60 @@ def _buscar_atual_cacheada(session: Session) -> dict:
     return resultado
 
 
+def _ultima_cotacao_dividendo(session: Session, data_referencia: date) -> dict | None:
+    registro = session.exec(
+        select(Dividendo)
+        .where(
+            Dividendo.cotacao_brl.is_not(None),
+            Dividendo.cotacao_brl > 0,
+            Dividendo.data_cotacao.is_not(None),
+            Dividendo.data_cotacao <= data_referencia,
+        )
+        .order_by(Dividendo.data_cotacao.desc(), Dividendo.data_recebimento.desc())
+    ).first()
+    if not registro or not registro.cotacao_brl:
+        return None
+    cotacao = Decimal(str(registro.cotacao_brl))
+    return {
+        "cotacao_brl": cotacao,
+        "compra_brl": cotacao,
+        "venda_brl": cotacao,
+        "variacao_brl": Decimal("0.00"),
+        "percentual_variacao": Decimal("0.00"),
+        "data_cotacao": registro.data_cotacao or registro.data_recebimento,
+        "fonte": "HISTORICO SALVO",
+    }
+
+
+def _cotacao_configurada(session: Session) -> dict | None:
+    resumo = resumo_dolar(session)
+    cotacao = Decimal(str(resumo.get("cotacao_brl") or "0"))
+    if cotacao <= 0:
+        return None
+    return {
+        "cotacao_brl": cotacao,
+        "compra_brl": cotacao,
+        "venda_brl": cotacao,
+        "variacao_brl": Decimal("0.00"),
+        "percentual_variacao": Decimal("0.00"),
+        "data_cotacao": resumo.get("cotacao_brl_data") or date.today(),
+        "fonte": "COTACAO SALVA",
+    }
+
+
 def buscar_cotacao_dolar_data(session: Session, data_referencia: date) -> dict:
     if data_referencia >= date.today():
-        return _buscar_atual_cacheada(session)
+        try:
+            return _buscar_atual_cacheada(session)
+        except Exception:
+            configurada = _cotacao_configurada(session)
+            if configurada:
+                return configurada
+            return {
+                "cotacao_brl": Decimal("0.00"),
+                "data_cotacao": data_referencia,
+                "fonte": "PENDENTE",
+            }
 
     with _cache_lock:
         cached = _cache_por_data.get(data_referencia)
@@ -178,34 +256,47 @@ def buscar_cotacao_dolar_data(session: Session, data_referencia: date) -> dict:
     if cached:
         return dict(cached)
 
-    resultado = _resolver_no_mes(mes_cached, data_referencia) if mes_cached else None
-    erros: list[str] = []
-
-    if resultado is None and mes_cached is None:
+    resultado: dict | None = None
+    cotacoes_mes = mes_cached
+    if cotacoes_mes is None:
         try:
             cotacoes_mes = _buscar_mes_bcb(data_referencia)
             with _cache_lock:
                 _cache_mensal_bcb[(data_referencia.year, data_referencia.month)] = cotacoes_mes
-            resultado = _resolver_no_mes(cotacoes_mes, data_referencia)
-        except Exception as exc:
-            erros.append(f"BCB PTAX: {exc}")
+        except Exception:
+            cotacoes_mes = None
+
+    if cotacoes_mes:
+        resultado = _resolver_dia_util_anterior(cotacoes_mes, data_referencia)
 
     if resultado is None:
         try:
             resultado = _buscar_data_awesome(data_referencia)
-        except Exception as exc:
-            erros.append(f"AwesomeAPI: {exc}")
+        except Exception:
+            resultado = None
+
+    if resultado is None and cotacoes_mes:
+        resultado = _media_30_dias(cotacoes_mes, data_referencia)
 
     if resultado is None:
-        detalhe = "; ".join(erros)
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                f"Nao foi possivel obter a cotacao historica do dolar para "
-                f"{data_referencia:%d/%m/%Y}. O dividendo nao foi salvo sem conversao."
-                + (f" Detalhes: {detalhe}" if detalhe else "")
-            ),
-        )
+        resultado = _ultima_cotacao_dividendo(session, data_referencia)
+
+    if resultado is None:
+        try:
+            atual = _buscar_atual_cacheada(session)
+            resultado = {
+                **atual,
+                "fonte": "COTACAO ATUAL - CONTINGENCIA",
+            }
+        except Exception:
+            resultado = _cotacao_configurada(session)
+
+    if resultado is None:
+        resultado = {
+            "cotacao_brl": Decimal("0.00"),
+            "data_cotacao": data_referencia,
+            "fonte": "PENDENTE",
+        }
 
     with _cache_lock:
         _cache_por_data[data_referencia] = dict(resultado)

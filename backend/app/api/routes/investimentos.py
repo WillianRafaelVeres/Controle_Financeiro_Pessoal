@@ -12,11 +12,11 @@ from app.schemas.investimento_schema import (
     MovimentoInvestimentoCreate,
     MovimentoInvestimentoUpdate,
 )
+from app.services.cotacao_otimizada_service import atualizar_cotacoes_automaticas_otimizado
 from app.services.dividendo_service import listar_historico_proventos
 from app.services.relatorio_service import projetar_patrimonio
 from app.services.investimento_service import (
     atualizar_cotacao_automatica,
-    atualizar_cotacoes_automaticas,
     calcular_desempenho,
     comprar,
     atualizar_movimento,
@@ -97,8 +97,8 @@ def buscar_cotacao(ativo_id: str, session: Session = Depends(get_session)):
 
 
 @router.post("/cotacoes/atualizar")
-def buscar_cotacoes(session: Session = Depends(get_session)):
-    return atualizar_cotacoes_automaticas(session)
+def buscar_cotacoes(forcar: bool = False, session: Session = Depends(get_session)):
+    return atualizar_cotacoes_automaticas_otimizado(session, forcar=forcar)
 
 
 @router.get("/posicoes")
@@ -165,12 +165,12 @@ def projecao(
 ) -> list[dict]:
     """
     Projeta crescimento de patrimônio dado um aporte mensal e taxa de retorno anual.
-    
+
     Args:
         aporte_mensal: Valor do aporte mensal em R$
         taxa_anual: Taxa de retorno anual em % (ex: 10 para 10%)
         meses: Número de meses para projetar (ex: 60 para 5 anos)
-    
+
     Returns:
         Lista com projeção mês a mês
     """

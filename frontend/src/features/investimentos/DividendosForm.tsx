@@ -45,7 +45,7 @@ export function DividendosForm({ ativos, onSubmit }: { ativos: Ativo[]; onSubmit
 
   return (
     <form
-      className="grid gap-3 md:grid-cols-2 xl:grid-cols-[190px_minmax(260px,1fr)_180px_180px_150px_auto] xl:items-end"
+      className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12 xl:items-end"
       onSubmit={async (event) => {
         event.preventDefault();
         await onSubmit({
@@ -59,7 +59,7 @@ export function DividendosForm({ ativos, onSubmit }: { ativos: Ativo[]; onSubmit
         setValor("");
       }}
     >
-      <label className="space-y-1">
+      <label className="min-w-0 space-y-1 xl:col-span-3">
         <span className="text-xs font-medium text-slate-500">Tipo de ativo</span>
         <Select value={tipoAtivo} onChange={(event) => changeTipoAtivo(event.target.value as TipoAtivo)} required>
           {tiposDisponiveis.map(({ value, label }) => (
@@ -69,7 +69,7 @@ export function DividendosForm({ ativos, onSubmit }: { ativos: Ativo[]; onSubmit
           ))}
         </Select>
       </label>
-      <label className="space-y-1">
+      <label className="min-w-0 space-y-1 xl:col-span-3">
         <span className="text-xs font-medium text-slate-500">Ativo em carteira</span>
         <Select value={ativoId} onChange={(event) => setAtivoId(event.target.value)} required>
           <option value="">Selecione um ativo</option>
@@ -80,7 +80,7 @@ export function DividendosForm({ ativos, onSubmit }: { ativos: Ativo[]; onSubmit
           ))}
         </Select>
       </label>
-      <label className="space-y-1">
+      <label className="min-w-0 space-y-1 xl:col-span-2">
         <span className="text-xs font-medium text-slate-500">Provento</span>
         <Select value={tipo} onChange={(event) => setTipo(event.target.value)}>
           <option value="DIVIDENDO">Dividendo</option>
@@ -91,18 +91,20 @@ export function DividendosForm({ ativos, onSubmit }: { ativos: Ativo[]; onSubmit
           <option value="OUTRO">Outro</option>
         </Select>
       </label>
-      <label className="space-y-1">
+      <label className="min-w-0 space-y-1 xl:col-span-2">
         <span className="text-xs font-medium text-slate-500">Valor</span>
         <MoneyInput value={valor} onChange={(event) => setValor(event.target.value)} required />
       </label>
-      <label className="space-y-1">
+      <label className="min-w-0 space-y-1 xl:col-span-2">
         <span className="text-xs font-medium text-slate-500">Recebido em</span>
         <Input type="date" value={dataRecebimento} onChange={(event) => setDataRecebimento(event.target.value)} required />
       </label>
-      <Button type="submit" className="w-full xl:w-auto">
-        Registrar
-      </Button>
-      <div className="rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs text-slate-500 md:col-span-2 xl:col-span-6">
+      <div className="flex justify-end md:col-span-2 xl:col-span-12">
+        <Button type="submit" className="w-full md:w-auto md:min-w-40">
+          Registrar
+        </Button>
+      </div>
+      <div className="rounded-md border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs text-slate-500 md:col-span-2 xl:col-span-12">
         {ativo ? `${INVESTMENT_TYPE_LABELS[ativo.tipo_ativo]} selecionado. Moeda do registro: ${ativo.moeda}.` : "Escolha o tipo para ver somente os ativos correspondentes."}
       </div>
     </form>

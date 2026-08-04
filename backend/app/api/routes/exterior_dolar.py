@@ -3,9 +3,9 @@ from sqlmodel import Session
 
 from app.core.database import get_session
 from app.schemas.exterior_dolar_schema import MovimentoDolarCreate, MovimentoDolarUpdate, SaldoDolarInformado
+from app.services.cotacao_otimizada_service import buscar_cotacao_dolar_cacheada
 from app.services.exterior_dolar_service import (
     atualizar_manual,
-    buscar_cotacao_dolar_atual,
     excluir_manual,
     informar_saldo_real,
     listar_extrato,
@@ -47,5 +47,5 @@ def informar_saldo(payload: SaldoDolarInformado, session: Session = Depends(get_
 
 
 @router.get("/cotacao-atual")
-def cotacao_atual(session: Session = Depends(get_session)) -> dict:
-    return buscar_cotacao_dolar_atual(session)
+def cotacao_atual(forcar: bool = False, session: Session = Depends(get_session)) -> dict:
+    return buscar_cotacao_dolar_cacheada(session, forcar=forcar)

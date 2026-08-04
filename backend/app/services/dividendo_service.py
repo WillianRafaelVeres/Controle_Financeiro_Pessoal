@@ -135,10 +135,23 @@ def calcular_conversao_provento(
 ) -> dict:
     moeda_normalizada = _moeda_valor(moeda)
     if moeda_normalizada == Moeda.USD.value:
-        cotacao = buscar_cotacao_dolar_data(session, data_recebimento)
+        try:
+            cotacao = buscar_cotacao_dolar_data(session, data_recebimento)
+        except HTTPException:
+            return {
+                "valor_brl": Decimal("0.00"),
+                "cotacao_brl": None,
+                "data_cotacao": data_recebimento,
+                "fonte_cotacao": "PENDENTE",
+            }
         cotacao_brl = Decimal(str(cotacao.get("cotacao_brl") or "0"))
         if cotacao_brl <= 0:
-            raise HTTPException(status_code=422, detail="Cotacao do dolar invalida para converter o provento.")
+            return {
+                "valor_brl": Decimal("0.00"),
+                "cotacao_brl": None,
+                "data_cotacao": data_recebimento,
+                "fonte_cotacao": "PENDENTE",
+            }
         data_cotacao = cotacao.get("data_cotacao")
         return {
             "valor_brl": valor * cotacao_brl,
@@ -162,11 +175,14 @@ def valor_dividendo_brl(session: Session, dividendo: Dividendo) -> Decimal:
         return Decimal(str(dividendo.valor or "0"))
     try:
         conversao = calcular_conversao_provento(session, dividendo.valor, dividendo.moeda, dividendo.data_recebimento)
-        return Decimal(str(conversao["valor_brl"]))
+        convertido = Decimal(str(conversao.get("valor_brl") or "0"))
+        if convertido > 0:
+            return convertido
     except HTTPException:
-        resumo = resumo_dolar(session)
-        cotacao = Decimal(str(resumo.get("cotacao_brl") or "0"))
-        return dividendo.valor * cotacao if cotacao > 0 else Decimal("0.00")
+        pass
+    resumo = resumo_dolar(session)
+    cotacao = Decimal(str(resumo.get("cotacao_brl") or "0"))
+    return dividendo.valor * cotacao if cotacao > 0 else Decimal("0.00")
 
 
 def dividendos_recebidos_brl(session: Session, ativo_id: str) -> Decimal:

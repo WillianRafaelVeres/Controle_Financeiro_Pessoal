@@ -9,7 +9,7 @@ import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Td, Th, Table } from "../../components/ui/table";
 import { api } from "../../lib/api";
-import { formatMoney, formatPercent, toNumber } from "../../lib/formatters";
+import { formatMoney, formatMoneyCompact, formatMonthShort, formatPercent, toNumber } from "../../lib/formatters";
 import { invalidatePlanningData } from "../../lib/queryInvalidation";
 import type { NaturezaCategoria, OrcamentoLinha } from "../../lib/types";
 
@@ -94,21 +94,22 @@ export function OrcamentoTable({ data, natureza }: OrcamentoTableProps) {
 
   return (
     <>
-      <Table className="min-w-[760px] table-fixed text-[13px]">
+      <Table className="min-w-[900px] table-fixed text-[13px]">
         <thead>
           <tr>
-            <Th className="w-[34%]">Item</Th>
-            <Th className="w-[14%] text-right">Planejado</Th>
-            <Th className="w-[14%] text-right">Executado</Th>
-            <Th className="w-[14%] text-right">Diferenca</Th>
-            <Th className="w-[12%]">Situacao</Th>
+            <Th className="w-[26%]">Item</Th>
+            <Th className="w-[12%] text-right">Planejado</Th>
+            <Th className="w-[13%] text-right">Executado</Th>
+            <Th className="w-[12%] text-right">Diferenca</Th>
+            <Th className="w-[19%]">Historico (ate 6 meses)</Th>
+            <Th className="w-[11%]">Situacao</Th>
             <Th className="w-[84px] text-center">Acoes</Th>
           </tr>
         </thead>
         <tbody>
           {Object.entries(grouped).flatMap(([categoriaId, group]) => [
             <tr key={`${categoriaId}-header`} className="bg-slate-900/80">
-              <Td colSpan={6} className="py-1.5 font-semibold text-slate-100">
+              <Td colSpan={7} className="py-1.5 font-semibold text-slate-100">
                 {group.categoria}
               </Td>
             </tr>,
@@ -136,6 +137,9 @@ export function OrcamentoTable({ data, natureza }: OrcamentoTableProps) {
                 </Td>
                 <Td className={diferencaClass(item)}>
                   {formatMoney(item.diferenca)}
+                </Td>
+                <Td>
+                  <HistoricoCell item={item} />
                 </Td>
                 <Td>
                   <Badge tone={tone(item.situacao, item.natureza)}>{statusLabel(item.situacao)}</Badge>
@@ -181,6 +185,42 @@ export function OrcamentoTable({ data, natureza }: OrcamentoTableProps) {
       />
       <DetailsDialog item={details} onClose={() => setDetails(null)} />
     </>
+  );
+}
+
+function HistoricoCell({ item }: { item: OrcamentoLinha }) {
+  const historico = item.historico ?? [];
+
+  if (historico.length === 0) {
+    return <span className="text-[11px] text-slate-500">Sem meses anteriores</span>;
+  }
+
+  const maior = Math.max(...historico.map((mes) => toNumber(mes.valor)), 0);
+
+  return (
+    <div>
+      <div className="flex items-end gap-1">
+        {historico.map((mes) => {
+          const valor = toNumber(mes.valor);
+          const altura = maior > 0 && valor > 0 ? Math.max((valor / maior) * 100, 14) : 4;
+          const rotulo = formatMonthShort(mes.ano, mes.mes);
+          return (
+            <div
+              key={`${mes.ano}-${mes.mes}`}
+              className="flex min-w-0 flex-1 flex-col items-center gap-0.5"
+              title={`${rotulo}: ${formatMoney(valor)}`}
+            >
+              <div className="flex h-7 w-full items-end rounded-sm bg-slate-800/70">
+                <div className="w-full rounded-sm bg-brand-500/70" style={{ height: `${altura}%` }} />
+              </div>
+              <span className="text-[9px] leading-tight text-slate-400">{rotulo}</span>
+              <span className="text-[9px] leading-tight text-slate-500">{formatMoneyCompact(valor)}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-1 text-[10px] text-slate-500">Media {formatMoney(item.media_historico ?? 0)}</div>
+    </div>
   );
 }
 
@@ -254,10 +294,29 @@ function RemoveDialog({
 }
 
 function DetailsDialog({ item, onClose }: { item: OrcamentoLinha | null; onClose: () => void }) {
+  const historico = item?.historico ?? [];
+
   return (
     <Dialog open={item !== null} title="Detalhes do item" onClose={onClose}>
       {item && (
         <div className="grid gap-2 text-[13px] text-slate-300">
+          {historico.length > 0 && (
+            <div className="rounded-md bg-slate-950/60 p-2.5">
+              <p className="text-[11px] font-semibold uppercase text-slate-500">Executado mes a mes</p>
+              <div className="mt-2 space-y-1">
+                {[...historico].reverse().map((mes) => (
+                  <div key={`${mes.ano}-${mes.mes}`} className="flex justify-between gap-3">
+                    <span className="text-slate-400">{formatMonthShort(mes.ano, mes.mes)}</span>
+                    <span className="font-medium text-slate-200">{formatMoney(mes.valor)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between gap-3 border-t border-slate-800 pt-1">
+                  <span className="text-slate-400">Media do periodo</span>
+                  <span className="font-semibold text-slate-100">{formatMoney(item.media_historico ?? 0)}</span>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="rounded-md bg-slate-950/60 p-2.5">Media 3M: {formatMoney(item.media_3_meses)}</div>
           <div className="rounded-md bg-slate-950/60 p-2.5">Media 6M: {formatMoney(item.media_6_meses)}</div>
           <div className="rounded-md bg-slate-950/60 p-2.5">Media 12M: {formatMoney(item.media_12_meses)}</div>

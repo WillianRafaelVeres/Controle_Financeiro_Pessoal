@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
@@ -6,6 +8,7 @@ from app.schemas.exterior_dolar_schema import MovimentoDolarCreate, MovimentoDol
 from app.services.exterior_dolar_service import (
     atualizar_manual,
     buscar_cotacao_dolar_atual,
+    buscar_cotacao_dolar_data,
     excluir_manual,
     informar_saldo_real,
     listar_extrato,
@@ -49,3 +52,12 @@ def informar_saldo(payload: SaldoDolarInformado, session: Session = Depends(get_
 @router.get("/cotacao-atual")
 def cotacao_atual(session: Session = Depends(get_session)) -> dict:
     return buscar_cotacao_dolar_atual(session)
+
+
+@router.get("/cotacao")
+def cotacao_por_data(data: date, session: Session = Depends(get_session)) -> dict:
+    """Cotacao USD-BRL de uma data especifica. Nunca falha: quando nao ha cotacao
+    disponivel devolve zero com a mensagem em ``erro`` para a tela pedir o valor."""
+    resultado = buscar_cotacao_dolar_data(session, data)
+    session.commit()
+    return resultado

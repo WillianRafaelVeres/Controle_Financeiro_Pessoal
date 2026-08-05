@@ -206,13 +206,37 @@ def calcular_conversao_provento(
     valor: Decimal,
     moeda: Moeda | str,
     data_recebimento: date,
+    cotacao_manual: Decimal | None = None,
+    cotacao_anterior: Decimal | None = None,
 ) -> dict:
+    """Converte o provento para BRL sem depender de a API de cotacao responder.
+
+    A ordem e: cotacao informada na tela, cotacao da data (cache/APIs/ultima
+    conhecida) e, por fim, a cotacao que o proprio provento ja tinha gravada.
+    So bloqueia quando nenhuma cotacao existe em lugar nenhum -- nesse caso a
+    unica saida honesta e pedir o valor para o usuario.
+    """
     moeda_normalizada = _moeda_valor(moeda)
-    if moeda_normalizada == Moeda.USD.value:
-        cotacao = buscar_cotacao_dolar_data(session, data_recebimento)
-        cotacao_brl = Decimal(str(cotacao.get("cotacao_brl") or "0"))
-        if cotacao_brl <= 0:
-            raise HTTPException(status_code=422, detail="Cotacao do dolar invalida para converter o provento.")
+    if moeda_normalizada != Moeda.USD.value:
+        return {
+            "valor_brl": valor,
+            "cotacao_brl": Decimal("1.00"),
+            "data_cotacao": data_recebimento,
+            "fonte_cotacao": "BRL",
+        }
+
+    manual = Decimal(str(cotacao_manual or "0"))
+    if manual > 0:
+        return {
+            "valor_brl": valor * manual,
+            "cotacao_brl": manual,
+            "data_cotacao": data_recebimento,
+            "fonte_cotacao": "MANUAL",
+        }
+
+    cotacao = buscar_cotacao_dolar_data(session, data_recebimento)
+    cotacao_brl = Decimal(str(cotacao.get("cotacao_brl") or "0"))
+    if cotacao_brl > 0:
         data_cotacao = cotacao.get("data_cotacao")
         return {
             "valor_brl": valor * cotacao_brl,
@@ -220,12 +244,20 @@ def calcular_conversao_provento(
             "data_cotacao": data_cotacao if isinstance(data_cotacao, date) else data_recebimento,
             "fonte_cotacao": cotacao.get("fonte") or "AwesomeAPI",
         }
-    return {
-        "valor_brl": valor,
-        "cotacao_brl": Decimal("1.00"),
-        "data_cotacao": data_recebimento,
-        "fonte_cotacao": "BRL",
-    }
+
+    anterior = Decimal(str(cotacao_anterior or "0"))
+    if anterior > 0:
+        return {
+            "valor_brl": valor * anterior,
+            "cotacao_brl": anterior,
+            "data_cotacao": data_recebimento,
+            "fonte_cotacao": "ULTIMA_CONHECIDA",
+        }
+
+    raise HTTPException(
+        status_code=422,
+        detail="Nao encontramos a cotacao do dolar para esta data. Informe a cotacao manualmente para salvar o provento.",
+    )
 
 
 def valor_dividendo_brl(session: Session, dividendo: Dividendo) -> Decimal:
@@ -235,7 +267,13 @@ def valor_dividendo_brl(session: Session, dividendo: Dividendo) -> Decimal:
     if _moeda_valor(dividendo.moeda) != Moeda.USD.value:
         return Decimal(str(dividendo.valor or "0"))
     try:
-        conversao = calcular_conversao_provento(session, dividendo.valor, dividendo.moeda, dividendo.data_recebimento)
+        conversao = calcular_conversao_provento(
+            session,
+            dividendo.valor,
+            dividendo.moeda,
+            dividendo.data_recebimento,
+            cotacao_anterior=dividendo.cotacao_brl,
+        )
         return Decimal(str(conversao["valor_brl"]))
     except HTTPException:
         resumo = resumo_dolar(session)

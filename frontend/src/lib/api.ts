@@ -215,4 +215,5 @@ export const api = {
   dolarInformarSaldo: (payload: Record<string, unknown>) =>
     apiFetch<ResumoDolar>("/exterior-dolar/informar-saldo", { method: "POST", body: JSON.stringify(payload) }),
   dolarCotacaoAtual: () => apiFetch<CotacaoDolarAtual>("/exterior-dolar/cotacao-atual"),
+  dolarCotacaoData: (data: string) => apiFetch<CotacaoDolarAtual>("/exterior-dolar/cotacao", {}, { data }),
 };

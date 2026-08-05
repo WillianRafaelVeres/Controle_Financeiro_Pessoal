@@ -178,6 +178,12 @@ export interface DashboardResumo {
   diferenca_conciliacao: string | number;
 }
 
+export interface OrcamentoHistoricoMes {
+  ano: number;
+  mes: number;
+  valor: string | number;
+}
+
 export interface OrcamentoLinha {
   item_orcamento_id?: string;
   tipo_item?: TipoItemOrcamento;
@@ -197,6 +203,8 @@ export interface OrcamentoLinha {
   media_3_meses: string | number;
   media_6_meses: string | number;
   media_12_meses: string | number;
+  historico?: OrcamentoHistoricoMes[];
+  media_historico?: string | number;
   situacao: string;
 }
 

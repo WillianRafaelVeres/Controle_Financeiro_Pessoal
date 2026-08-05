@@ -11,6 +11,7 @@ import { Dialog } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Select } from "../components/ui/select";
 import { Td, Th, Table } from "../components/ui/table";
+import { CotacaoDolarField, useCotacaoDolar } from "../features/investimentos/CotacaoDolarField";
 import { DividendosForm } from "../features/investimentos/DividendosForm";
 import { api } from "../lib/api";
 import { formatDate, formatMoney, toNumber } from "../lib/formatters";
@@ -105,7 +106,12 @@ export function DividendosPage() {
                       {item.observacao && <div className="mt-0.5 max-w-[220px] truncate text-[11px] text-slate-500">{item.observacao}</div>}
                     </Td>
                     <Td className="text-right font-semibold text-slate-100">{formatMoney(item.valor, item.moeda === "USD" ? "USD" : "BRL")}</Td>
-                    <Td className="text-right font-semibold text-amber-300">{formatMoney(item.valor_brl ?? item.valor)}</Td>
+                    <Td className="text-right">
+                      <div className="font-semibold text-amber-300">{formatMoney(item.valor_brl ?? item.valor)}</div>
+                      {item.moeda === "USD" && toNumber(item.cotacao_brl) > 0 && (
+                        <div className="text-[11px] text-slate-500">Cotacao {formatMoney(item.cotacao_brl, "BRL")}</div>
+                      )}
+                    </Td>
                     <Td className="text-center">
                       <div className="inline-flex items-center gap-1">
                         <Button size="icon" variant="secondary" title="Editar dividendo" aria-label="Editar dividendo" onClick={() => setEditingDividendo(item)}>
@@ -190,6 +196,10 @@ function DividendoDialog({
   });
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const jurosConta = !dividendo?.ativo_id && form.tipo_provento === "JUROS_RENDA_FIXA";
+  const emDolar = !jurosConta && form.moeda === "USD";
+  const cotacao = useCotacaoDolar(form.data_recebimento, emDolar && dividendo !== null);
+  const limparCotacao = cotacao.limpar;
 
   useEffect(() => {
     if (!dividendo) return;
@@ -203,11 +213,11 @@ function DividendoDialog({
     });
     setErro("");
     setSalvando(false);
-  }, [dividendo]);
+    limparCotacao();
+  }, [dividendo, limparCotacao]);
 
   if (!dividendo) return null;
   const dividendoAtual = dividendo;
-  const jurosConta = !dividendoAtual.ativo_id && form.tipo_provento === "JUROS_RENDA_FIXA";
   const contasAtivas = contas.filter((conta) => conta.ativa !== false && (conta.moeda ?? "BRL") === "BRL");
 
   function changeMoeda(moeda: string) {
@@ -234,6 +244,10 @@ function DividendoDialog({
       setErro("Informe um valor maior que zero.");
       return;
     }
+    if (emDolar && cotacao.efetiva <= 0 && toNumber(dividendoAtual.cotacao_brl) <= 0) {
+      setErro("Informe a cotacao do dolar para converter o provento.");
+      return;
+    }
     setSalvando(true);
     try {
       await onSubmit(dividendoAtual.id, {
@@ -243,6 +257,7 @@ function DividendoDialog({
         tipo_provento: jurosConta ? "JUROS_RENDA_FIXA" : form.tipo_provento,
         conta_destino_id: form.conta_destino_id || null,
         observacao: form.observacao.trim() || null,
+        cotacao_brl: emDolar && toNumber(cotacao.manual) > 0 ? toNumber(cotacao.manual) : null,
       });
       onClose();
     } catch (error) {
@@ -301,6 +316,14 @@ function DividendoDialog({
           <span className="text-xs font-medium text-slate-500">Recebido em</span>
           <Input type="date" value={form.data_recebimento} onChange={(event) => setForm({ ...form, data_recebimento: event.target.value })} required />
         </label>
+        {emDolar && (
+          <CotacaoDolarField
+            className="space-y-1 sm:col-span-2"
+            state={cotacao}
+            valorUsd={toNumber(form.valor)}
+            cotacaoSalva={dividendoAtual.cotacao_brl}
+          />
+        )}
         <label className="space-y-1 sm:col-span-2">
           <span className="text-xs font-medium text-slate-500">Observacao</span>
           <Input value={form.observacao} onChange={(event) => setForm({ ...form, observacao: event.target.value })} />

@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from fastapi import HTTPException
@@ -17,6 +18,10 @@ from app.services.saldo_service import (
 )
 
 ZERO = Decimal("0.00")
+
+# Janela do historico mostrado ao lado do planejamento: no maximo 6 meses
+# anteriores, e nunca antes do primeiro mes em que o usuario lancou algo.
+MESES_HISTORICO_ORCAMENTO = 6
 
 
 def _decimal(value: object) -> Decimal:
@@ -500,6 +505,37 @@ def _media_historica_item_agregada(
     return sum(valores_com_dados, ZERO) / Decimal(len(valores_com_dados))
 
 
+def _primeiro_mes_com_dados(session: Session) -> tuple[int, int] | None:
+    """Mes do lancamento mais antigo, ou seja, desde quando existe historico real."""
+    primeira_data = session.exec(
+        select(func.min(Lancamento.data_lancamento)).where(Lancamento.ativo.is_(True))
+    ).one()
+    if not primeira_data:
+        return None
+    if isinstance(primeira_data, str):
+        primeira_data = date.fromisoformat(primeira_data)
+    return primeira_data.year, primeira_data.month
+
+
+def _meses_historico_orcamento(
+    session: Session,
+    ano: int,
+    mes: int,
+    quantidade: int = MESES_HISTORICO_ORCAMENTO,
+) -> list[tuple[int, int]]:
+    """Meses do historico, do mais antigo para o mes passado.
+
+    Comeca no primeiro mes com lancamentos: quem usa o sistema ha dois meses ve
+    dois meses, e a janela vai crescendo ate estabilizar nos seis ultimos.
+    """
+    meses = sorted(_previous_months(ano, mes, quantidade), key=lambda item: _month_key(*item))
+    inicio = _primeiro_mes_com_dados(session)
+    if not inicio:
+        return []
+    limite = _month_key(*inicio)
+    return [item for item in meses if _month_key(*item) >= limite]
+
+
 def _situacao(item: OrcamentoItem, realizado: Decimal) -> str:
     if item.valor_orcado <= 0:
         return "SEM_PLANEJAMENTO"
@@ -535,6 +571,7 @@ def listar_itens_orcamento_mes(session: Session, ano: int, mes: int) -> list[dic
     categorias = _categorias_por_id(session, {item.categoria_id for item in itens})
     subcategorias = _subcategorias_por_id(session, {item.subcategoria_id for item in itens})
     por_categoria, por_subcategoria = _agrupar_lancamentos_orcamento(session, ano, mes)
+    meses_historico = _meses_historico_orcamento(session, ano, mes)
 
     result: list[dict] = []
     for item in itens:
@@ -545,6 +582,15 @@ def listar_itens_orcamento_mes(session: Session, ano: int, mes: int) -> list[dic
         realizado = _realizado_item_agregado(item, por_categoria, por_subcategoria, ano, mes)
         diferenca = item.valor_orcado - realizado
         percentual = Decimal("0.00") if item.valor_orcado == 0 else (realizado / item.valor_orcado) * Decimal("100")
+        historico = [
+            {
+                "ano": ano_ref,
+                "mes": mes_ref,
+                "valor": _realizado_item_agregado(item, por_categoria, por_subcategoria, ano_ref, mes_ref),
+            }
+            for ano_ref, mes_ref in meses_historico
+        ]
+        historico_com_valor = [linha["valor"] for linha in historico if linha["valor"] > 0]
 
         result.append(
             {
@@ -566,6 +612,10 @@ def listar_itens_orcamento_mes(session: Session, ano: int, mes: int) -> list[dic
                 "media_3_meses": _media_historica_item_agregada(item, por_categoria, por_subcategoria, ano, mes, 3),
                 "media_6_meses": _media_historica_item_agregada(item, por_categoria, por_subcategoria, ano, mes, 6),
                 "media_12_meses": _media_historica_item_agregada(item, por_categoria, por_subcategoria, ano, mes, 12),
+                "historico": historico,
+                "media_historico": ZERO
+                if not historico_com_valor
+                else sum(historico_com_valor, ZERO) / Decimal(len(historico_com_valor)),
                 "situacao": _situacao(item, realizado),
             }
         )

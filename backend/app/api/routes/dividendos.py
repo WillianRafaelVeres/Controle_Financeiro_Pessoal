@@ -59,7 +59,13 @@ def _validar_ativo_provento(payload: DividendoCreate, session: Session) -> Ativo
 def criar(payload: DividendoCreate, session: Session = Depends(get_session)) -> Dividendo:
     ativo = _validar_ativo_provento(payload, session)
     data_recebimento = payload.data_recebimento or date.today()
-    conversao = calcular_conversao_provento(session, payload.valor, payload.moeda, data_recebimento)
+    conversao = calcular_conversao_provento(
+        session,
+        payload.valor,
+        payload.moeda,
+        data_recebimento,
+        cotacao_manual=payload.cotacao_brl,
+    )
     dividendo = Dividendo(
         **{
             **payload.model_dump(exclude={"data_recebimento"}),
@@ -82,14 +88,25 @@ def atualizar(dividendo_id: str, payload: DividendoUpdate, session: Session = De
     if not dividendo:
         raise HTTPException(status_code=404, detail="Dividendo nao encontrado.")
     lancamento_juros = buscar_lancamento_juros_conta(session, dividendo.id)
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    # Guardado antes das alteracoes: se a cotacao da nova data nao puder ser
+    # consultada, a edicao continua valendo com a cotacao que ja estava gravada.
+    cotacao_anterior = dividendo.cotacao_brl
+    alteracoes = payload.model_dump(exclude_unset=True)
+    for key, value in alteracoes.items():
         setattr(dividendo, key, value)
     if dividendo.ativo_id is None and dividendo.tipo_provento != TipoProvento.JUROS_RENDA_FIXA:
         raise HTTPException(status_code=422, detail="Provento sem ativo deve ser juros da conta.")
     if dividendo.ativo_id is None and dividendo.moeda != Moeda.BRL:
         raise HTTPException(status_code=422, detail="Juros da conta devem ser registrados em BRL.")
     _validar_conta_destino(session, dividendo.conta_destino_id)
-    conversao = calcular_conversao_provento(session, dividendo.valor, dividendo.moeda, dividendo.data_recebimento)
+    conversao = calcular_conversao_provento(
+        session,
+        dividendo.valor,
+        dividendo.moeda,
+        dividendo.data_recebimento,
+        cotacao_manual=alteracoes.get("cotacao_brl"),
+        cotacao_anterior=cotacao_anterior,
+    )
     for key, value in conversao.items():
         setattr(dividendo, key, value)
     session.add(dividendo)

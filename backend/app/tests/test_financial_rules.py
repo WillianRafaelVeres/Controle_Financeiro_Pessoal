@@ -100,6 +100,7 @@ from app.services.saldo_service import (
 from app.services.exterior_dolar_service import (
     atualizar_manual,
     buscar_cotacao_dolar_atual,
+    buscar_cotacao_dolar_data,
     excluir_manual,
     listar_extrato,
     registrar_manual,
@@ -2825,3 +2826,179 @@ def test_buscar_preco_tesouro_casa_titulo_por_tipo_e_ano():
     finally:
         _TESOURO_CACHE["itens"] = None
         _TESOURO_CACHE["carregado_em"] = None
+
+
+def test_cotacao_historica_indisponivel_nao_derruba_edicao_de_provento(session: Session, monkeypatch):
+    """A edicao de um dividendo em dolar precisa passar mesmo sem cotacao online."""
+    monkeypatch.setattr(
+        "app.services.exterior_dolar_service._buscar_cotacao_awesomeapi_historico",
+        lambda data_referencia: None,
+    )
+    monkeypatch.setattr(
+        "app.services.exterior_dolar_service._buscar_cotacao_frankfurter_historico",
+        lambda data_referencia: None,
+    )
+    exterior = Ativo(ticker="AAPL", nome="Apple", tipo_ativo=TipoAtivo.EXTERIOR)
+    session.add(exterior)
+    session.commit()
+    session.refresh(exterior)
+    registrar_manual(
+        session,
+        MovimentoDolarCreate(tipo="ENVIO", valor_brl=Decimal("1000.00"), valor_usd=Decimal("200.00")),
+    )
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=exterior.id,
+            quantidade=Decimal("2.00"),
+            preco_unitario=Decimal("20.00"),
+        ),
+    )
+    dividendo = criar_dividendo_route(
+        DividendoCreate(
+            ativo_id=exterior.id,
+            tipo_provento=TipoProvento.DIVIDENDO_EXTERIOR,
+            data_recebimento=date(2026, 5, 10),
+            valor=Decimal("10.00"),
+            moeda=Moeda.USD,
+            cotacao_brl=Decimal("5.00"),
+        ),
+        session,
+    )
+
+    assert dividendo.cotacao_brl == Decimal("5.000000")
+    assert dividendo.valor_brl == Decimal("50.0000")
+
+    # Trocar a data para outro dia sem cotacao disponivel nao pode travar:
+    # reaproveita a cotacao ja gravada no provento.
+    editado = atualizar_dividendo_route(
+        dividendo.id,
+        DividendoUpdate(data_recebimento=date(2026, 5, 4)),
+        session,
+    )
+
+    assert editado.data_recebimento == date(2026, 5, 4)
+    assert editado.cotacao_brl == Decimal("5.000000")
+    assert editado.valor_brl == Decimal("50.0000")
+
+    # E a cotacao informada na tela continua tendo prioridade.
+    com_cotacao_nova = atualizar_dividendo_route(
+        dividendo.id,
+        DividendoUpdate(cotacao_brl=Decimal("6.00")),
+        session,
+    )
+
+    assert com_cotacao_nova.cotacao_brl == Decimal("6.000000")
+    assert com_cotacao_nova.valor_brl == Decimal("60.0000")
+    assert com_cotacao_nova.fonte_cotacao == "MANUAL"
+
+
+def test_buscar_cotacao_historica_usa_cache_local_e_nao_levanta_erro(session: Session, monkeypatch):
+    chamadas = {"awesome": 0}
+
+    def _awesome(data_referencia):
+        chamadas["awesome"] += 1
+        return {
+            "cotacao_brl": Decimal("5.4321"),
+            "compra_brl": Decimal("5.4321"),
+            "venda_brl": Decimal("5.4321"),
+            "variacao_brl": Decimal("0.00"),
+            "percentual_variacao": Decimal("0.00"),
+            "data_cotacao": data_referencia,
+            "fonte": "AwesomeAPI",
+        }
+
+    monkeypatch.setattr("app.services.exterior_dolar_service._buscar_cotacao_awesomeapi_historico", _awesome)
+    monkeypatch.setattr(
+        "app.services.exterior_dolar_service._buscar_cotacao_frankfurter_historico",
+        lambda data_referencia: None,
+    )
+
+    primeira = buscar_cotacao_dolar_data(session, date(2026, 5, 10))
+    session.commit()
+    segunda = buscar_cotacao_dolar_data(session, date(2026, 5, 10))
+
+    assert primeira["cotacao_brl"] == Decimal("5.4321")
+    # O cache precisa devolver a taxa inteira: arredondar para centavos
+    # distorceria a conversao do provento.
+    assert segunda["cotacao_brl"] == Decimal("5.4321")
+    # A segunda consulta veio do cache local, sem bater na API de novo.
+    assert chamadas["awesome"] == 1
+
+    # Sem nenhuma fonte e sem cache proximo, devolve zero com aviso -- nunca erro.
+    monkeypatch.setattr(
+        "app.services.exterior_dolar_service._buscar_cotacao_awesomeapi_historico",
+        lambda data_referencia: None,
+    )
+    sem_fonte = buscar_cotacao_dolar_data(session, date(2020, 1, 15))
+
+    assert sem_fonte["cotacao_brl"] == Decimal("0.00")
+    assert sem_fonte["fonte"] == "INDISPONIVEL"
+    assert sem_fonte["erro"]
+
+
+def test_historico_do_orcamento_comeca_no_primeiro_mes_com_lancamento(session: Session):
+    conta, categoria, subcategoria, pix, *_ = seed_basico(session)
+    for ano, mes, valor in [(2026, 6, "100.00"), (2026, 7, "200.00")]:
+        criar_lancamento(
+            session,
+            LancamentoCreate(
+                valor=Decimal(valor),
+                tipo=TipoLancamento.GASTO,
+                categoria_id=categoria.id,
+                subcategoria_id=subcategoria.id,
+                metodo_pagamento_id=pix.id,
+                conta_id=conta.id,
+                data_lancamento=date(ano, mes, 10),
+            ),
+        )
+    adicionar_item_orcamento(
+        session,
+        OrcamentoItemCreate(
+            ano=2026,
+            mes=8,
+            tipo_item=TipoItemOrcamento.CATEGORIA,
+            natureza=NaturezaCategoria.GASTO,
+            categoria_id=categoria.id,
+            valor_orcado=Decimal("300.00"),
+        ),
+    )
+
+    linha = listar_itens_orcamento_mes(session, 2026, 8)[0]
+
+    # Comeca em junho (primeiro lancamento) e vai ate julho (mes passado).
+    assert [(item["ano"], item["mes"]) for item in linha["historico"]] == [(2026, 6), (2026, 7)]
+    assert [item["valor"] for item in linha["historico"]] == [Decimal("100.00"), Decimal("200.00")]
+    assert linha["media_historico"] == Decimal("150.00")
+
+
+def test_historico_do_orcamento_para_em_seis_meses(session: Session):
+    conta, categoria, subcategoria, pix, *_ = seed_basico(session)
+    for mes in range(1, 8):
+        criar_lancamento(
+            session,
+            LancamentoCreate(
+                valor=Decimal("10.00"),
+                tipo=TipoLancamento.GASTO,
+                categoria_id=categoria.id,
+                subcategoria_id=subcategoria.id,
+                metodo_pagamento_id=pix.id,
+                conta_id=conta.id,
+                data_lancamento=date(2026, mes, 10),
+            ),
+        )
+    adicionar_item_orcamento(
+        session,
+        OrcamentoItemCreate(
+            ano=2026,
+            mes=8,
+            tipo_item=TipoItemOrcamento.CATEGORIA,
+            natureza=NaturezaCategoria.GASTO,
+            categoria_id=categoria.id,
+            valor_orcado=Decimal("300.00"),
+        ),
+    )
+
+    linha = listar_itens_orcamento_mes(session, 2026, 8)[0]
+
+    assert [item["mes"] for item in linha["historico"]] == [2, 3, 4, 5, 6, 7]

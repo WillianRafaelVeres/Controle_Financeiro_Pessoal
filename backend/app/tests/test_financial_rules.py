@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import text
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -3002,3 +3003,80 @@ def test_historico_do_orcamento_para_em_seis_meses(session: Session):
     linha = listar_itens_orcamento_mes(session, 2026, 8)[0]
 
     assert [item["mes"] for item in linha["historico"]] == [2, 3, 4, 5, 6, 7]
+
+
+def test_coluna_quantidade_investimento_suporta_precisao_de_cripto():
+    """Regressao do bug: Numeric(14,2) arredondava 0,0047 BTC para 0.00 e a
+    posicao desaparecia dos calculos de patrimonio (quantidade_atual <= 0).
+    Numeric(20,8) da margem para ate 8 casas decimais (nivel satoshi)."""
+    coluna = MovimentoInvestimento.__table__.columns["quantidade"].type
+    assert coluna.precision == 20
+    assert coluna.scale == 8
+
+
+def test_compra_fracionada_de_cripto_aparece_na_carteira(session: Session):
+    ativo = Ativo(ticker="BTC", nome="Bitcoin", tipo_ativo=TipoAtivo.CRIPTO)
+    session.add(ativo)
+    session.commit()
+    session.refresh(ativo)
+
+    # Mesmo cenario do usuario: R$ 2.000,00 a R$ 417.997,08 o BTC.
+    quantidade_esperada = Decimal("2000.00") / Decimal("417997.08")
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            ativo_id=ativo.id,
+            quantidade=quantidade_esperada,
+            preco_unitario=Decimal("417997.08"),
+        ),
+    )
+
+    posicoes = listar_posicoes(session)
+    bitcoin = next((item for item in posicoes if item["ativo_id"] == ativo.id), None)
+
+    assert bitcoin is not None, "posicao de BTC sumiu da carteira"
+    assert bitcoin["quantidade_atual"] > Decimal("0.00")
+    assert bitcoin["valor_total_aportado"] == Decimal("2000.00")
+
+
+def test_backfill_recalcula_quantidade_zerada_por_arredondamento_antigo(session: Session):
+    """Simula o dado que ja ficou corrompido em producao (quantidade truncada
+    para 0.00 pela coluna antiga) e confirma que o UPDATE de correcao usado em
+    _ensure_schema_compatibility devolve a quantidade certa a partir de
+    valor_total / preco_unitario."""
+    ativo = Ativo(ticker="BTC", nome="Bitcoin", tipo_ativo=TipoAtivo.CRIPTO)
+    session.add(ativo)
+    session.commit()
+    session.refresh(ativo)
+
+    corrompido = MovimentoInvestimento(
+        ativo_id=ativo.id,
+        tipo_movimento=TipoMovimentoInvestimento.COMPRA,
+        data_movimento=date(2026, 8, 25),
+        quantidade=Decimal("0.00"),
+        preco_unitario=Decimal("417997.08"),
+        valor_total=Decimal("2000.00"),
+    )
+    session.add(corrompido)
+    session.commit()
+
+    session.execute(
+        text(
+            """
+            UPDATE movimentos_investimento
+            SET quantidade = valor_total / preco_unitario
+            WHERE quantidade = 0
+              AND preco_unitario IS NOT NULL AND preco_unitario > 0
+              AND valor_total IS NOT NULL AND valor_total > 0
+            """
+        )
+    )
+    session.commit()
+    session.refresh(corrompido)
+
+    quantidade_esperada = float(Decimal("2000.00") / Decimal("417997.08"))
+    assert float(corrompido.quantidade) == pytest.approx(quantidade_esperada, abs=1e-6)
+
+    posicoes = listar_posicoes(session)
+    bitcoin = next((item for item in posicoes if item["ativo_id"] == ativo.id), None)
+    assert bitcoin is not None, "backfill nao trouxe a posicao de volta para a carteira"

@@ -107,6 +107,31 @@ def _ensure_schema_compatibility() -> None:
         add_column_if_missing("ativos", "corretora", "VARCHAR(120)")
         add_column_if_missing("ativos", "tipo_controle", "VARCHAR DEFAULT 'QUANTIDADE' NOT NULL")
 
+    if "movimentos_investimento" in tables:
+        quantidade_column = next(
+            (item for item in inspector.get_columns("movimentos_investimento") if item["name"] == "quantidade"),
+            None,
+        )
+        escala_atual = getattr(quantidade_column.get("type"), "scale", None) if quantidade_column else None
+        if settings.using_postgres and escala_atual is not None and escala_atual < 8:
+            with engine.begin() as conn:
+                # Escala antiga (2 casas) arredondava quantidades pequenas de
+                # cripto para zero (ex.: 0,0047 BTC virava 0.00) e a posicao
+                # sumia dos calculos de patrimonio. Amplia a coluna e recalcula
+                # pela razao valor_total / preco_unitario, que continua correta.
+                conn.execute(text("ALTER TABLE movimentos_investimento ALTER COLUMN quantidade TYPE NUMERIC(20, 8)"))
+                conn.execute(
+                    text(
+                        """
+                        UPDATE movimentos_investimento
+                        SET quantidade = valor_total / preco_unitario
+                        WHERE quantidade = 0
+                          AND preco_unitario IS NOT NULL AND preco_unitario > 0
+                          AND valor_total IS NOT NULL AND valor_total > 0
+                        """
+                    )
+                )
+
     for table in ["lancamentos", "orcamento_itens", "orcamento_itens_padrao"]:
         add_column_if_missing(table, "categoria_nome_snapshot", "VARCHAR(120)")
         add_column_if_missing(table, "subcategoria_nome_snapshot", "VARCHAR(120)")

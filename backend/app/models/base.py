@@ -15,8 +15,16 @@ def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def money_column(nullable: bool = False) -> Column:
-    return Column(Numeric(14, 2), nullable=nullable)
+def money_column(nullable: bool = False, casas_decimais: int = 2) -> Column:
+    """Numeric(14, 2) por padrao para valores em dinheiro.
+
+    Quantidades de ativos (cripto pode ter ate 8 casas decimais, tipo satoshi
+    de BTC) precisam de mais casas -- e por tabela, mais digitos totais.
+    Postgres arredonda para caber na escala da coluna: sem isso, uma compra de
+    R$ 2.000 a R$ 417.997,08 vira 0.00 BTC e a posicao some dos calculos.
+    """
+    precisao_total = 20 if casas_decimais > 2 else 14
+    return Column(Numeric(precisao_total, casas_decimais), nullable=nullable)
 
 
 class TimestampMixin(SQLModel):

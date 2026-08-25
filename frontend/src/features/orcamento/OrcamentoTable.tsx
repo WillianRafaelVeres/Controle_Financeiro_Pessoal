@@ -18,6 +18,25 @@ interface OrcamentoTableProps {
   natureza: NaturezaCategoria;
 }
 
+// Cada categoria e' um card com cor propria, na mesma linguagem visual que a
+// tela de Investimentos usa para separar classes de ativo (cores fixas por
+// tipo). Categoria e' texto livre do usuario, entao aqui o acento gira por
+// indice em vez de vir de um enum.
+const CATEGORY_ACCENTS = [
+  { border: "border-blue-500/30", header: "bg-blue-500/10", accent: "text-blue-300", bar: "bg-blue-500" },
+  { border: "border-brand-500/30", header: "bg-brand-500/10", accent: "text-brand-400", bar: "bg-brand-500" },
+  { border: "border-amber-500/30", header: "bg-amber-500/10", accent: "text-amber-300", bar: "bg-amber-500" },
+  { border: "border-purple-500/30", header: "bg-purple-500/10", accent: "text-purple-300", bar: "bg-purple-500" },
+  { border: "border-cyan-500/30", header: "bg-cyan-500/10", accent: "text-cyan-300", bar: "bg-cyan-500" },
+  { border: "border-rose-500/30", header: "bg-rose-500/10", accent: "text-rose-300", bar: "bg-rose-500" },
+  { border: "border-teal-500/30", header: "bg-teal-500/10", accent: "text-teal-300", bar: "bg-teal-500" },
+  { border: "border-orange-500/30", header: "bg-orange-500/10", accent: "text-orange-300", bar: "bg-orange-500" },
+];
+
+function categoryAccent(index: number) {
+  return CATEGORY_ACCENTS[index % CATEGORY_ACCENTS.length];
+}
+
 export function OrcamentoTable({ data, natureza }: OrcamentoTableProps) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<OrcamentoLinha | null>(null);
@@ -94,74 +113,96 @@ export function OrcamentoTable({ data, natureza }: OrcamentoTableProps) {
 
   return (
     <>
-      <Table className="min-w-[900px] table-fixed text-[13px]">
-        <thead>
-          <tr>
-            <Th className="w-[26%]">Item</Th>
-            <Th className="w-[12%] text-right">Planejado</Th>
-            <Th className="w-[13%] text-right">Executado</Th>
-            <Th className="w-[12%] text-right">Diferenca</Th>
-            <Th className="w-[19%]">Historico (ate 6 meses)</Th>
-            <Th className="w-[11%]">Situacao</Th>
-            <Th className="w-[84px] text-center">Acoes</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {Object.entries(grouped).flatMap(([categoriaId, group]) => [
-            <tr key={`${categoriaId}-header`} className="bg-slate-900/80">
-              <Td colSpan={7} className="py-1.5 font-semibold text-slate-100">
-                {group.categoria}
-              </Td>
-            </tr>,
-            ...group.itens.map((item) => (
-              <tr key={item.item_orcamento_id}>
-                <Td>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="font-semibold text-slate-100">{label(item)}</div>
-                    <Badge tone={item.tipo_item === "SUBCATEGORIA" ? "blue" : "neutral"}>{item.tipo_item === "SUBCATEGORIA" ? "Subitem" : "Categoria"}</Badge>
-                  </div>
-                  <div className="mt-0.5 flex flex-wrap gap-1 text-[11px] text-slate-500">
-                    <span>{item.tipo_item === "SUBCATEGORIA" ? `${item.categoria} > ${item.subcategoria}` : item.categoria}</span>
-                    {item.inativo_hoje && <Badge tone="neutral">inativo hoje</Badge>}
-                  </div>
-                </Td>
-                <Td className="text-right font-semibold text-slate-100">{formatMoney(item.valor_orcado)}</Td>
-                <Td className="text-right">
-                  <div className="font-medium text-slate-200">{formatMoney(item.gasto_real)}</div>
-                  <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-800">
-                    <div
-                      className={tone(item.situacao, item.natureza) === "red" ? "h-full rounded-full bg-danger-600" : tone(item.situacao, item.natureza) === "yellow" ? "h-full rounded-full bg-amber-500" : "h-full rounded-full bg-brand-500"}
-                      style={{ width: `${Math.min(toNumber(item.percentual_usado), 100)}%` }}
-                    />
-                  </div>
-                </Td>
-                <Td className={diferencaClass(item)}>
-                  {formatMoney(item.diferenca)}
-                </Td>
-                <Td>
-                  <HistoricoCell item={item} />
-                </Td>
-                <Td>
-                  <Badge tone={tone(item.situacao, item.natureza)}>{statusLabel(item.situacao)}</Badge>
-                </Td>
-                <Td>
-                  <div className="flex justify-center gap-1">
-                    <Button size="icon" variant="secondary" title="Editar valor" aria-label="Editar valor" onClick={() => setEditing(item)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button size="icon" variant="quiet" title="Remover item" aria-label="Remover item" onClick={() => setRemoving(item)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                    <Button size="icon" variant="ghost" title="Ver medias" aria-label="Ver medias" onClick={() => setDetails(item)}>
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </Td>
-              </tr>
-            )),
-          ])}
-        </tbody>
-      </Table>
+      <div className="space-y-3">
+        {Object.entries(grouped).map(([categoriaId, group], index) => {
+          const accent = categoryAccent(index);
+          const planejadoGrupo = group.itens.reduce((acc, item) => acc + toNumber(item.valor_orcado), 0);
+          const executadoGrupo = group.itens.reduce((acc, item) => acc + toNumber(item.gasto_real), 0);
+          return (
+            <div key={categoriaId} className={`overflow-hidden rounded-md border bg-[#101720]/80 shadow-sm ${accent.border}`}>
+              <div className={`relative flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-3 py-2 ${accent.header}`}>
+                <div className={`absolute left-0 top-0 h-full w-1 ${accent.bar}`} />
+                <div className="flex min-w-0 items-center gap-2 pl-2">
+                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${accent.bar}`} />
+                  <p className={`truncate text-sm font-semibold ${accent.accent}`}>{group.categoria}</p>
+                  <span className="text-[11px] text-slate-500">
+                    {group.itens.length} {group.itens.length === 1 ? "item" : "itens"}
+                  </span>
+                </div>
+                <div className="flex gap-3 pl-2 text-[11px] text-slate-400">
+                  <span>
+                    Planejado <span className="font-semibold text-slate-200">{formatMoney(planejadoGrupo)}</span>
+                  </span>
+                  <span>
+                    Executado <span className="font-semibold text-slate-200">{formatMoney(executadoGrupo)}</span>
+                  </span>
+                </div>
+              </div>
+              <Table className="min-w-[860px] table-fixed text-[13px]">
+                <thead>
+                  <tr>
+                    <Th className="w-[26%]">Item</Th>
+                    <Th className="w-[12%] text-right">Planejado</Th>
+                    <Th className="w-[13%] text-right">Executado</Th>
+                    <Th className="w-[12%] text-right">Diferenca</Th>
+                    <Th className="w-[19%]">Historico (ate 6 meses)</Th>
+                    <Th className="w-[11%]">Situacao</Th>
+                    <Th className="w-[84px] text-center">Acoes</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.itens.map((item) => (
+                    <tr key={item.item_orcamento_id} className="odd:bg-white/[0.02] transition-colors duration-150 hover:bg-slate-800/50">
+                      <Td>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="font-semibold text-slate-100">{label(item)}</div>
+                          <Badge tone={item.tipo_item === "SUBCATEGORIA" ? "blue" : "neutral"}>{item.tipo_item === "SUBCATEGORIA" ? "Subitem" : "Categoria"}</Badge>
+                        </div>
+                        <div className="mt-0.5 flex flex-wrap gap-1 text-[11px] text-slate-500">
+                          <span>{item.tipo_item === "SUBCATEGORIA" ? `${item.categoria} > ${item.subcategoria}` : item.categoria}</span>
+                          {item.inativo_hoje && <Badge tone="neutral">inativo hoje</Badge>}
+                        </div>
+                      </Td>
+                      <Td className="text-right font-semibold text-slate-100">{formatMoney(item.valor_orcado)}</Td>
+                      <Td className="text-right">
+                        <div className="font-medium text-slate-200">{formatMoney(item.gasto_real)}</div>
+                        <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-800">
+                          <div
+                            className={tone(item.situacao, item.natureza) === "red" ? "h-full rounded-full bg-danger-600" : tone(item.situacao, item.natureza) === "yellow" ? "h-full rounded-full bg-amber-500" : "h-full rounded-full bg-brand-500"}
+                            style={{ width: `${Math.min(toNumber(item.percentual_usado), 100)}%` }}
+                          />
+                        </div>
+                      </Td>
+                      <Td className={diferencaClass(item)}>
+                        {formatMoney(item.diferenca)}
+                      </Td>
+                      <Td>
+                        <HistoricoCell item={item} />
+                      </Td>
+                      <Td>
+                        <Badge tone={tone(item.situacao, item.natureza)}>{statusLabel(item.situacao)}</Badge>
+                      </Td>
+                      <Td>
+                        <div className="flex justify-center gap-1">
+                          <Button size="icon" variant="secondary" title="Editar valor" aria-label="Editar valor" onClick={() => setEditing(item)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="quiet" title="Remover item" aria-label="Remover item" onClick={() => setRemoving(item)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" title="Ver medias" aria-label="Ver medias" onClick={() => setDetails(item)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+          );
+        })}
+      </div>
 
       <EditValueDialog
         item={editing}

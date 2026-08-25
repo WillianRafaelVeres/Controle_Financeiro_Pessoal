@@ -280,10 +280,14 @@ def _seed_system_categories() -> None:
 
 
 def _sync_investment_entries() -> None:
-    from app.services.investimento_service import sincronizar_lancamentos_investimentos_brl_pendentes
+    from app.services.investimento_service import (
+        sincronizar_lancamentos_investimentos_brl_pendentes,
+        sincronizar_subcategorias_caixinha,
+    )
 
     with Session(engine) as session:
         sincronizar_lancamentos_investimentos_brl_pendentes(session)
+        sincronizar_subcategorias_caixinha(session)
         session.commit()
 
 

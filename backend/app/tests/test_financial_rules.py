@@ -72,6 +72,7 @@ from app.services.investimento_service import (
     listar_posicoes,
     registrar_cotacao,
     sincronizar_lancamentos_investimentos_brl_pendentes,
+    sincronizar_subcategorias_caixinha,
     vender,
 )
 from app.services.lancamento_service import atualizar_lancamento, criar_lancamento
@@ -3080,3 +3081,93 @@ def test_backfill_recalcula_quantidade_zerada_por_arredondamento_antigo(session:
     posicoes = listar_posicoes(session)
     bitcoin = next((item for item in posicoes if item["ativo_id"] == ativo.id), None)
     assert bitcoin is not None, "backfill nao trouxe a posicao de volta para a carteira"
+
+
+def test_aportes_em_caixinhas_diferentes_usam_subcategorias_separadas(session: Session):
+    """Cada caixinha precisa da propria subcategoria para poder ser planejada
+    e acompanhada separadamente no orcamento -- nao tudo junto em 'Caixinhas CDB'."""
+    casa = comprar(
+        session,
+        MovimentoInvestimentoCreate(tipo_ativo=TipoAtivo.CAIXINHA_CDB, nome="Casa - Mycon", valor_total=Decimal("500.00")),
+    )
+    saude = comprar(
+        session,
+        MovimentoInvestimentoCreate(tipo_ativo=TipoAtivo.CAIXINHA_CDB, nome="Saude", valor_total=Decimal("200.00")),
+    )
+
+    lancamento_casa = session.exec(select(Lancamento).where(Lancamento.referencia_id == casa.id)).one()
+    lancamento_saude = session.exec(select(Lancamento).where(Lancamento.referencia_id == saude.id)).one()
+
+    assert lancamento_casa.subcategoria_id != lancamento_saude.subcategoria_id
+    assert lancamento_casa.subcategoria_nome_snapshot == "Casa - Mycon"
+    assert lancamento_saude.subcategoria_nome_snapshot == "Saude"
+
+
+def test_sincronizar_subcategorias_caixinha_reclassifica_lancamentos_antigos(session: Session):
+    """Simula o estado anterior a mudanca (todo aporte de caixinha na mesma
+    subcategoria generica) e confirma que a sincronizacao separa por caixinha,
+    sem duplicar nem afetar lancamentos que ja estao corretos."""
+    categoria = Categoria(nome="Investimentos", natureza=NaturezaCategoria.INVESTIMENTO)
+    session.add(categoria)
+    session.commit()
+    session.refresh(categoria)
+    generica = Subcategoria(nome="Caixinhas CDB", categoria_id=categoria.id, natureza=NaturezaCategoria.INVESTIMENTO)
+    session.add(generica)
+    session.commit()
+    session.refresh(generica)
+
+    casa = Ativo(ticker="CAIXA-CASA", nome="Casa", tipo_ativo=TipoAtivo.CAIXINHA_CDB)
+    saude = Ativo(ticker="CAIXA-SAUDE", nome="Saude", tipo_ativo=TipoAtivo.CAIXINHA_CDB)
+    session.add(casa)
+    session.add(saude)
+    session.commit()
+    session.refresh(casa)
+    session.refresh(saude)
+
+    movimento_casa = MovimentoInvestimento(
+        ativo_id=casa.id, tipo_movimento=TipoMovimentoInvestimento.APORTE, data_movimento=date(2026, 5, 10), valor_total=Decimal("500.00")
+    )
+    movimento_saude = MovimentoInvestimento(
+        ativo_id=saude.id, tipo_movimento=TipoMovimentoInvestimento.APORTE, data_movimento=date(2026, 5, 12), valor_total=Decimal("200.00")
+    )
+    session.add(movimento_casa)
+    session.add(movimento_saude)
+    session.commit()
+    session.refresh(movimento_casa)
+    session.refresh(movimento_saude)
+
+    def _lancamento_legado(movimento: MovimentoInvestimento, valor: Decimal) -> Lancamento:
+        lancamento = Lancamento(
+            data_lancamento=movimento.data_movimento,
+            tipo=TipoLancamento.INVESTIMENTO,
+            valor=valor,
+            valor_original=valor,
+            categoria_id=categoria.id,
+            subcategoria_id=generica.id,
+            categoria_nome_snapshot=categoria.nome,
+            subcategoria_nome_snapshot=generica.nome,
+            origem_sistema="INVESTIMENTO_COMPRA",
+            referencia_id=movimento.id,
+            afeta_saldo_livre=True,
+            afeta_orcamento=True,
+        )
+        session.add(lancamento)
+        return lancamento
+
+    lancamento_casa = _lancamento_legado(movimento_casa, Decimal("500.00"))
+    lancamento_saude = _lancamento_legado(movimento_saude, Decimal("200.00"))
+    session.commit()
+
+    corrigidos = sincronizar_subcategorias_caixinha(session)
+
+    assert corrigidos == 2
+    session.refresh(lancamento_casa)
+    session.refresh(lancamento_saude)
+    assert lancamento_casa.subcategoria_id != generica.id
+    assert lancamento_saude.subcategoria_id != generica.id
+    assert lancamento_casa.subcategoria_id != lancamento_saude.subcategoria_id
+    assert lancamento_casa.subcategoria_nome_snapshot == "Casa"
+    assert lancamento_saude.subcategoria_nome_snapshot == "Saude"
+
+    # Idempotente: rodar de novo (ex.: proximo login) nao corrige nada.
+    assert sincronizar_subcategorias_caixinha(session) == 0

@@ -559,8 +559,12 @@ def _categoria_investimentos(session: Session) -> Categoria:
     return categoria
 
 
-def _subcategoria_tipo_investimento(session: Session, categoria: Categoria, tipo_ativo: TipoAtivo) -> Subcategoria:
-    nome = _label_tipo_ativo(tipo_ativo)
+def _subcategoria_tipo_investimento(session: Session, categoria: Categoria, ativo: Ativo) -> Subcategoria:
+    # Caixinha CDB representa metas nomeadas pelo usuario (Casa, Saude...), nao
+    # um tipo generico -- por isso usa o nome do proprio ativo, para que cada
+    # caixinha possa ser planejada e acompanhada separadamente no orcamento.
+    # Os demais tipos continuam agrupados por classe (Acao BR, FII, ...).
+    nome = ativo.nome if ativo.tipo_ativo == TipoAtivo.CAIXINHA_CDB else _label_tipo_ativo(ativo.tipo_ativo)
     normalizado = _normalizar_nome_categoria(nome)
     cache_key = (categoria.id, normalizado)
     cache = session.info.setdefault(SESSION_INVESTIMENTO_SUBCATEGORIAS_KEY, {})
@@ -587,6 +591,61 @@ def _subcategoria_tipo_investimento(session: Session, categoria: Categoria, tipo
     session.flush()
     cache[cache_key] = subcategoria
     return subcategoria
+
+
+ORIGENS_LANCAMENTO_INVESTIMENTO = ("INVESTIMENTO_COMPRA", "INVESTIMENTO_RESGATE")
+
+
+def sincronizar_subcategorias_caixinha(session: Session) -> int:
+    """Corrige lancamentos de Caixinha CDB presos na subcategoria generica.
+
+    Antes de cada caixinha ganhar sua propria subcategoria, todo aporte caia
+    junto em uma so ("Caixinhas CDB"), entao quem tinha "Casa" e "Saude" nao
+    conseguia planejar nem acompanhar cada meta separadamente no orcamento.
+    Reclassifica os lancamentos ja existentes pela caixinha de origem
+    (referencia_id aponta para o MovimentoInvestimento). Idempotente: roda a
+    cada login e nao faz nada quando ja esta tudo na subcategoria certa.
+    """
+    categoria = session.exec(select(Categoria).where(Categoria.nome == NOME_CATEGORIA_INVESTIMENTOS)).first()
+    if not categoria:
+        return 0
+
+    lancamentos = session.exec(
+        select(Lancamento).where(
+            Lancamento.ativo.is_(True),
+            Lancamento.origem_sistema.in_(ORIGENS_LANCAMENTO_INVESTIMENTO),
+            Lancamento.referencia_id.is_not(None),
+        )
+    ).all()
+    if not lancamentos:
+        return 0
+
+    movimento_ids = {lancamento.referencia_id for lancamento in lancamentos}
+    movimentos = {
+        movimento.id: movimento
+        for movimento in session.exec(select(MovimentoInvestimento).where(MovimentoInvestimento.id.in_(movimento_ids))).all()
+    }
+    ativo_ids = {movimento.ativo_id for movimento in movimentos.values()}
+    ativos = {ativo.id: ativo for ativo in session.exec(select(Ativo).where(Ativo.id.in_(ativo_ids))).all()} if ativo_ids else {}
+
+    corrigidos = 0
+    for lancamento in lancamentos:
+        movimento = movimentos.get(lancamento.referencia_id)
+        ativo = ativos.get(movimento.ativo_id) if movimento else None
+        if not ativo or ativo.tipo_ativo != TipoAtivo.CAIXINHA_CDB:
+            continue
+        subcategoria_correta = _subcategoria_tipo_investimento(session, categoria, ativo)
+        if lancamento.subcategoria_id == subcategoria_correta.id:
+            continue
+        lancamento.subcategoria_id = subcategoria_correta.id
+        lancamento.subcategoria_nome_snapshot = subcategoria_correta.nome
+        lancamento.atualizado_em = now_utc()
+        session.add(lancamento)
+        corrigidos += 1
+
+    if corrigidos:
+        session.commit()
+    return corrigidos
 
 
 def _registrar_snapshot_mensal(session: Session, desempenho: dict, data_referencia: date | None = None) -> HistoricoInvestimentoMensal:
@@ -869,7 +928,7 @@ def _sincronizar_lancamento_investimento_brl(
     origem_sistema = "INVESTIMENTO_COMPRA" if entrada else "INVESTIMENTO_RESGATE"
     afeta_orcamento = entrada
     categoria_investimento = _categoria_investimentos(session)
-    subcategoria_investimento = _subcategoria_tipo_investimento(session, categoria_investimento, ativo.tipo_ativo)
+    subcategoria_investimento = _subcategoria_tipo_investimento(session, categoria_investimento, ativo)
     if not lancamento:
         lancamento = Lancamento(
             data_lancamento=movimento.data_movimento,

@@ -85,19 +85,24 @@ def _stamp_user_id(session: Session, flush_context, instances) -> None:
 
 
 def ensure_user_initialized(session: Session, user_id: str) -> None:
-    """Seed the data a brand-new user needs (idempotent).
+    """Seed and reconcile the data an already-logged-in user needs (idempotent).
 
-    Runs within the user's own context so the lookup is already scoped. Mirrors
-    the ``Investimentos`` system category that the desktop build seeds globally
-    at startup, but per user (the investments screen requires it to exist).
+    Runs within the user's own context so every lookup is already scoped by
+    tenancy. Mirrors the ``Investimentos`` system category that the desktop
+    build seeds globally at startup, but per user (the investments screen
+    requires it to exist). Also runs small one-time data reconciliations (e.g.
+    reclassifying old investment entries) that need a real user-scoped session
+    rather than the raw, cross-tenant SQL used in schema-compatibility fixes.
     """
     from app.models.base import NaturezaCategoria
     from app.models.categoria import Categoria
+    from app.services.investimento_service import sincronizar_subcategorias_caixinha
 
     existente = session.exec(select(Categoria).where(Categoria.nome == "Investimentos")).first()
-    if existente:
-        return
-    session.add(
-        Categoria(nome="Investimentos", natureza=NaturezaCategoria.INVESTIMENTO, user_id=user_id)
-    )
-    session.commit()
+    if not existente:
+        session.add(
+            Categoria(nome="Investimentos", natureza=NaturezaCategoria.INVESTIMENTO, user_id=user_id)
+        )
+        session.commit()
+
+    sincronizar_subcategorias_caixinha(session)

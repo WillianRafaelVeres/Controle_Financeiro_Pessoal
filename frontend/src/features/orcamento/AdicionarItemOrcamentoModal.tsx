@@ -8,9 +8,14 @@ import { Dialog } from "../../components/ui/dialog";
 import { Select } from "../../components/ui/select";
 import { api } from "../../lib/api";
 import { INVESTMENT_TYPE_OPTIONS } from "../../lib/investmentProfiles";
-import type { Categoria, NaturezaCategoria, Subcategoria, TipoAtivo, TipoItemOrcamento } from "../../lib/types";
+import type { Ativo, Categoria, NaturezaCategoria, Subcategoria, TipoAtivo, TipoItemOrcamento } from "../../lib/types";
 
 const INVESTMENT_CATEGORY_NAME = "Investimentos";
+
+// Caixinha CDB e' o unico tipo de investimento com metas nomeadas pelo
+// usuario (Casa, Saude...). Os outros tipos (Acao BR, FII...) continuam
+// planejados como uma classe unica.
+const TIPO_CAIXINHA: TipoAtivo = "CAIXINHA_CDB";
 
 function normalizeName(value: string) {
   return value
@@ -22,6 +27,10 @@ function normalizeName(value: string) {
 
 function investmentOptionValue(tipo: TipoAtivo) {
   return `tipo:${tipo}`;
+}
+
+function caixinhaOptionValue(ativoId: string) {
+  return `ativo:${ativoId}`;
 }
 
 export function AdicionarItemOrcamentoModal({
@@ -96,21 +105,41 @@ export function AdicionarItemOrcamentoModal({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["subcategorias"] }),
   });
 
+  const ativosQuery = useQuery({ queryKey: ["ativos"], queryFn: api.ativos });
+
+  const caixinhas = useMemo(
+    () => (ativosQuery.data ?? []).filter((ativo) => ativo.tipo_ativo === TIPO_CAIXINHA),
+    [ativosQuery.data],
+  );
+
   const investmentOptions = useMemo(() => {
     const subcategorias = subcategoriasQuery.data ?? [];
-    const options = INVESTMENT_TYPE_OPTIONS.map((option) => {
+    const options = INVESTMENT_TYPE_OPTIONS.filter((option) => option.value !== TIPO_CAIXINHA).map((option) => {
       const existing = subcategorias.find((subcategoria) => normalizeName(subcategoria.nome) === normalizeName(option.label));
       return {
         label: option.label,
         value: existing?.id ?? investmentOptionValue(option.value),
       };
     });
+    // Cada caixinha vira uma opcao propria (pelo nome dela, nao pelo tipo),
+    // para poder planejar e acompanhar cada meta separadamente.
+    const caixinhaOptions = caixinhas.map((ativo: Ativo) => {
+      const existing = subcategorias.find((subcategoria) => normalizeName(subcategoria.nome) === normalizeName(ativo.nome));
+      return {
+        label: ativo.nome,
+        value: existing?.id ?? caixinhaOptionValue(ativo.id),
+      };
+    });
     const selectedExisting = subcategorias.find((subcategoria) => subcategoria.id === form.subcategoria_id);
-    if (selectedExisting && !options.some((option) => option.value === selectedExisting.id)) {
+    if (
+      selectedExisting &&
+      !options.some((option) => option.value === selectedExisting.id) &&
+      !caixinhaOptions.some((option) => option.value === selectedExisting.id)
+    ) {
       options.push({ label: selectedExisting.nome, value: selectedExisting.id });
     }
-    return options;
-  }, [form.subcategoria_id, subcategoriasQuery.data]);
+    return { gerais: options, caixinhas: caixinhaOptions };
+  }, [caixinhas, form.subcategoria_id, subcategoriasQuery.data]);
 
   const adicionarMutation = useMutation({
     mutationFn: async () => {
@@ -146,13 +175,15 @@ export function AdicionarItemOrcamentoModal({
     const selectedExisting = (subcategoriasQuery.data ?? []).find((subcategoria) => subcategoria.id === selected);
     if (selectedExisting) return selectedExisting;
 
-    const selectedType = INVESTMENT_TYPE_OPTIONS.find((option) => investmentOptionValue(option.value) === selected);
-    if (!selectedType) throw new Error("Selecione um tipo de investimento.");
+    const nomeDesejado = selected.startsWith("ativo:")
+      ? caixinhas.find((ativo) => caixinhaOptionValue(ativo.id) === selected)?.nome
+      : INVESTMENT_TYPE_OPTIONS.find((option) => investmentOptionValue(option.value) === selected)?.label;
+    if (!nomeDesejado) throw new Error("Selecione um tipo de investimento.");
 
-    const existing = (subcategoriasQuery.data ?? []).find((subcategoria) => normalizeName(subcategoria.nome) === normalizeName(selectedType.label));
+    const existing = (subcategoriasQuery.data ?? []).find((subcategoria) => normalizeName(subcategoria.nome) === normalizeName(nomeDesejado));
     if (existing) return existing;
 
-    const subcategoria = await criarSubcategoriaMutation.mutateAsync({ nome: selectedType.label, categoria_id: categoria.id });
+    const subcategoria = await criarSubcategoriaMutation.mutateAsync({ nome: nomeDesejado, categoria_id: categoria.id });
     await queryClient.invalidateQueries({ queryKey: ["subcategorias"] });
     return subcategoria;
   }
@@ -238,11 +269,20 @@ export function AdicionarItemOrcamentoModal({
               }
             >
               <option value="">Selecione um tipo...</option>
-              {investmentOptions.map((option) => (
+              {investmentOptions.gerais.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
+              {investmentOptions.caixinhas.length > 0 && (
+                <optgroup label="Caixinhas CDB">
+                  {investmentOptions.caixinhas.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </Select>
           </label>
         ) : (

@@ -1,11 +1,12 @@
-import { CircleDollarSign, RefreshCw, Save } from "lucide-react";
+import { CircleDollarSign, Pencil, RefreshCw, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Td, Th, Table } from "../../components/ui/table";
 import { formatMoney, formatPercent, toNumber } from "../../lib/formatters";
-import { needsTicker } from "../../lib/investmentProfiles";
+import { finalidadeEditavel, needsTicker } from "../../lib/investmentProfiles";
 import type { Posicao, TipoAtivo } from "../../lib/types";
 
 interface AtivosTableProps {
@@ -13,13 +14,14 @@ interface AtivosTableProps {
   onSell?: (posicao: Posicao) => void;
   onFetchPrice?: (posicao: Posicao) => Promise<void>;
   onUpdatePrice?: (posicao: Posicao, preco: number) => Promise<void>;
+  onEditFinalidade?: (posicao: Posicao) => void;
   dolarCotacao?: number;
   showDividendos?: boolean;
 }
 
 const AUTO_QUOTE_TYPES = new Set<TipoAtivo>(["ACAO_BR", "FII", "ETF_BR", "CRIPTO", "EXTERIOR", "ACAO_EXTERIOR", "ETF_EXTERIOR", "RENDA_FIXA"]);
 
-export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, dolarCotacao = 0, showDividendos = false }: AtivosTableProps) {
+export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, onEditFinalidade, dolarCotacao = 0, showDividendos = false }: AtivosTableProps) {
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const headClass = "px-2 py-2";
@@ -102,7 +104,14 @@ export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, dol
           return (
             <tr key={item.ativo_id} className="bg-slate-950/20 transition-colors duration-200 hover:bg-slate-900/60">
               <Td className={`${cellClass} align-middle`}>
-                <div className="truncate font-semibold text-slate-100">{tickerVisivel ? item.ticker : item.nome}</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate font-semibold text-slate-100">{tickerVisivel ? item.ticker : item.nome}</span>
+                  {item.finalidade === "GUARDADO" && (
+                    <Badge tone="neutral" className="shrink-0">
+                      Guardado
+                    </Badge>
+                  )}
+                </div>
                 <div className="mt-0.5 truncate text-[11px] text-slate-500">
                   {[tickerVisivel ? item.nome : null, item.corretora, moeda, controleValor ? "Valor" : null].filter(Boolean).join(" | ") || "-"}
                 </div>
@@ -171,13 +180,20 @@ export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, dol
                 </Td>
               )}
               <Td className={`${cellClass} align-middle text-center`}>
-                {onSell ? (
-                  <Button size="icon" variant="secondary" title={controleValor ? "Resgatar" : "Vender"} aria-label={controleValor ? "Resgatar" : "Vender"} onClick={() => onSell(item)}>
-                    <CircleDollarSign className="h-4 w-4" />
-                  </Button>
-                ) : (
-                  "-"
-                )}
+                <div className="flex items-center justify-center gap-1">
+                  {onEditFinalidade && finalidadeEditavel(item.tipo_ativo) && (
+                    <Button size="icon" variant="ghost" title="Editar finalidade" aria-label="Editar finalidade" onClick={() => onEditFinalidade(item)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {onSell ? (
+                    <Button size="icon" variant="secondary" title={controleValor ? "Resgatar" : "Vender"} aria-label={controleValor ? "Resgatar" : "Vender"} onClick={() => onSell(item)}>
+                      <CircleDollarSign className="h-4 w-4" />
+                    </Button>
+                  ) : (
+                    !onEditFinalidade || !finalidadeEditavel(item.tipo_ativo) ? "-" : null
+                  )}
+                </div>
               </Td>
             </tr>
           );

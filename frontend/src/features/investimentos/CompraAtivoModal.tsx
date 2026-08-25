@@ -10,6 +10,7 @@ import { Select } from "../../components/ui/select";
 import {
   controlTypeForInvestment,
   defaultCurrencyForInvestment,
+  FINALIDADE_LABELS,
   INVESTMENT_TYPE_LABELS,
   INVESTMENT_TYPE_OPTIONS,
   isValueControlledInvestment,
@@ -20,7 +21,7 @@ import {
 } from "../../lib/investmentProfiles";
 import { api } from "../../lib/api";
 import { formatMoney, toNumber } from "../../lib/formatters";
-import type { Posicao, TipoAtivo } from "../../lib/types";
+import type { FinalidadeAtivo, Posicao, TipoAtivo } from "../../lib/types";
 
 export function CompraAtivoModal({
   open,
@@ -43,6 +44,7 @@ export function CompraAtivoModal({
     taxas: "0",
     data_movimento: "",
     observacao: "",
+    finalidade: "GUARDADO" as FinalidadeAtivo,
   });
   const [ativoId, setAtivoId] = useState("");
   const [sugestoesOpen, setSugestoesOpen] = useState(false);
@@ -105,6 +107,7 @@ export function CompraAtivoModal({
       corretora: prefs[tipo_ativo] || "",
       taxas: current.taxas,
       data_movimento: current.data_movimento,
+      finalidade: "GUARDADO",
     }));
   }
 
@@ -145,6 +148,7 @@ export function CompraAtivoModal({
             tipo_controle: controlTypeForInvestment(tipoAtivo),
             ticker: tickerObrigatorio ? form.ticker.trim().toUpperCase() : null,
             nome: controleValor ? form.nome.trim() : form.ticker.trim().toUpperCase(),
+            ...(controleValor ? { finalidade: form.finalidade } : {}),
           }),
       ...(controleValor
         ? {
@@ -170,7 +174,7 @@ export function CompraAtivoModal({
       await onSubmit(payload);
       saveInvestmentBrokerPref(tipoAtivo, corretora);
       setAtivoId("");
-      setForm({ ...form, ticker: "", nome: "", corretora, quantidade: "", preco_unitario: "", taxas: "0", data_movimento: "", observacao: "" });
+      setForm({ ...form, ticker: "", nome: "", corretora, quantidade: "", preco_unitario: "", taxas: "0", data_movimento: "", observacao: "", finalidade: "GUARDADO" });
       onClose();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nao foi possivel comprar o ativo.";
@@ -276,6 +280,15 @@ export function CompraAtivoModal({
                 ))}
               </div>
             )}
+          </label>
+        )}
+        {controleValor && !ativoId && (
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-slate-500">Finalidade</span>
+            <Select value={form.finalidade} onChange={(event) => setForm({ ...form, finalidade: event.target.value as FinalidadeAtivo })}>
+              <option value="GUARDADO">{FINALIDADE_LABELS.GUARDADO} (dinheiro reservado pra um objetivo)</option>
+              <option value="INVESTIMENTO">{FINALIDADE_LABELS.INVESTIMENTO} (conta no patrimonio investido)</option>
+            </Select>
           </label>
         )}
         {!controleValor && (

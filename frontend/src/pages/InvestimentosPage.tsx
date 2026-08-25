@@ -17,9 +17,9 @@ import { MovimentoInvestimentoDialog } from "../features/investimentos/Movimento
 import { VendaAtivoModal } from "../features/investimentos/VendaAtivoModal";
 import { api } from "../lib/api";
 import { formatDate, formatMoney, formatPercent, toNumber } from "../lib/formatters";
-import { INVESTMENT_TYPE_LABELS, INVESTMENT_TYPE_OPTIONS } from "../lib/investmentProfiles";
+import { FINALIDADE_LABELS, INVESTMENT_TYPE_LABELS, INVESTMENT_TYPE_OPTIONS } from "../lib/investmentProfiles";
 import { invalidateInvestmentData } from "../lib/queryInvalidation";
-import type { MovimentoInvestimento, Posicao, TipoAtivo } from "../lib/types";
+import type { FinalidadeAtivo, MovimentoInvestimento, Posicao, TipoAtivo } from "../lib/types";
 import { currentMonth } from "../lib/utils";
 
 function groupVisual(tipo: TipoAtivo) {
@@ -103,6 +103,12 @@ export function InvestimentosPage() {
   const [editingMovimento, setEditingMovimento] = useState<MovimentoInvestimento | null>(null);
   const [deleteMovimento, setDeleteMovimento] = useState<MovimentoInvestimento | null>(null);
   const [deleteMovimentoError, setDeleteMovimentoError] = useState("");
+  const [editingFinalidade, setEditingFinalidade] = useState<Posicao | null>(null);
+  const atualizarFinalidade = useMutation({
+    mutationFn: ({ ativoId, finalidade }: { ativoId: string; finalidade: FinalidadeAtivo }) =>
+      api.atualizarAtivo(ativoId, { finalidade }),
+    onSuccess: () => invalidateInvestmentData(queryClient),
+  });
   const [reservaMeses, setReservaMeses] = useState(() => localStorage.getItem(RESERVA_MESES_KEY) || "6");
   const dolarCotacao = toNumber(cotacaoDolar.data?.cotacao_brl);
   const gastoProjetadoMes = toNumber(planejamento.data?.gastos_planejados);
@@ -123,15 +129,22 @@ export function InvestimentosPage() {
 
   const cards = useMemo(() => {
     const lista = posicoes.data ?? [];
-    const aportado = lista.reduce((acc, item) => acc + posicaoToBrl(item, "valor_total_aportado"), 0);
-    const atual = lista.reduce((acc, item) => acc + posicaoToBrl(item, "valor_atual"), 0);
-    const lucro = lista.reduce((acc, item) => acc + posicaoToBrl(item, "lucro_prejuizo"), 0);
-    const exteriorBrl = lista.filter((item) => item.moeda === "USD").reduce((acc, item) => acc + posicaoToBrl(item, "valor_atual"), 0);
+    // Dinheiro guardado (Caixinha CDB marcada como objetivo, Reserva...) fica
+    // de fora do patrimonio investido -- ele nao esta la pra crescer, so
+    // reservado, e contar junto infla o numero e engana o quanto foi
+    // investido de verdade. Continua listado na carteira, so nao entra aqui.
+    const investidos = lista.filter((item) => item.finalidade !== "GUARDADO");
+    const guardados = lista.filter((item) => item.finalidade === "GUARDADO");
+    const aportado = investidos.reduce((acc, item) => acc + posicaoToBrl(item, "valor_total_aportado"), 0);
+    const atual = investidos.reduce((acc, item) => acc + posicaoToBrl(item, "valor_atual"), 0);
+    const lucro = investidos.reduce((acc, item) => acc + posicaoToBrl(item, "lucro_prejuizo"), 0);
+    const guardadoAtual = guardados.reduce((acc, item) => acc + posicaoToBrl(item, "valor_atual"), 0);
+    const exteriorBrl = investidos.filter((item) => item.moeda === "USD").reduce((acc, item) => acc + posicaoToBrl(item, "valor_atual"), 0);
     const anoAtual = new Date().getFullYear();
     const dividendosAno = (dividendos.data ?? [])
       .filter((item) => new Date(item.data_recebimento).getFullYear() === anoAtual)
       .reduce((acc, item) => acc + toNumber(item.valor_brl ?? item.valor), 0);
-    return { aportado, atual, lucro, exteriorBrl, dividendosAno };
+    return { aportado, atual, lucro, exteriorBrl, dividendosAno, guardadoAtual };
   }, [posicoes.data, dividendos.data, dolarCotacao]);
 
   const grupos = useMemo(() => {
@@ -218,11 +231,12 @@ export function InvestimentosPage() {
           </>
         }
       />
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
         <MoneyCard title="Patrimônio investido" value={cards.atual} subtitle="Valor atual em BRL" tone="green" />
         <MoneyCard title="Valor aportado" value={cards.aportado} subtitle="Custo ainda em posição" tone="blue" />
         <MoneyCard title={resultadoTitle} value={cards.lucro} subtitle="Resultado aberto" tone={cards.lucro < 0 ? "red" : "green"} />
         <MoneyCard title="Dividendos no ano" value={cards.dividendosAno} subtitle="Proventos registrados" tone="yellow" />
+        <MoneyCard title="Total guardado" value={cards.guardadoAtual} subtitle="Reservado, fora do patrimonio investido" tone="default" />
       </div>
       <SectionCard
         title="Reserva de emergencia"
@@ -314,6 +328,7 @@ export function InvestimentosPage() {
                     posicoes={itens}
                     dolarCotacao={dolarCotacao}
                     showDividendos={mostraDividendos}
+                    onEditFinalidade={(posicao) => setEditingFinalidade(posicao)}
                     onSell={(posicao) => {
                       setSelectedSell(posicao);
                       setVendaOpen(true);
@@ -442,6 +457,41 @@ export function InvestimentosPage() {
             </Button>
           </div>
         </div>
+      </Dialog>
+      <Dialog open={editingFinalidade !== null} title="Finalidade do ativo" onClose={() => setEditingFinalidade(null)}>
+        {editingFinalidade && (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-300">
+              <span className="font-semibold text-slate-100">{editingFinalidade.nome}</span> deve contar como investimento
+              (entra no patrimonio investido e na rentabilidade da carteira) ou como dinheiro guardado (fica de fora
+              desses totais, mas continua visivel aqui)?
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button variant="secondary" onClick={() => setEditingFinalidade(null)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={atualizarFinalidade.isPending}
+                onClick={async () => {
+                  await atualizarFinalidade.mutateAsync({ ativoId: editingFinalidade.ativo_id, finalidade: "GUARDADO" });
+                  setEditingFinalidade(null);
+                }}
+              >
+                {FINALIDADE_LABELS.GUARDADO}
+              </Button>
+              <Button
+                disabled={atualizarFinalidade.isPending}
+                onClick={async () => {
+                  await atualizarFinalidade.mutateAsync({ ativoId: editingFinalidade.ativo_id, finalidade: "INVESTIMENTO" });
+                  setEditingFinalidade(null);
+                }}
+              >
+                {FINALIDADE_LABELS.INVESTIMENTO}
+              </Button>
+            </div>
+          </div>
+        )}
       </Dialog>
     </div>
   );

@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from app.models.base import (
+    FinalidadeAtivo,
     Moeda,
     NaturezaCategoria,
     TipoAtivo,
@@ -47,6 +48,22 @@ TIPOS_SEM_TICKER = TIPOS_CONTROLE_VALOR
 TIPOS_OCULTOS_POSICAO = {TipoAtivo.DOLAR_CAIXA}
 TIPOS_COTACAO_AUTOMATICA_BR = {TipoAtivo.ACAO_BR, TipoAtivo.FII, TipoAtivo.ETF_BR}
 TIPOS_COTACAO_AUTOMATICA = TIPOS_COTACAO_AUTOMATICA_BR | TIPOS_EXTERIOR | {TipoAtivo.CRIPTO, TipoAtivo.RENDA_FIXA}
+
+
+def _finalidade_padrao(tipo_ativo: TipoAtivo) -> FinalidadeAtivo:
+    """Caixinha CDB, Reserva de emergencia, Previdencia e Outro nascem como
+    'guardado': normalmente sao dinheiro reservado pra um objetivo, nao
+    aportado visando crescimento. O usuario pode mudar depois por ativo --
+    nada aqui e fixo por tipo, e' so o ponto de partida mais provavel."""
+    return FinalidadeAtivo.GUARDADO if tipo_ativo in TIPOS_CONTROLE_VALOR else FinalidadeAtivo.INVESTIMENTO
+
+
+def resolver_finalidade(tipo_ativo: TipoAtivo, solicitada: FinalidadeAtivo | None) -> FinalidadeAtivo:
+    """So os tipos com controle por valor podem ser 'guardado' -- uma acao ou
+    um FII sempre conta como investimento, sem opcao de mudar."""
+    if tipo_ativo not in TIPOS_CONTROLE_VALOR:
+        return FinalidadeAtivo.INVESTIMENTO
+    return solicitada or FinalidadeAtivo.GUARDADO
 
 TESOURO_CSV_URL = (
     "https://www.tesourotransparente.gov.br/ckan/dataset/"
@@ -756,6 +773,7 @@ def _obter_ou_criar_ativo(session: Session, payload: MovimentoInvestimentoCreate
         nome=nome or _normalizar_texto(corretora) or payload.tipo_ativo.value.replace("_", " ").title(),
         tipo_ativo=payload.tipo_ativo,
         tipo_controle=payload.tipo_controle or _tipo_controle_padrao(payload.tipo_ativo),
+        finalidade=resolver_finalidade(payload.tipo_ativo, getattr(payload, "finalidade", None)),
         moeda=moeda,
         corretora=corretora or None,
     )
@@ -1338,6 +1356,7 @@ def listar_posicoes(session: Session) -> list[dict]:
                     "nome": ativo.nome,
                     "tipo_ativo": ativo.tipo_ativo,
                     "tipo_controle": _tipo_controle_efetivo(ativo),
+                    "finalidade": ativo.finalidade,
                     "moeda": ativo.moeda,
                     "corretora": ativo.corretora,
                     "rentabilidade_percentual": rentabilidade,
@@ -1411,6 +1430,7 @@ def calcular_desempenho(session: Session, registrar_historico: bool = True) -> d
                 "nome": posicao["nome"],
                 "tipo_ativo": tipo.value,
                 "tipo_controle": posicao.get("tipo_controle"),
+                "finalidade": posicao.get("finalidade"),
                 "tipo_label": TIPO_ATIVO_LABELS.get(tipo, tipo.value),
                 "moeda": moeda_valor,
                 "corretora": posicao.get("corretora"),
@@ -1445,14 +1465,37 @@ def calcular_desempenho(session: Session, registrar_historico: bool = True) -> d
     maiores_ganhos = sorted([item for item in ativos if item["resultado_brl"] > 0], key=lambda item: item["resultado_brl"], reverse=True)[:5]
     maiores_perdas = sorted([item for item in ativos if item["resultado_brl"] < 0], key=lambda item: item["resultado_brl"])[:5]
 
+    # Os totais e a rentabilidade do "portfolio" so devem refletir o que e'
+    # de fato investimento -- dinheiro guardado numa caixinha/reserva nao deve
+    # inflar o patrimonio investido nem diluir a rentabilidade da carteira
+    # (ele rende pouco e nao esta la pra crescer). As listas detalhadas acima
+    # (alocacao_por_ativo, top_ativos...) continuam com tudo, sem filtrar --
+    # nada fica escondido, so os agregados de topo mudam de base.
+    ativos_investimento = [item for item in ativos if item.get("finalidade") != FinalidadeAtivo.GUARDADO]
+    patrimonio_investido = sum((item["valor_atual_brl"] for item in ativos_investimento), Decimal("0.00"))
+    total_aportado_investido = sum((item["total_aportado_brl"] for item in ativos_investimento), Decimal("0.00"))
+    lucro_investido = sum((item["resultado_brl"] for item in ativos_investimento), Decimal("0.00"))
+    dividendos_investido = sum((item["dividendos_brl"] for item in ativos_investimento), Decimal("0.00"))
+    lucro_com_dividendos_investido = sum((item["resultado_com_dividendos_brl"] for item in ativos_investimento), Decimal("0.00"))
+    rentabilidade_investido = (
+        Decimal("0.00") if total_aportado_investido <= 0 else (lucro_investido / total_aportado_investido) * Decimal("100")
+    )
+    rentabilidade_com_dividendos_investido = (
+        Decimal("0.00")
+        if total_aportado_investido <= 0
+        else (lucro_com_dividendos_investido / total_aportado_investido) * Decimal("100")
+    )
+
     resultado = {
-        "patrimonio_atual_brl": patrimonio_atual,
-        "total_aportado_brl": total_aportado,
-        "lucro_prejuizo_brl": lucro_prejuizo,
-        "rentabilidade_percentual": rentabilidade_carteira,
-        "dividendos_brl": dividendos_total,
-        "lucro_prejuizo_com_dividendos_brl": lucro_prejuizo_com_dividendos,
-        "rentabilidade_com_dividendos_percentual": rentabilidade_carteira_com_dividendos,
+        "patrimonio_atual_brl": patrimonio_investido,
+        "total_aportado_brl": total_aportado_investido,
+        "lucro_prejuizo_brl": lucro_investido,
+        "rentabilidade_percentual": rentabilidade_investido,
+        "dividendos_brl": dividendos_investido,
+        "lucro_prejuizo_com_dividendos_brl": lucro_com_dividendos_investido,
+        "rentabilidade_com_dividendos_percentual": rentabilidade_com_dividendos_investido,
+        "guardado_total_brl": patrimonio_atual - patrimonio_investido,
+        "patrimonio_total_brl": patrimonio_atual,
         "exterior_brl": exterior_brl,
         "alocacao_por_tipo": sorted(alocacao_tipo.values(), key=lambda item: item["valor_atual_brl"], reverse=True),
         "alocacao_por_ativo": ativos_ordenados,

@@ -10,6 +10,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from app import models  # noqa: F401
 from app.models.base import (
     EscopoOrcamento,
+    FinalidadeAtivo,
     Moeda,
     NaturezaCategoria,
     StatusContaFutura,
@@ -39,13 +40,14 @@ from app.schemas.cartao_schema import PagarFatura
 from app.schemas.caixinha_schema import UsarCaixinha
 from app.schemas.compromisso_cartao_schema import SepararCompromisso
 from app.schemas.dividendo_schema import DividendoCreate, DividendoUpdate
-from app.schemas.investimento_schema import MovimentoInvestimentoCreate, MovimentoInvestimentoUpdate
+from app.schemas.investimento_schema import AtivoCreate, AtivoUpdate, MovimentoInvestimentoCreate, MovimentoInvestimentoUpdate
 from app.schemas.lancamento_schema import CartaoLancamentoInput, LancamentoCreate, LancamentoUpdate
 from app.schemas.orcamento_schema import OrcamentoAlterar, OrcamentoCreate, OrcamentoItemCreate
 from app.schemas.conta_schema import ContaCreate, ContaSaldoCreate
 from app.schemas.conta_futura_schema import ContaFuturaCreate, PagarContaFutura
 from app.schemas.exterior_dolar_schema import MovimentoDolarCreate, MovimentoDolarUpdate
 from app.api.routes.contas import criar as criar_conta_route, atualizar_saldo as atualizar_saldo_conta_route
+from app.api.routes.investimentos import atualizar_ativo as atualizar_ativo_route, criar_ativo as criar_ativo_route
 from app.api.routes.dividendos import (
     atualizar as atualizar_dividendo_route,
     criar as criar_dividendo_route,
@@ -92,6 +94,7 @@ from app.services.dashboard_service import graficos_dashboard
 from app.services.saldo_service import (
     calcular_compromisso_futuro_cartao,
     calcular_gasto_real_mes,
+    calcular_investimentos,
     calcular_reservado_cartao,
     calcular_reservado_caixinhas,
     calcular_reservado_contas_futuras,
@@ -3171,3 +3174,110 @@ def test_sincronizar_subcategorias_caixinha_reclassifica_lancamentos_antigos(ses
 
     # Idempotente: rodar de novo (ex.: proximo login) nao corrige nada.
     assert sincronizar_subcategorias_caixinha(session) == 0
+
+
+def test_caixinha_cdb_nasce_guardado_e_acao_nasce_investimento(session: Session):
+    """Finalidade e' o ponto central da funcionalidade: tipos VALOR (Caixinha
+    CDB, Reserva, Previdencia, Outro) nascem como GUARDADO por padrao -- na
+    maioria das vezes e' dinheiro reservado pra um objetivo, nao investido
+    visando crescimento. Acoes, FIIs etc. sempre nascem como INVESTIMENTO."""
+    caixinha = comprar(
+        session,
+        MovimentoInvestimentoCreate(tipo_ativo=TipoAtivo.CAIXINHA_CDB, nome="Casa - Mycon", valor_total=Decimal("500.00")),
+    )
+    acao = comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            tipo_ativo=TipoAtivo.ACAO_BR, ticker="BBAS3", quantidade=Decimal("10"), preco_unitario=Decimal("25.00")
+        ),
+    )
+
+    ativo_caixinha = session.get(Ativo, caixinha.ativo_id)
+    ativo_acao = session.get(Ativo, acao.ativo_id)
+
+    assert ativo_caixinha.finalidade == FinalidadeAtivo.GUARDADO
+    assert ativo_acao.finalidade == FinalidadeAtivo.INVESTIMENTO
+
+
+def test_finalidade_de_tipo_quantidade_nao_pode_virar_guardado(session: Session):
+    """So os tipos com controle por valor podem ser 'guardado' -- forcar isso
+    numa acao (via payload de compra ou via edicao do ativo) e' ignorado."""
+    acao = comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            tipo_ativo=TipoAtivo.ACAO_BR,
+            ticker="ITSA4",
+            quantidade=Decimal("10"),
+            preco_unitario=Decimal("10.00"),
+            finalidade=FinalidadeAtivo.GUARDADO,
+        ),
+    )
+    ativo = session.get(Ativo, acao.ativo_id)
+    assert ativo.finalidade == FinalidadeAtivo.INVESTIMENTO
+
+    atualizado = atualizar_ativo_route(
+        acao.ativo_id, AtivoUpdate(finalidade=FinalidadeAtivo.GUARDADO), session
+    )
+    assert atualizado.finalidade == FinalidadeAtivo.INVESTIMENTO
+
+
+def test_editar_finalidade_de_caixinha_existente(session: Session):
+    """O usuario precisa poder trocar a finalidade de uma caixinha que ja
+    existe -- e' o caso real de quem ja tinha 'Casa - Mycon' antes dessa
+    funcionalidade e precisa marcar como guardado (ou o contrario)."""
+    criada = criar_ativo_route(
+        AtivoCreate(ticker="CAIXA-CASA", nome="Casa - Mycon", tipo_ativo=TipoAtivo.CAIXINHA_CDB), session
+    )
+    assert criada.finalidade == FinalidadeAtivo.GUARDADO
+
+    atualizada = atualizar_ativo_route(criada.id, AtivoUpdate(finalidade=FinalidadeAtivo.INVESTIMENTO), session)
+    assert atualizada.finalidade == FinalidadeAtivo.INVESTIMENTO
+
+    de_volta = atualizar_ativo_route(criada.id, AtivoUpdate(finalidade=FinalidadeAtivo.GUARDADO), session)
+    assert de_volta.finalidade == FinalidadeAtivo.GUARDADO
+
+
+def test_desempenho_exclui_guardado_do_patrimonio_mas_mantem_na_lista(session: Session):
+    """R$ 2.000 numa Caixinha CDB guardada nao pode aparecer como patrimonio
+    investido nem distorcer a rentabilidade da carteira -- mas continua
+    visivel na lista detalhada (alocacao_por_ativo), so nao no agregado."""
+    acao = comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            tipo_ativo=TipoAtivo.ACAO_BR, ticker="VALE3", quantidade=Decimal("10"), preco_unitario=Decimal("60.00")
+        ),
+    )
+    registrar_cotacao(session, acao.ativo_id, Decimal("80.00"))  # lucro de R$ 200
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(tipo_ativo=TipoAtivo.CAIXINHA_CDB, nome="Casa - Mycon", valor_total=Decimal("2000.00")),
+    )
+
+    desempenho = calcular_desempenho(session, registrar_historico=False)
+
+    assert desempenho["patrimonio_atual_brl"] == Decimal("800.0000")  # so a acao (10 x 80)
+    assert desempenho["total_aportado_brl"] == Decimal("600.0000")  # so a acao (10 x 60)
+    assert desempenho["lucro_prejuizo_brl"] == Decimal("200.0000")
+    assert desempenho["guardado_total_brl"] == Decimal("2000.0000")
+    assert desempenho["patrimonio_total_brl"] == Decimal("2800.0000")
+
+    nomes_na_lista = {item["nome"] for item in desempenho["alocacao_por_ativo"]}
+    assert "Casa - Mycon" in nomes_na_lista  # nada fica escondido da lista detalhada
+
+
+def test_calcular_investimentos_exclui_ativos_guardados(session: Session):
+    """calcular_investimentos() (usado no resumo do painel) tambem precisa
+    ignorar dinheiro guardado -- senao o patrimonio investido do dashboard
+    fica inflado do mesmo jeito que o da tela de desempenho."""
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(
+            tipo_ativo=TipoAtivo.ACAO_BR, ticker="PETR4", quantidade=Decimal("5"), preco_unitario=Decimal("30.00")
+        ),
+    )
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(tipo_ativo=TipoAtivo.CAIXINHA_CDB, nome="Saude", valor_total=Decimal("1000.00")),
+    )
+
+    assert calcular_investimentos(session) == Decimal("150.00")

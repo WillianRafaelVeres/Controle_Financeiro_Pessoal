@@ -63,7 +63,6 @@ const MACRO_LABELS: Record<MacroGrupo, string> = {
 
 const MACRO_ORDER: MacroGrupo[] = ["VARIAVEL", "FII", "EXTERIOR", "RENDA_FIXA", "CRIPTO", "RESERVA_EMERGENCIA", "PREVIDENCIA", "OUTROS"];
 
-const TIPOS_A_PARTE: TipoAtivo[] = ["RESERVA_EMERGENCIA", "PREVIDENCIA"];
 const EXCLUIR_RESERVAS_KEY = "patrimonio:excluir-reservas";
 
 function macroGrupo(tipo?: TipoAtivo): MacroGrupo {
@@ -158,7 +157,7 @@ export function PatrimonioPage() {
   const dolar = toNumber(patrimonio.data?.benchmarks.dolar.valor) || 1;
   const ativosTodos = patrimonio.data?.alocacao_por_ativo ?? [];
   const ativos = useMemo(
-    () => (excluirReservas ? ativosTodos.filter((item) => !TIPOS_A_PARTE.includes(item.tipo_ativo)) : ativosTodos),
+    () => (excluirReservas ? ativosTodos.filter((item) => item.finalidade !== "GUARDADO") : ativosTodos),
     [ativosTodos, excluirReservas],
   );
   const availableTypes = useMemo(() => {
@@ -302,7 +301,7 @@ export function PatrimonioPage() {
               "inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border px-3 text-xs font-semibold transition",
               excluirReservas ? "border-brand-500/50 bg-brand-500/10 text-brand-300" : "border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-100",
             )}
-            title="Remove Reserva de emergencia e Previdencia de todos os calculos, graficos e do patrimonio total."
+            title="Remove ativos marcados como 'guardado' (caixinhas-objetivo, reserva, previdencia...) de todos os calculos, graficos e do patrimonio total."
           >
             <input
               type="checkbox"
@@ -310,7 +309,7 @@ export function PatrimonioPage() {
               checked={excluirReservas}
               onChange={(event) => toggleExcluirReservas(event.target.checked)}
             />
-            Desconsiderar Reserva e Previdencia
+            Desconsiderar dinheiro guardado
           </label>
           <Badge tone="blue">{rows.length} linha{rows.length === 1 ? "" : "s"}</Badge>
           <Badge tone="neutral">Dolar {formatMoney(dolar)}</Badge>

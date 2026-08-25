@@ -5,13 +5,13 @@ import unicodedata
 from sqlalchemy import and_, func, not_, or_
 from sqlmodel import Session, select
 
-from app.models.base import NaturezaCategoria, StatusContaFutura, TipoConta, TipoLancamento, TipoMovimentoInvestimento, month_bounds
+from app.models.base import FinalidadeAtivo, NaturezaCategoria, StatusContaFutura, TipoConta, TipoLancamento, TipoMovimentoInvestimento, month_bounds
 from app.models.cartao import Cartao
 from app.models.categoria import Categoria
 from app.models.compromisso_cartao import CompromissoCartao
 from app.models.conta import Conta
 from app.models.conta_futura import ContaFutura
-from app.models.investimento import MovimentoInvestimento
+from app.models.investimento import Ativo, MovimentoInvestimento
 from app.models.lancamento import Lancamento
 from app.models.orcamento import OrcamentoItem, OrcamentoMensal
 from app.models.pagamento_fatura import PagamentoFatura
@@ -268,22 +268,32 @@ def calcular_orcamento_total_mes(session: Session, ano: int, mes: int) -> Decima
 
 
 def calcular_investimentos(session: Session) -> Decimal:
+    """Custo em posicao apenas do que e' finalidade=INVESTIMENTO -- dinheiro
+    guardado numa caixinha/reserva (finalidade=GUARDADO) nao conta aqui, senao
+    o patrimonio investido fica inflado com dinheiro que so esta sendo
+    reservado pra um objetivo, nao aportado visando crescimento."""
     compras = session.exec(
-        select(func.sum(MovimentoInvestimento.valor_total)).where(
+        select(func.sum(MovimentoInvestimento.valor_total))
+        .join(Ativo, Ativo.id == MovimentoInvestimento.ativo_id)
+        .where(
+            Ativo.finalidade == FinalidadeAtivo.INVESTIMENTO,
             MovimentoInvestimento.tipo_movimento.in_(
                 [
                     TipoMovimentoInvestimento.COMPRA,
                     TipoMovimentoInvestimento.APORTE,
                     TipoMovimentoInvestimento.AJUSTE,
                 ]
-            )
+            ),
         )
     ).one()
     vendas = session.exec(
-        select(func.sum(MovimentoInvestimento.valor_total)).where(
+        select(func.sum(MovimentoInvestimento.valor_total))
+        .join(Ativo, Ativo.id == MovimentoInvestimento.ativo_id)
+        .where(
+            Ativo.finalidade == FinalidadeAtivo.INVESTIMENTO,
             MovimentoInvestimento.tipo_movimento.in_(
                 [TipoMovimentoInvestimento.VENDA, TipoMovimentoInvestimento.RESGATE]
-            )
+            ),
         )
     ).one()
     return _decimal(compras) - _decimal(vendas)

@@ -17,6 +17,7 @@ export type TipoAtivo =
   | "PREVIDENCIA"
   | "OUTRO";
 export type TipoControleInvestimento = "QUANTIDADE" | "VALOR";
+export type FinalidadeAtivo = "INVESTIMENTO" | "GUARDADO";
 export type TipoProvento = "DIVIDENDO" | "JCP" | "RENDIMENTO_FII" | "DIVIDENDO_EXTERIOR" | "JUROS_RENDA_FIXA" | "OUTRO";
 
 export interface Categoria {
@@ -250,6 +251,7 @@ export interface Ativo {
   nome: string;
   tipo_ativo: TipoAtivo;
   tipo_controle?: TipoControleInvestimento;
+  finalidade?: FinalidadeAtivo;
   moeda: string;
   corretora?: string;
 }
@@ -260,6 +262,7 @@ export interface Posicao {
   nome: string;
   tipo_ativo: TipoAtivo;
   tipo_controle?: TipoControleInvestimento;
+  finalidade?: FinalidadeAtivo;
   moeda: string;
   corretora?: string | null;
   quantidade_atual?: string | number | null;
@@ -321,6 +324,7 @@ export interface DesempenhoAtivo {
   nome: string;
   tipo_ativo: TipoAtivo;
   tipo_controle?: TipoControleInvestimento;
+  finalidade?: FinalidadeAtivo;
   tipo_label: string;
   moeda: string;
   corretora?: string | null;
@@ -348,6 +352,8 @@ export interface DesempenhoInvestimentos {
   dividendos_brl?: string | number;
   lucro_prejuizo_com_dividendos_brl?: string | number;
   rentabilidade_com_dividendos_percentual?: string | number;
+  guardado_total_brl?: string | number;
+  patrimonio_total_brl?: string | number;
   exterior_brl: string | number;
   alocacao_por_tipo: DesempenhoAlocacaoTipo[];
   alocacao_por_ativo: DesempenhoAtivo[];

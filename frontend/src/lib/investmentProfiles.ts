@@ -1,4 +1,4 @@
-import type { TipoAtivo, TipoControleInvestimento } from "./types";
+import type { FinalidadeAtivo, TipoAtivo, TipoControleInvestimento } from "./types";
 
 export const INVESTMENT_TYPE_LABELS: Record<TipoAtivo, string> = {
   ACAO_BR: "Acao BR",
@@ -46,6 +46,17 @@ export function isValueControlledInvestment(tipo: TipoAtivo) {
 
 export function controlTypeForInvestment(tipo: TipoAtivo): TipoControleInvestimento {
   return isValueControlledInvestment(tipo) ? "VALOR" : "QUANTIDADE";
+}
+
+export const FINALIDADE_LABELS: Record<FinalidadeAtivo, string> = {
+  INVESTIMENTO: "Investimento",
+  GUARDADO: "Guardado",
+};
+
+/** So os tipos com controle por valor podem ser "guardado" -- uma acao ou um
+ * FII sempre conta como investimento, sem opcao de mudar. */
+export function finalidadeEditavel(tipo: TipoAtivo) {
+  return isValueControlledInvestment(tipo);
 }
 
 export function defaultCurrencyForInvestment(tipo: TipoAtivo) {

@@ -4,6 +4,7 @@ from decimal import Decimal
 from sqlmodel import Field
 
 from app.models.base import (
+    FinalidadeAtivo,
     IdMixin,
     Moeda,
     TimestampMixin,
@@ -22,6 +23,7 @@ class Ativo(IdMixin, UserOwnedMixin, TimestampMixin, table=True):
     nome: str = Field(min_length=1, max_length=160)
     tipo_ativo: TipoAtivo = Field(index=True)
     tipo_controle: TipoControleInvestimento = Field(default=TipoControleInvestimento.QUANTIDADE, index=True)
+    finalidade: FinalidadeAtivo = Field(default=FinalidadeAtivo.INVESTIMENTO, index=True)
     moeda: Moeda = Field(default=Moeda.BRL, index=True)
     corretora: str | None = Field(default=None, max_length=120)
     ativo: bool = Field(default=True, index=True)

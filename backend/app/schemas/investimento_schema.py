@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from sqlmodel import SQLModel
 
-from app.models.base import Moeda, TipoAtivo, TipoControleInvestimento
+from app.models.base import FinalidadeAtivo, Moeda, TipoAtivo, TipoControleInvestimento
 
 
 class AtivoCreate(SQLModel):
@@ -11,6 +11,7 @@ class AtivoCreate(SQLModel):
     nome: str
     tipo_ativo: TipoAtivo
     tipo_controle: TipoControleInvestimento | None = None
+    finalidade: FinalidadeAtivo | None = None
     moeda: Moeda = Moeda.BRL
     corretora: str | None = None
 
@@ -20,6 +21,7 @@ class AtivoUpdate(SQLModel):
     nome: str | None = None
     tipo_ativo: TipoAtivo | None = None
     tipo_controle: TipoControleInvestimento | None = None
+    finalidade: FinalidadeAtivo | None = None
     moeda: Moeda | None = None
     corretora: str | None = None
     ativo: bool | None = None
@@ -31,6 +33,7 @@ class MovimentoInvestimentoCreate(SQLModel):
     nome: str | None = None
     tipo_ativo: TipoAtivo | None = None
     tipo_controle: TipoControleInvestimento | None = None
+    finalidade: FinalidadeAtivo | None = None
     data_movimento: date | None = None
     quantidade: Decimal | None = None
     preco_unitario: Decimal | None = None

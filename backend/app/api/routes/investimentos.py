@@ -15,6 +15,7 @@ from app.schemas.investimento_schema import (
 from app.services.dividendo_service import listar_historico_proventos
 from app.services.relatorio_service import projetar_patrimonio
 from app.services.investimento_service import (
+    resolver_finalidade,
     atualizar_cotacao_automatica,
     atualizar_cotacoes_automaticas,
     calcular_desempenho,
@@ -49,13 +50,16 @@ def listar_ativos(session: Session = Depends(get_session)) -> list[Ativo]:
 
 @router.post("/ativos")
 def criar_ativo(payload: AtivoCreate, session: Session = Depends(get_session)) -> Ativo:
-    ativo = Ativo(**payload.model_dump())
+    ativo = Ativo(**payload.model_dump(exclude={"finalidade"}))
     if payload.tipo_controle is None:
         ativo.tipo_controle = (
             TipoControleInvestimento.VALOR
             if ativo.tipo_ativo in TIPOS_CONTROLE_VALOR
             else TipoControleInvestimento.QUANTIDADE
         )
+    # So os tipos com controle por valor podem ser "guardado"; os demais sao
+    # sempre investimento, mesmo que o payload tente dizer o contrario.
+    ativo.finalidade = resolver_finalidade(ativo.tipo_ativo, payload.finalidade)
     ativo.ticker = ativo.ticker.upper()
     session.add(ativo)
     session.commit()
@@ -68,7 +72,10 @@ def atualizar_ativo(ativo_id: str, payload: AtivoUpdate, session: Session = Depe
     ativo = session.get(Ativo, ativo_id)
     if not ativo:
         raise HTTPException(status_code=404, detail="Ativo nao encontrado.")
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    dados = payload.model_dump(exclude_unset=True)
+    if "finalidade" in dados:
+        dados["finalidade"] = resolver_finalidade(dados.get("tipo_ativo", ativo.tipo_ativo), dados["finalidade"])
+    for key, value in dados.items():
         setattr(ativo, key, value.upper() if key == "ticker" and isinstance(value, str) else value)
     session.add(ativo)
     session.commit()

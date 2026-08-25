@@ -166,6 +166,8 @@ export const api = {
 
   ativos: () => apiFetch<Ativo[]>("/investimentos/ativos"),
   criarAtivo: (payload: Record<string, unknown>) => apiFetch<Ativo>("/investimentos/ativos", { method: "POST", body: JSON.stringify(payload) }),
+  atualizarAtivo: (id: string, payload: Record<string, unknown>) =>
+    apiFetch<Ativo>(`/investimentos/ativos/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   posicoes: () => apiFetch<Posicao[]>("/investimentos/posicoes"),
   desempenhoInvestimentos: () => apiFetch<DesempenhoInvestimentos>("/investimentos/desempenho"),
   historicoDesempenhoInvestimentos: (modo: "mensal" | "anual") =>

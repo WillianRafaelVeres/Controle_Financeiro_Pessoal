@@ -103,6 +103,15 @@ class TipoControleInvestimento(str, Enum):
     VALOR = "VALOR"
 
 
+class FinalidadeAtivo(str, Enum):
+    """O que esse ativo representa para o usuario -- ortogonal a tipo_ativo e
+    tipo_controle. Uma Caixinha CDB pode ser dinheiro guardado pra um objetivo
+    (nao cresce patrimonio de verdade) ou uma alocacao de renda fixa real."""
+
+    INVESTIMENTO = "INVESTIMENTO"
+    GUARDADO = "GUARDADO"
+
+
 class Moeda(str, Enum):
     BRL = "BRL"
     USD = "USD"

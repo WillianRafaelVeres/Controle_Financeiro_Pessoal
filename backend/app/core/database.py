@@ -107,6 +107,25 @@ def _ensure_schema_compatibility() -> None:
         add_column_if_missing("ativos", "corretora", "VARCHAR(120)")
         add_column_if_missing("ativos", "tipo_controle", "VARCHAR DEFAULT 'QUANTIDADE' NOT NULL")
 
+        # finalidade e' editavel por ativo (diferente de tipo_controle, que e'
+        # sempre um espelho fixo de tipo_ativo) -- por isso o backfill so pode
+        # rodar UMA vez, na migracao em que a coluna nasce. Rodar de novo em
+        # todo boot reverteria silenciosamente qualquer ativo que o usuario
+        # ja tenha marcado manualmente como investimento de verdade.
+        finalidade_ja_existia = "finalidade" in {item["name"] for item in inspector.get_columns("ativos")}
+        add_column_if_missing("ativos", "finalidade", "VARCHAR DEFAULT 'INVESTIMENTO' NOT NULL")
+        if not finalidade_ja_existia:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        """
+                        UPDATE ativos
+                        SET finalidade = 'GUARDADO'
+                        WHERE tipo_ativo IN ('CAIXINHA_CDB', 'RESERVA_EMERGENCIA', 'PREVIDENCIA', 'OUTRO')
+                        """
+                    )
+                )
+
     if "movimentos_investimento" in tables:
         quantidade_column = next(
             (item for item in inspector.get_columns("movimentos_investimento") if item["name"] == "quantidade"),

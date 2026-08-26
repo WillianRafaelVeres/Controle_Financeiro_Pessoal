@@ -13,6 +13,7 @@ import { ContasPage } from "./pages/ContasPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DesempenhoPage } from "./pages/DesempenhoPage";
 import { DinheiroSeparadoPage } from "./pages/DinheiroSeparadoPage";
+import { DistribuicaoPage } from "./pages/DistribuicaoPage";
 import { DividendosPage } from "./pages/DividendosPage";
 import { ExteriorDolarPage } from "./pages/ExteriorDolarPage";
 import { IntegracoesPage } from "./pages/IntegracoesPage";
@@ -42,6 +43,7 @@ function CurrentPage({ page, onNewLancamento }: { page: PageKey; onNewLancamento
     case "contas": return <ContasPage />;
     case "contas_futuras": return <ContasFuturasPage />;
     case "dinheiro_separado": return <DinheiroSeparadoPage />;
+    case "distribuicao": return <DistribuicaoPage />;
     case "orcamento": return <OrcamentoPage />;
     case "cartoes": return <CartoesPage />;
     case "patrimonio": return <PatrimonioPage />;

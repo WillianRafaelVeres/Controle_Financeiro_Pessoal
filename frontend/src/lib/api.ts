@@ -10,6 +10,7 @@ import type {
   CotacaoDolarAtual,
   DashboardResumo,
   DesempenhoInvestimentos,
+  DistribuicaoPlano,
   Dividendo,
   HistoricoDesempenhoInvestimento,
   HistoricoProventosInvestimentos,
@@ -218,4 +219,11 @@ export const api = {
     apiFetch<ResumoDolar>("/exterior-dolar/informar-saldo", { method: "POST", body: JSON.stringify(payload) }),
   dolarCotacaoAtual: () => apiFetch<CotacaoDolarAtual>("/exterior-dolar/cotacao-atual"),
   dolarCotacaoData: (data: string) => apiFetch<CotacaoDolarAtual>("/exterior-dolar/cotacao", {}, { data }),
+
+  distribuicaoPlanos: () => apiFetch<DistribuicaoPlano[]>("/distribuicao/planos"),
+  criarDistribuicaoPlano: (payload: Record<string, unknown>) =>
+    apiFetch<DistribuicaoPlano>("/distribuicao/planos", { method: "POST", body: JSON.stringify(payload) }),
+  atualizarDistribuicaoPlano: (id: string, payload: Record<string, unknown>) =>
+    apiFetch<DistribuicaoPlano>(`/distribuicao/planos/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  excluirDistribuicaoPlano: (id: string) => apiFetch<void>(`/distribuicao/planos/${id}`, { method: "DELETE" }),
 };

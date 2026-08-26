@@ -65,12 +65,12 @@ export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, onE
   }
 
   return (
-    <Table className={showDividendos ? "min-w-[960px] text-[12px]" : "min-w-[760px] text-[12px]"}>
+    <Table className={showDividendos ? "min-w-[1000px] text-[12px]" : "min-w-[800px] text-[12px]"}>
       <thead>
         <tr>
           <Th className={`${headClass} w-[190px]`}>Ativo</Th>
           <Th className={`${headClass} w-[110px] text-right`}>Quantidade</Th>
-          <Th className={`${headClass} w-[120px] text-right`}>Cotacao</Th>
+          <Th className={`${headClass} w-[160px] text-right`}>Cotacao</Th>
           <Th className={`${headClass} w-[120px] text-right`}>Valor atual</Th>
           <Th className={`${headClass} w-[118px] text-right`}>Resultado</Th>
           {showDividendos && <Th className={`${headClass} w-[110px] text-right`}>Dividendos</Th>}
@@ -136,7 +136,7 @@ export function AtivosTable({ posicoes, onSell, onFetchPrice, onUpdatePrice, onE
                   <div className="flex items-center justify-end gap-1">
                     <div>
                       <Input
-                        className="h-7 w-20 text-right"
+                        className="h-7 w-32 px-2.5 text-right"
                         inputMode="decimal"
                         min="0"
                         step="0.01"

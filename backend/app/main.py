@@ -15,6 +15,7 @@ from app.api.routes import (
     contas,
     contas_futuras,
     dashboard,
+    distribuicao,
     dividendos,
     exterior_dolar,
     investimentos,
@@ -124,6 +125,7 @@ for router in [
     dashboard.router,
     relatorios.router,
     configuracoes.router,
+    distribuicao.router,
 ]:
     app.include_router(router, prefix=settings.api_prefix)
 

@@ -4,6 +4,7 @@ export type PageKey =
   | "contas"
   | "contas_futuras"
   | "dinheiro_separado"
+  | "distribuicao"
   | "orcamento"
   | "cartoes"
   | "patrimonio"

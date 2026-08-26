@@ -475,6 +475,19 @@ export interface Diagnostico {
   pasta_backups: string;
 }
 
+export interface DistribuicaoItem {
+  id: string;
+  nome: string;
+  percentual: string | number;
+  subplano_id?: string | null;
+}
+
+export interface DistribuicaoPlano {
+  id: string;
+  nome: string;
+  itens: DistribuicaoItem[];
+}
+
 export interface Dividendo {
   id: string;
   ativo_id?: string | null;

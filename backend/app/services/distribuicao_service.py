@@ -27,15 +27,30 @@ PREFIXO_PLANO = "distribuicao_plano_"
 # JSON gigante) porque `configuracoes.valor` tem limite de 2000 caracteres --
 # um indice pequeno + planos individuais nunca esbarra nesse teto conforme o
 # usuario cria mais planos.
+
+# Nome do item (normalizado) -> tipos de ativo reais que alimentam o
+# rebalanceamento inteligente (peso-alvo da carteira, nao so rateio fixo do
+# aporte). CAIXINHA_CDB entra em "renda fixa" porque, quando marcada como
+# finalidade=INVESTIMENTO (dinheiro guardado fica de fora por definicao), e'
+# efetivamente renda fixa. ETF_BR entra em "acoes br" por ser exposicao a
+# bolsa brasileira, sem classe propria nas 5 do plano padrao.
+MAPEAMENTO_PADRAO_TIPOS_ATIVO: dict[str, list[str]] = {
+    "renda fixa": ["RENDA_FIXA", "CAIXINHA_CDB"],
+    "fiis": ["FII"],
+    "acoes br": ["ACAO_BR", "ETF_BR"],
+    "exterior": ["EXTERIOR", "ACAO_EXTERIOR", "ETF_EXTERIOR"],
+    "bitcoin": ["CRIPTO"],
+}
+
 PLANOS_PADRAO = [
     {
         "nome": "Investimentos",
         "itens": [
-            {"nome": "Renda fixa", "percentual": "25"},
-            {"nome": "FIIs", "percentual": "15"},
-            {"nome": "Acoes BR", "percentual": "20"},
-            {"nome": "Exterior", "percentual": "25"},
-            {"nome": "Bitcoin", "percentual": "15"},
+            {"nome": "Renda fixa", "percentual": "25", "tipos_ativo": MAPEAMENTO_PADRAO_TIPOS_ATIVO["renda fixa"]},
+            {"nome": "FIIs", "percentual": "15", "tipos_ativo": MAPEAMENTO_PADRAO_TIPOS_ATIVO["fiis"]},
+            {"nome": "Acoes BR", "percentual": "20", "tipos_ativo": MAPEAMENTO_PADRAO_TIPOS_ATIVO["acoes br"]},
+            {"nome": "Exterior", "percentual": "25", "tipos_ativo": MAPEAMENTO_PADRAO_TIPOS_ATIVO["exterior"]},
+            {"nome": "Bitcoin", "percentual": "15", "tipos_ativo": MAPEAMENTO_PADRAO_TIPOS_ATIVO["bitcoin"]},
         ],
     },
     {
@@ -111,6 +126,7 @@ def _salvar_plano(session: Session, plano: DistribuicaoPlano) -> None:
                 "nome": item.nome,
                 "percentual": str(item.percentual),
                 "subplano_id": item.subplano_id,
+                "tipos_ativo": item.tipos_ativo,
             }
             for item in plano.itens
         ],
@@ -145,7 +161,12 @@ def _seed_planos_padrao(session: Session) -> list[DistribuicaoPlano]:
         plano_id = _novo_id()
         id_por_nome[definicao["nome"]] = plano_id
         itens = [
-            DistribuicaoItem(id=_novo_id(), nome=item["nome"], percentual=Decimal(item["percentual"]))
+            DistribuicaoItem(
+                id=_novo_id(),
+                nome=item["nome"],
+                percentual=Decimal(item["percentual"]),
+                tipos_ativo=item.get("tipos_ativo"),
+            )
             for item in definicao["itens"]
         ]
         planos.append(DistribuicaoPlano(id=plano_id, nome=definicao["nome"], itens=itens))
@@ -165,15 +186,43 @@ def _seed_planos_padrao(session: Session) -> list[DistribuicaoPlano]:
     return planos
 
 
+def _normalizar_nome_item(nome: str) -> str:
+    return " ".join(nome.strip().lower().split())
+
+
+def _aplicar_mapeamento_padrao(plano: DistribuicaoPlano) -> bool:
+    """Preenche tipos_ativo pelo nome do item quando o plano foi salvo antes
+    dessa funcionalidade existir -- sem isso, quem ja tinha o plano
+    "Investimentos" criado nunca ganharia o rebalanceamento inteligente, pois
+    o seed so roda uma vez (na primeira vez que a lista de planos e' vazia).
+    Roda a cada leitura e so grava de volta se realmente mudou algo, entao
+    nunca sobrescreve um tipos_ativo que o usuario (ou uma leitura anterior)
+    ja tenha definido."""
+    mudou = False
+    for item in plano.itens:
+        if not item.tipos_ativo:
+            mapeado = MAPEAMENTO_PADRAO_TIPOS_ATIVO.get(_normalizar_nome_item(item.nome))
+            if mapeado:
+                item.tipos_ativo = mapeado
+                mudou = True
+    return mudou
+
+
 def listar_planos(session: Session) -> list[DistribuicaoPlano]:
     ids = _ler_indice(session)
     if not ids:
         return _seed_planos_padrao(session)
     planos = []
+    precisa_commit = False
     for plano_id in ids:
         plano = _ler_plano(session, plano_id)
         if plano:
+            if _aplicar_mapeamento_padrao(plano):
+                _salvar_plano(session, plano)
+                precisa_commit = True
             planos.append(plano)
+    if precisa_commit:
+        session.commit()
     return planos
 
 

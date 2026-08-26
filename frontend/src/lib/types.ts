@@ -480,6 +480,10 @@ export interface DistribuicaoItem {
   nome: string;
   percentual: string | number;
   subplano_id?: string | null;
+  /** Tipos de ativo (TipoAtivo) que essa classe representa na carteira real
+   * -- so preenchido nas classes do plano Investimentos. Usado pra buscar o
+   * valor atual e sugerir rebalanceamento; ausente em planos sem correspondencia. */
+  tipos_ativo?: string[] | null;
 }
 
 export interface DistribuicaoPlano {

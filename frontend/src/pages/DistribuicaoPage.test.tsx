@@ -3,8 +3,63 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../lib/api";
-import type { DistribuicaoPlano } from "../lib/types";
+import type { DesempenhoAtivo, DesempenhoInvestimentos, DistribuicaoPlano } from "../lib/types";
 import { DistribuicaoPage } from "./DistribuicaoPage";
+
+const planoInvestimentosComRebalanceamento: DistribuicaoPlano = {
+  id: "plano-investimentos",
+  nome: "Investimentos",
+  itens: [
+    { id: "i1", nome: "Renda fixa", percentual: 25, tipos_ativo: ["RENDA_FIXA", "CAIXINHA_CDB"] },
+    { id: "i2", nome: "FIIs", percentual: 15, tipos_ativo: ["FII"] },
+    { id: "i3", nome: "Acoes BR", percentual: 20, tipos_ativo: ["ACAO_BR", "ETF_BR"] },
+    { id: "i4", nome: "Exterior", percentual: 25, tipos_ativo: ["EXTERIOR", "ACAO_EXTERIOR", "ETF_EXTERIOR"] },
+    { id: "i5", nome: "Bitcoin", percentual: 15, tipos_ativo: ["CRIPTO"] },
+  ],
+};
+
+function ativoDesempenho(tipo: string, valor: number): DesempenhoAtivo {
+  return {
+    ativo_id: `${tipo}-1`,
+    ticker: tipo,
+    nome: tipo,
+    tipo_ativo: tipo as DesempenhoAtivo["tipo_ativo"],
+    finalidade: "INVESTIMENTO",
+    tipo_label: tipo,
+    moeda: "BRL",
+    valor_atual_brl: valor,
+    valor_atual_original: valor,
+    total_aportado_brl: valor,
+    resultado_brl: 0,
+    rentabilidade_percentual: 0,
+    percentual: 0,
+    cotacao_automatica: false,
+  };
+}
+
+const desempenhoCarteira90mil: DesempenhoInvestimentos = {
+  patrimonio_atual_brl: 90000,
+  total_aportado_brl: 90000,
+  lucro_prejuizo_brl: 0,
+  rentabilidade_percentual: 0,
+  exterior_brl: 20000,
+  alocacao_por_tipo: [],
+  alocacao_por_ativo: [
+    ativoDesempenho("RENDA_FIXA", 20000),
+    ativoDesempenho("FII", 10000),
+    ativoDesempenho("ACAO_BR", 30000),
+    ativoDesempenho("EXTERIOR", 20000),
+    ativoDesempenho("CRIPTO", 10000),
+  ],
+  top_ativos: [],
+  maiores_ganhos: [],
+  maiores_perdas: [],
+  benchmarks: {
+    dolar: {},
+    ibovespa: {},
+    cdi: {},
+  },
+};
 
 const planoInvestimentos: DistribuicaoPlano = {
   id: "plano-investimentos",
@@ -121,5 +176,48 @@ describe("DistribuicaoPage", () => {
     renderPage();
 
     expect(await screen.findByText("Nenhum plano de distribuicao")).toBeInTheDocument();
+  });
+});
+
+describe("DistribuicaoPage - rebalanceamento inteligente", () => {
+  beforeEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.spyOn(api, "distribuicaoPlanos").mockResolvedValue([planoInvestimentosComRebalanceamento]);
+  });
+
+  it("sugere aporte proporcional ao deficit e zera a classe acima do alvo (exemplo da spec)", async () => {
+    vi.spyOn(api, "desempenhoInvestimentos").mockResolvedValue(desempenhoCarteira90mil);
+    renderPage();
+
+    fireEvent.change(await screen.findByPlaceholderText("0,00"), { target: { value: "10000" } });
+
+    const tabela = await screen.findByRole("table");
+    const linhaAcoes = within(tabela).getByText("Acoes BR").closest("tr") as HTMLElement;
+    expect(within(linhaAcoes).getByText("R$ 0,00")).toBeInTheDocument();
+    expect(within(linhaAcoes).getByText("Acima do alvo")).toBeInTheDocument();
+    expect(within(linhaAcoes).getByText(/direcionados as demais classes/)).toBeInTheDocument();
+
+    const linhaBitcoin = within(tabela).getByText("Bitcoin").closest("tr") as HTMLElement;
+    expect(within(linhaBitcoin).getByText("R$ 2.500,00")).toBeInTheDocument();
+    expect(within(linhaBitcoin).getByText("Abaixo do alvo")).toBeInTheDocument();
+
+    const linhaTotal = within(tabela).getByText("Total").closest("tr") as HTMLElement;
+    expect(within(linhaTotal).getByText("R$ 10.000,00")).toBeInTheDocument();
+  });
+
+  it("rotula o campo de valor como aporte e usa o label 'Valor do novo aporte'", async () => {
+    vi.spyOn(api, "desempenhoInvestimentos").mockResolvedValue(desempenhoCarteira90mil);
+    renderPage();
+
+    expect(await screen.findByText("Valor do novo aporte")).toBeInTheDocument();
+  });
+
+  it("cai pro rateio simples com aviso quando a carteira atual nao pode ser carregada", async () => {
+    vi.spyOn(api, "desempenhoInvestimentos").mockRejectedValue(new Error("falha de rede"));
+    renderPage();
+
+    expect(await screen.findByText(/mostrando o rateio simples/)).toBeInTheDocument();
+    expect(screen.getByText("Percentual")).toBeInTheDocument();
   });
 });

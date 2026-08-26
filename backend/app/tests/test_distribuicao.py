@@ -59,6 +59,57 @@ def test_listar_planos_semeia_os_dois_padroes_na_primeira_vez(session: Session):
     assert item_investimentos.subplano_id == investimentos.id
 
 
+def test_investimentos_semeado_ja_vem_com_tipos_ativo_para_rebalanceamento(session: Session):
+    """tipos_ativo e' o que liga cada classe do plano Investimentos ao valor
+    real de carteira (calculo em si e' client-side -- ver
+    frontend/src/lib/rebalanceamento.test.ts). So o plano Investimentos tem
+    essa correspondencia; Renda Extra mistura metas que nao sao classes de
+    ativo (Viagens, Reserva...) e por isso fica sem ela."""
+    investimentos = listar_planos(session)[0]
+
+    tipos_por_item = {item.nome: item.tipos_ativo for item in investimentos.itens}
+    assert tipos_por_item == {
+        "Renda fixa": ["RENDA_FIXA", "CAIXINHA_CDB"],
+        "FIIs": ["FII"],
+        "Acoes BR": ["ACAO_BR", "ETF_BR"],
+        "Exterior": ["EXTERIOR", "ACAO_EXTERIOR", "ETF_EXTERIOR"],
+        "Bitcoin": ["CRIPTO"],
+    }
+
+    renda_extra = listar_planos(session)[1]
+    assert all(item.tipos_ativo is None for item in renda_extra.itens)
+
+
+def test_plano_existente_sem_tipos_ativo_ganha_mapeamento_na_leitura(session: Session):
+    """Simula um plano "Investimentos" criado antes dessa funcionalidade
+    existir (tipos_ativo nunca setado). A primeira listagem depois do deploy
+    precisa preencher pelo nome, sem exigir migracao nem intervencao manual --
+    senao quem ja usava a Distribuicao nunca ganharia o rebalanceamento."""
+    listar_planos(session)  # semeia os padroes (e' descartado a seguir)
+    criado = criar_plano(
+        session,
+        DistribuicaoPlanoCreate(
+            nome="Investimentos velho",
+            itens=[
+                DistribuicaoItem(id="a", nome="Renda fixa", percentual=Decimal("50")),
+                DistribuicaoItem(id="b", nome="FIIs", percentual=Decimal("30")),
+                DistribuicaoItem(id="c", nome="Algo sem mapeamento", percentual=Decimal("20")),
+            ],
+        ),
+    )
+    assert all(item.tipos_ativo is None for item in criado.itens)
+
+    recarregado = next(p for p in listar_planos(session) if p.id == criado.id)
+    tipos_por_item = {item.nome: item.tipos_ativo for item in recarregado.itens}
+    assert tipos_por_item["Renda fixa"] == ["RENDA_FIXA", "CAIXINHA_CDB"]
+    assert tipos_por_item["FIIs"] == ["FII"]
+    assert tipos_por_item["Algo sem mapeamento"] is None
+
+    # Idempotente: ler de novo nao muda nada (nem quebra) o que ja foi preenchido.
+    outra_leitura = next(p for p in listar_planos(session) if p.id == criado.id)
+    assert {item.nome: item.tipos_ativo for item in outra_leitura.itens} == tipos_por_item
+
+
 def test_listar_planos_persiste_entre_chamadas_sem_recriar(session: Session):
     primeira_chamada = listar_planos(session)
     segunda_chamada = listar_planos(session)

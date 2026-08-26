@@ -506,3 +506,93 @@ export interface Dividendo {
   conta_destino_id?: string | null;
   observacao?: string | null;
 }
+
+export type EscopoDesempenho =
+  | "CARTEIRA_TOTAL"
+  | "ACAO_BR"
+  | "FII"
+  | "ETF_BR"
+  | "RENDA_FIXA"
+  | "EXTERIOR"
+  | "CRIPTO"
+  | "PREVIDENCIA"
+  | "DOLAR_CAIXA"
+  | "OUTRO"
+  | "PERSONALIZADO";
+
+export type PeriodoDesempenho = "desde_inicio" | "ano_atual" | "12m" | "24m" | "36m" | "personalizado";
+
+export type BenchmarkCodigo = "CDI" | "IBOVESPA" | "IFIX" | "SP500" | "SP500_USD" | "SP500_BRL";
+
+export interface BenchmarkResumoItem {
+  label: string;
+  rentabilidade_percentual?: number;
+  diferenca_pp?: number;
+  disponivel?: boolean;
+  erro?: string | null;
+}
+
+export interface RentabilidadeComparadaPonto {
+  periodo: string;
+  data: string;
+  retorno_periodo_carteira: number;
+  carteira: number;
+  CDI?: number;
+  IBOVESPA?: number;
+  IFIX?: number;
+  SP500?: number;
+  SP500_USD?: number;
+  SP500_BRL?: number;
+  [key: string]: string | number | undefined;
+}
+
+export interface RentabilidadeComparadaResponse {
+  escopo: {
+    codigo: string;
+    label: string;
+    tipos_ativo: TipoAtivo[];
+    ativos_ids: string[];
+  };
+  data_inicio_solicitada?: string | null;
+  data_inicio_efetiva: string;
+  data_fim: string;
+  moeda_base: string;
+  metodologia: string;
+  incluir_proventos: boolean;
+  cobertura: {
+    completa: boolean;
+    avisos: string[];
+  };
+  resumo: {
+    carteira_percentual: number;
+    benchmarks: Record<string, BenchmarkResumoItem>;
+  };
+  serie: RentabilidadeComparadaPonto[];
+}
+
+export interface EvolucaoCategoriaItem {
+  tipo: TipoAtivo;
+  label: string;
+  valor_brl: number;
+  percentual_carteira: number;
+}
+
+export interface EvolucaoCategoriaPeriodo {
+  ano: number;
+  mes: number;
+  periodo: string;
+  data: string;
+  patrimonio_total_brl: number;
+  categorias: EvolucaoCategoriaItem[];
+}
+
+export interface EvolucaoCategoriasResponse {
+  modo: string;
+  data_inicio: string;
+  data_fim: string;
+  cobertura: {
+    completa: boolean;
+    avisos: string[];
+  };
+  periodos: EvolucaoCategoriaPeriodo[];
+}

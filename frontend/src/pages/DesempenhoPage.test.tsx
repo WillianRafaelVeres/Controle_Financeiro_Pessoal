@@ -53,6 +53,51 @@ describe("DesempenhoPage", () => {
         rentabilidade_percentual: 25,
       },
     ]);
+    vi.spyOn(api, "rentabilidadeComparadaInvestimentos").mockResolvedValue({
+      escopo: { codigo: "CARTEIRA_TOTAL", label: "Carteira total", tipos_ativo: [], ativos_ids: [] },
+      data_inicio_efetiva: "2026-01-01",
+      data_fim: "2026-05-31",
+      moeda_base: "BRL",
+      metodologia: "MODIFIED_DIETZ_MENSAL_ENCADEADO",
+      incluir_proventos: true,
+      cobertura: { completa: true, avisos: [] },
+      resumo: {
+        carteira_percentual: 18.42,
+        benchmarks: {
+          CDI: { label: "CDI", rentabilidade_percentual: 14.21, diferenca_pp: 4.21 },
+          IBOVESPA: { label: "Ibovespa", rentabilidade_percentual: 11.48, diferenca_pp: 6.94 },
+        },
+      },
+      serie: [
+        {
+          periodo: "05/2026",
+          data: "2026-05-31",
+          retorno_periodo_carteira: 1.35,
+          carteira: 18.42,
+          CDI: 14.21,
+          IBOVESPA: 11.48,
+        },
+      ],
+    });
+    vi.spyOn(api, "evolucaoCategoriasInvestimentos").mockResolvedValue({
+      modo: "mensal",
+      data_inicio: "2026-01-01",
+      data_fim: "2026-05-31",
+      cobertura: { completa: true, avisos: [] },
+      periodos: [
+        {
+          ano: 2026,
+          mes: 5,
+          periodo: "05/2026",
+          data: "2026-05-31",
+          patrimonio_total_brl: 1500,
+          categorias: [
+            { tipo: "ACAO_BR", label: "Ações brasileiras", valor_brl: 1000, percentual_carteira: 66.67 },
+            { tipo: "FII", label: "Fundos imobiliários", valor_brl: 500, percentual_carteira: 33.33 },
+          ],
+        },
+      ],
+    });
     vi.spyOn(api, "ativos").mockResolvedValue([
       { id: "ativo-1", ticker: "BBAS3", nome: "Banco do Brasil", tipo_ativo: "ACAO_BR", moeda: "BRL" },
     ]);
@@ -80,14 +125,14 @@ describe("DesempenhoPage", () => {
     });
   });
 
-  it("renderiza evolucao temporal e historico mensal", async () => {
+  it("renderiza evolucao temporal, rentabilidade comparada e evolucao por categoria", async () => {
     renderPage();
 
     expect(await screen.findByText("Evolucao mensal do patrimonio")).toBeInTheDocument();
+    expect(await screen.findByText("Rentabilidade comparada")).toBeInTheDocument();
+    expect(await screen.findByText("Evolução por categoria")).toBeInTheDocument();
     expect(await screen.findByText("Historico consolidado")).toBeInTheDocument();
     expect(await screen.findByText("05/2026")).toBeInTheDocument();
-    expect(await screen.findByText("Mensal")).toBeInTheDocument();
-    expect(await screen.findByText("Anual")).toBeInTheDocument();
   });
 
   it("alterna para acompanhamento de proventos com filtros", async () => {
@@ -97,7 +142,5 @@ describe("DesempenhoPage", () => {
 
     expect(await screen.findByText("Proventos recebidos por mes")).toBeInTheDocument();
     expect(await screen.findByText("Filtros de proventos")).toBeInTheDocument();
-    expect(await screen.findByText("Agrupamento selecionado")).toBeInTheDocument();
-    expect((await screen.findAllByText("Acao BR")).length).toBeGreaterThan(0);
   });
 });

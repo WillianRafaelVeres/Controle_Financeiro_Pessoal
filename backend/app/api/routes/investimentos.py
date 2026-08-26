@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import date
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
 from decimal import Decimal
 
@@ -14,6 +15,10 @@ from app.schemas.investimento_schema import (
 )
 from app.services.dividendo_service import listar_historico_proventos
 from app.services.relatorio_service import projetar_patrimonio
+from app.services.performance_investimento_service import (
+    calcular_evolucao_categorias,
+    calcular_rentabilidade_comparada,
+)
 from app.services.investimento_service import (
     resolver_finalidade,
     atualizar_cotacao_automatica,
@@ -132,6 +137,46 @@ def historico_proventos(
     session: Session = Depends(get_session),
 ) -> dict:
     return listar_historico_proventos(session, modo, tipo_ativo, ativo_id, tipo_provento)
+
+
+@router.get("/desempenho/rentabilidade-comparada")
+def rentabilidade_comparada(
+    escopo: str = "CARTEIRA_TOTAL",
+    periodo: str = "desde_inicio",
+    data_inicio: date | None = None,
+    data_fim: date | None = None,
+    tipos_ativo: list[TipoAtivo] | None = Query(default=None),
+    ativos_ids: list[str] | None = Query(default=None),
+    benchmarks: list[str] | None = Query(default=None),
+    incluir_proventos: bool = True,
+    session: Session = Depends(get_session),
+) -> dict:
+    return calcular_rentabilidade_comparada(
+        session=session,
+        escopo_codigo=escopo,
+        periodo_codigo=periodo,
+        data_inicio_custom=data_inicio,
+        data_fim_custom=data_fim,
+        tipos_ativo_custom=tipos_ativo,
+        ativos_ids_custom=ativos_ids,
+        benchmarks_solicitados=benchmarks,
+        incluir_proventos=incluir_proventos,
+    )
+
+
+@router.get("/desempenho/evolucao-categorias")
+def evolucao_categorias(
+    modo: str = "mensal",
+    data_inicio: date | None = None,
+    data_fim: date | None = None,
+    session: Session = Depends(get_session),
+) -> dict:
+    return calcular_evolucao_categorias(
+        session=session,
+        modo=modo,
+        data_inicio_custom=data_inicio,
+        data_fim_custom=data_fim,
+    )
 
 
 @router.post("/comprar")

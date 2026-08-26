@@ -21,6 +21,9 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { Button } from "../components/ui/button";
 import { Select } from "../components/ui/select";
 import { Td, Th, Table } from "../components/ui/table";
+import { RentabilidadeComparadaChart } from "../features/investimentos/RentabilidadeComparadaChart";
+import { EvolucaoCategoriasChart } from "../features/investimentos/EvolucaoCategoriasChart";
+import type { RentabilidadeFiltersState } from "../features/investimentos/RentabilidadeFilters";
 import { api } from "../lib/api";
 import { formatMoney, formatPercent, toNumber } from "../lib/formatters";
 import { INVESTMENT_TYPE_OPTIONS } from "../lib/investmentProfiles";
@@ -102,6 +105,13 @@ export function DesempenhoPage() {
   const [tipoProventoFiltro, setTipoProventoFiltro] = useState<TipoProvento | "">("");
   const [proventosGroup, setProventosGroup] = useState<ProventosGroup>("classe");
 
+  const [rentabilidadeFilters, setRentabilidadeFilters] = useState<RentabilidadeFiltersState>({
+    escopo: "CARTEIRA_TOTAL",
+    periodo: "desde_inicio",
+    benchmarks: ["CDI", "IBOVESPA", "IFIX", "SP500_BRL"],
+    incluirProventos: true,
+  });
+
   const desempenho = useQuery({
     queryKey: ["investimentos", "desempenho"],
     queryFn: api.desempenhoInvestimentos,
@@ -111,6 +121,35 @@ export function DesempenhoPage() {
     queryKey: ["investimentos", "desempenho", "historico", periodo],
     queryFn: () => api.historicoDesempenhoInvestimentos(periodo),
     enabled: visao === "patrimonio" && Boolean(desempenho.data),
+    retry: false,
+  });
+  const rentabilidadeComparada = useQuery({
+    queryKey: [
+      "investimentos",
+      "rentabilidade-comparada",
+      rentabilidadeFilters.escopo,
+      rentabilidadeFilters.periodo,
+      rentabilidadeFilters.dataInicio,
+      rentabilidadeFilters.dataFim,
+      rentabilidadeFilters.benchmarks,
+      rentabilidadeFilters.incluirProventos,
+    ],
+    queryFn: () =>
+      api.rentabilidadeComparadaInvestimentos({
+        escopo: rentabilidadeFilters.escopo,
+        periodo: rentabilidadeFilters.periodo,
+        data_inicio: rentabilidadeFilters.dataInicio,
+        data_fim: rentabilidadeFilters.dataFim,
+        benchmarks: rentabilidadeFilters.benchmarks,
+        incluir_proventos: rentabilidadeFilters.incluirProventos,
+      }),
+    enabled: visao === "patrimonio",
+    retry: false,
+  });
+  const evolucaoCategorias = useQuery({
+    queryKey: ["investimentos", "evolucao-categorias"],
+    queryFn: () => api.evolucaoCategoriasInvestimentos(),
+    enabled: visao === "patrimonio",
     retry: false,
   });
   const ativos = useQuery({
@@ -125,7 +164,7 @@ export function DesempenhoPage() {
         tipo_ativo: tipoAtivoFiltro,
         ativo_id: ativoFiltro,
         tipo_provento: tipoProventoFiltro,
-    }),
+      }),
     enabled: visao === "proventos",
     retry: false,
   });
@@ -356,6 +395,22 @@ export function DesempenhoPage() {
           </div>
         )}
       </SectionCard>
+
+      {visao === "patrimonio" && (
+        <>
+          <RentabilidadeComparadaChart
+            data={rentabilidadeComparada.data}
+            isLoading={rentabilidadeComparada.isLoading}
+            filters={rentabilidadeFilters}
+            onFiltersChange={setRentabilidadeFilters}
+          />
+
+          <EvolucaoCategoriasChart
+            data={evolucaoCategorias.data}
+            isLoading={evolucaoCategorias.isLoading}
+          />
+        </>
+      )}
 
       {visao === "patrimonio" && patrimonioChartData.length > 0 && (
         <div className="grid gap-2 xl:grid-cols-2">

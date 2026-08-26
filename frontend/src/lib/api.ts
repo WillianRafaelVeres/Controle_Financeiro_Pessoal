@@ -12,6 +12,7 @@ import type {
   DesempenhoInvestimentos,
   DistribuicaoPlano,
   Dividendo,
+  EvolucaoCategoriasResponse,
   HistoricoDesempenhoInvestimento,
   HistoricoProventosInvestimentos,
   Lancamento,
@@ -22,6 +23,7 @@ import type {
   PlanejamentoNaoPlanejado,
   PlanejamentoResumo,
   Posicao,
+  RentabilidadeComparadaResponse,
   ExtratoDolar,
   ResumoDolar,
   Diagnostico,
@@ -34,16 +36,27 @@ import type {
 import { getApiBaseUrl } from "./apiBase";
 import { getAccessToken, isSupabaseConfigured } from "./supabase";
 
-type Query = Record<string, string | number | boolean | undefined | null>;
+type QueryValue = string | number | boolean | string[] | number[] | undefined | null;
+type Query = Record<string, QueryValue>;
 
 function withQuery(path: string, query?: Query) {
   if (!query) return path;
   const params = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
+    if (value !== undefined && value !== null && value !== "") {
+      if (Array.isArray(value)) {
+        value.forEach((item) => {
+          if (item !== undefined && item !== null && item !== "") {
+            params.append(key, String(item));
+          }
+        });
+      } else {
+        params.set(key, String(value));
+      }
+    }
   });
-  const suffix = params.toString();
-  return suffix ? `${path}?${suffix}` : path;
+  const queryString = params.toString();
+  return queryString ? `${path}?${queryString}` : path;
 }
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}, query?: Query): Promise<T> {
@@ -177,6 +190,18 @@ export const api = {
     modo: "mensal" | "anual",
     filtros: { tipo_ativo?: TipoAtivo | ""; ativo_id?: string; tipo_provento?: TipoProvento | "" } = {},
   ) => apiFetch<HistoricoProventosInvestimentos>("/investimentos/desempenho/proventos", {}, { modo, ...filtros }),
+  rentabilidadeComparadaInvestimentos: (params: {
+    escopo?: string;
+    periodo?: string;
+    data_inicio?: string;
+    data_fim?: string;
+    tipos_ativo?: string[];
+    ativos_ids?: string[];
+    benchmarks?: string[];
+    incluir_proventos?: boolean;
+  }) => apiFetch<RentabilidadeComparadaResponse>("/investimentos/desempenho/rentabilidade-comparada", {}, params),
+  evolucaoCategoriasInvestimentos: (params: { modo?: string; data_inicio?: string; data_fim?: string } = {}) =>
+    apiFetch<EvolucaoCategoriasResponse>("/investimentos/desempenho/evolucao-categorias", {}, params),
   comprar: (payload: Record<string, unknown>) => apiFetch("/investimentos/comprar", { method: "POST", body: JSON.stringify(payload) }),
   vender: (payload: Record<string, unknown>) => apiFetch("/investimentos/vender", { method: "POST", body: JSON.stringify(payload) }),
   movimentosInvestimentos: () => apiFetch<MovimentoInvestimento[]>("/investimentos/movimentos"),

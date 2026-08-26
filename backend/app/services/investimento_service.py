@@ -849,20 +849,13 @@ def _validar_fluxo_quantidade(session: Session, ativo_id: str, ignorar_movimento
         .order_by(MovimentoInvestimento.data_movimento, MovimentoInvestimento.criado_em)
     ).all()
     if _controle_por_valor(ativo):
-        saldo = Decimal("0.00")
-        for movimento in movimentos:
-            if movimento.id == ignorar_movimento_id:
-                continue
-            if _movimento_entrada(movimento.tipo_movimento):
-                saldo += _decimal(movimento.valor_total)
-                continue
-            if _movimento_saida(movimento.tipo_movimento):
-                saldo -= _decimal(movimento.valor_total)
-                if saldo < Decimal("0.00"):
-                    raise HTTPException(
-                        status_code=422,
-                        detail="Esta alteracao deixaria o investimento negativo. Ajuste ou remova resgates posteriores primeiro.",
-                    )
+        # Resgate de um ativo com rendimento (Caixinha CDB, Reserva...) pode
+        # legitimamente superar a soma dos aportes -- o excedente e' juro
+        # acumulado, nao principal. Sem guardar o valor atual em cada ponto
+        # do tempo nao da pra saber se um resgate "grande demais" e' um erro
+        # de digitação ou so rendimento normal, entao esse tipo nao bloqueia
+        # edicao/exclusao por aqui. _calcular_posicao_ativo ja trata o saldo
+        # corretamente (trava em zero a cada resgate, nunca fica negativo).
         return
 
     quantidade = Decimal("0.00")
@@ -1233,8 +1226,15 @@ def _calcular_posicao_ativo(
             if _movimento_entrada(movimento.tipo_movimento):
                 saldo_valor += _decimal(movimento.valor_total)
             elif _movimento_saida(movimento.tipo_movimento):
-                saldo_valor -= _decimal(movimento.valor_total)
-        valor_aplicado = max(saldo_valor, Decimal("0.00"))
+                # Um resgate pode superar o que foi aportado ate' aqui -- o
+                # excedente e' rendimento acumulado (juro da CDB, por
+                # exemplo), nao principal voltando. Por isso o saldo e'
+                # travado em zero a CADA resgate, nao so no final: sem isso,
+                # um resgate maior que o aportado deixava um "debito"
+                # negativo que consumia silenciosamente o proximo aporte
+                # feito depois nessa mesma caixinha.
+                saldo_valor = max(saldo_valor - _decimal(movimento.valor_total), Decimal("0.00"))
+        valor_aplicado = saldo_valor
         valor_atual = cotacao.preco if cotacao and valor_aplicado > 0 else valor_aplicado
         return {
             "ativo_id": ativo.id,

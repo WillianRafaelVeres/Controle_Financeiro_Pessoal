@@ -3281,3 +3281,52 @@ def test_calcular_investimentos_exclui_ativos_guardados(session: Session):
     )
 
     assert calcular_investimentos(session) == Decimal("150.00")
+
+
+def test_resgate_maior_que_aportado_nao_deixa_debito_no_proximo_aporte(session: Session):
+    """Regressao: um resgate que inclui rendimento acumulado (maior que a
+    soma dos aportes ate ali, como um resgate total de uma Caixinha CDB que
+    rendeu juros) nao pode deixar um 'debito' negativo que consome
+    silenciosamente o proximo aporte feito na mesma caixinha depois."""
+    cofrinho = comprar(
+        session,
+        MovimentoInvestimentoCreate(tipo_ativo=TipoAtivo.CAIXINHA_CDB, nome="Cofrinho Turbinado", valor_total=Decimal("10000.00")),
+    )
+    registrar_cotacao(session, cofrinho.ativo_id, Decimal("10889.30"))
+    vender(
+        session,
+        MovimentoInvestimentoCreate(ativo_id=cofrinho.ativo_id, valor_total=Decimal("10889.30")),
+    )
+    comprar(
+        session,
+        MovimentoInvestimentoCreate(ativo_id=cofrinho.ativo_id, valor_total=Decimal("1750.00")),
+    )
+
+    posicao = calcular_posicao(session, cofrinho.ativo_id)
+
+    # Depois do resgate total, o novo aporte de R$ 1.750 comeca do zero --
+    # nao R$ 860,70 (que era 1750 menos o rendimento de 889,30 ja resgatado).
+    assert posicao["valor_total_aportado"] == Decimal("1750.00")
+
+
+def test_editar_movimento_em_caixinha_com_resgate_maior_nao_bloqueia(session: Session):
+    """_validar_fluxo_quantidade tinha a mesma falha conceitual: bloqueava
+    qualquer edicao/exclusao numa caixinha que ja teve resgate maior que o
+    aportado ate ali, mesmo quando a edicao em si e' inofensiva (ex.: so
+    corrigir a observacao de um resgate que legitimamente incluiu juros)."""
+    cofrinho = comprar(
+        session,
+        MovimentoInvestimentoCreate(tipo_ativo=TipoAtivo.CAIXINHA_CDB, nome="Cofrinho Turbinado", valor_total=Decimal("10000.00")),
+    )
+    registrar_cotacao(session, cofrinho.ativo_id, Decimal("10889.30"))
+    resgate = vender(
+        session,
+        MovimentoInvestimentoCreate(ativo_id=cofrinho.ativo_id, valor_total=Decimal("10889.30")),
+    )
+
+    # Antes da correcao, isso levantava "Esta alteracao deixaria o
+    # investimento negativo" mesmo sendo so uma correcao de observacao.
+    atualizar_movimento(session, resgate.id, MovimentoInvestimentoUpdate(observacao="Resgate total do cofrinho"))
+
+    posicao = calcular_posicao(session, cofrinho.ativo_id)
+    assert posicao["valor_total_aportado"] == Decimal("0.00")

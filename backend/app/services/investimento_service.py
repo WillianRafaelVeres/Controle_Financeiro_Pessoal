@@ -744,6 +744,10 @@ def _obter_ou_criar_ativo(session: Session, payload: MovimentoInvestimentoCreate
         if not ativo or not ativo.ativo:
             raise HTTPException(status_code=404, detail="Ativo nao encontrado.")
         corretora = _normalizar_texto(payload.corretora)
+        if payload.tipo_ativo and ativo.tipo_ativo != payload.tipo_ativo:
+            ativo.tipo_ativo = payload.tipo_ativo
+            ativo.moeda = _moeda_padrao(payload.tipo_ativo)
+            ativo.finalidade = resolver_finalidade(payload.tipo_ativo, getattr(payload, "finalidade", None))
         _aplicar_dados_ativo_existente(ativo, payload, corretora)
         session.add(ativo)
         return ativo
@@ -762,7 +766,14 @@ def _obter_ou_criar_ativo(session: Session, payload: MovimentoInvestimentoCreate
         ativo, ticker = _buscar_ativo_sem_ticker(session, payload.tipo_ativo, corretora, nome)
     else:
         ticker = payload.ticker.upper().strip()
-        ativo = session.exec(select(Ativo).where(Ativo.ticker == ticker)).first()
+        ativo = session.exec(select(Ativo).where(Ativo.ticker == ticker, Ativo.tipo_ativo == payload.tipo_ativo)).first()
+        if not ativo:
+            ativo_conflito = session.exec(select(Ativo).where(Ativo.ticker == ticker)).first()
+            if ativo_conflito:
+                ativo = ativo_conflito
+                ativo.tipo_ativo = payload.tipo_ativo
+                ativo.moeda = _moeda_padrao(payload.tipo_ativo)
+                ativo.finalidade = resolver_finalidade(payload.tipo_ativo, getattr(payload, "finalidade", None))
     if ativo:
         _aplicar_dados_ativo_existente(ativo, payload, corretora)
         session.add(ativo)

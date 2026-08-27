@@ -262,6 +262,29 @@ def _ensure_schema_compatibility() -> None:
             conn.execute(
                 text(
                     """
+                    UPDATE ativos
+                    SET tipo_ativo = 'FII'
+                    WHERE UPPER(ticker) = 'CPTS11' AND tipo_ativo = 'ACAO_BR'
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE ativos
+                    SET tipo_ativo = 'FII'
+                    WHERE tipo_ativo = 'ACAO_BR'
+                      AND id IN (
+                        SELECT DISTINCT ativo_id
+                        FROM dividendos
+                        WHERE tipo_provento = 'RENDIMENTO_FII'
+                      )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
                     UPDATE lancamentos
                     SET origem_sistema = 'DOLAR_RETIRADA'
                     WHERE origem_sistema IS NULL

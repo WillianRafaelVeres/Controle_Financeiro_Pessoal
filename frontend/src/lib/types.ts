@@ -575,6 +575,10 @@ export interface EvolucaoCategoriaItem {
   label: string;
   valor_brl: number;
   percentual_carteira: number;
+  aportado_acumulado_brl?: number;
+  aportes_mes_brl?: number;
+  lucro_brl?: number;
+  rentabilidade_percentual?: number;
 }
 
 export interface EvolucaoCategoriaPeriodo {

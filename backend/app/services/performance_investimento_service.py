@@ -186,13 +186,24 @@ def calcular_rentabilidade_comparada(
                 if snap.qualidade_dado == "PARCIAL":
                     avisos_cobertura.add(f"Histórico parcial em {per_str} para alguns ativos.")
 
-        val_inicio_mes = val_inicio_anterior if val_inicio_anterior is not None else (val_fim_mes - aportes_mes + retiradas_mes)
+        if val_inicio_anterior is not None:
+            val_inicio_mes = val_inicio_anterior
+        else:
+            ano_prev = ano - 1 if mes == 1 else ano
+            mes_prev = 12 if mes == 1 else mes - 1
+            val_inicio_mes = sum(
+                (snaps_map[(ano_prev, mes_prev, a_id)].valor_fim_brl
+                 for a_id in ativos_ids_escopo
+                 if (ano_prev, mes_prev, a_id) in snaps_map),
+                Decimal("0.00"),
+            )
+
         val_inicio_mes = max(Decimal("0.00"), val_inicio_mes)
         val_inicio_anterior = val_fim_mes
 
         # Net flow = Aportes - Retiradas
         cf_liquido = aportes_mes - retiradas_mes
-        w = Decimal("0.5") # Peso ponderado no meio do mês
+        w = Decimal("1.0") if val_inicio_mes == 0 else Decimal("0.5")
 
         ve_ajustado = val_fim_mes + (proventos_mes if incluir_proventos else Decimal("0.00"))
         denominador = val_inicio_mes + (w * cf_liquido)
@@ -300,11 +311,32 @@ def calcular_evolucao_categorias(
     )
     snaps_com_tipo = session.exec(query).all()
 
-    # Mapear por (ano, mes, tipo_ativo) -> valor_brl total
+    # Mapear por (ano, mes, tipo_ativo) -> valor_brl total e fluxos
     categoria_valores: dict[tuple[int, int, TipoAtivo], Decimal] = {}
+    categoria_aportes: dict[tuple[int, int, TipoAtivo], Decimal] = {}
+    categoria_retiradas: dict[tuple[int, int, TipoAtivo], Decimal] = {}
+
     for snap, t_ativo in snaps_com_tipo:
         key = (snap.ano, snap.mes, t_ativo)
         categoria_valores[key] = categoria_valores.get(key, Decimal("0.00")) + snap.valor_fim_brl
+        categoria_aportes[key] = categoria_aportes.get(key, Decimal("0.00")) + snap.aportes_periodo_brl
+        categoria_retiradas[key] = categoria_retiradas.get(key, Decimal("0.00")) + snap.retiradas_periodo_brl
+
+    # Obter anos e meses únicos em ordem cronológica de todos os snapshots para rastrear aportes acumulados
+    todos_periodos = sorted({(snap.ano, snap.mes) for snap, _ in snaps_com_tipo})
+
+    # Rastrear o aportado líquido acumulado por categoria
+    aportado_acumulado_por_cat: dict[TipoAtivo, Decimal] = {t: Decimal("0.00") for t in TipoAtivo}
+    aportado_cat_por_mes: dict[tuple[int, int, TipoAtivo], Decimal] = {}
+
+    for p_ano, p_mes in todos_periodos:
+        for t_ativo in TipoAtivo:
+            ap = categoria_aportes.get((p_ano, p_mes, t_ativo), Decimal("0.00"))
+            ret = categoria_retiradas.get((p_ano, p_mes, t_ativo), Decimal("0.00"))
+            aportado_acumulado_por_cat[t_ativo] = max(
+                Decimal("0.00"), aportado_acumulado_por_cat[t_ativo] + ap - ret
+            )
+            aportado_cat_por_mes[(p_ano, p_mes, t_ativo)] = aportado_acumulado_por_cat[t_ativo]
 
     periodos_resultado = []
 
@@ -317,18 +349,28 @@ def calcular_evolucao_categorias(
 
         for t_ativo in TipoAtivo:
             v_cat = categoria_valores.get((ano, mes, t_ativo), Decimal("0.00"))
-            if v_cat > 0:
+            ap_cat = aportado_cat_por_mes.get((ano, mes, t_ativo), Decimal("0.00"))
+            if v_cat > 0 or ap_cat > 0:
                 cats_mes_dict[t_ativo] = v_cat
                 patrimonio_total_mes += v_cat
 
         categorias_lista = []
         for t_ativo, v_cat in cats_mes_dict.items():
             pct = float((v_cat / patrimonio_total_mes) * Decimal("100.0")) if patrimonio_total_mes > 0 else 0.0
+            aportado_cat = aportado_cat_por_mes.get((ano, mes, t_ativo), Decimal("0.00"))
+            ap_mes = categoria_aportes.get((ano, mes, t_ativo), Decimal("0.00"))
+            lucro_cat = v_cat - aportado_cat
+            rent_cat = (lucro_cat / aportado_cat * Decimal("100.0")) if aportado_cat > 0 else Decimal("0.00")
+
             categorias_lista.append({
                 "tipo": t_ativo.value,
                 "label": CATEGORIA_LABELS.get(t_ativo, t_ativo.value),
                 "valor_brl": float(v_cat),
                 "percentual_carteira": round(pct, 2),
+                "aportado_acumulado_brl": float(aportado_cat),
+                "aportes_mes_brl": float(ap_mes),
+                "lucro_brl": float(lucro_cat),
+                "rentabilidade_percentual": round(float(rent_cat), 2),
             })
 
         periodos_resultado.append({

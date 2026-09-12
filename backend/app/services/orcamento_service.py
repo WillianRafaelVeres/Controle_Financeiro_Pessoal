@@ -580,7 +580,10 @@ def listar_itens_orcamento_mes(session: Session, ano: int, mes: int) -> list[dic
         categoria_nome = item.categoria_nome_snapshot or (categoria.nome if categoria else "")
         subcategoria_nome = item.subcategoria_nome_snapshot or (subcategoria.nome if subcategoria else None)
         realizado = _realizado_item_agregado(item, por_categoria, por_subcategoria, ano, mes)
-        diferenca = item.valor_orcado - realizado
+        if item.natureza in {NaturezaCategoria.RECEITA, NaturezaCategoria.INVESTIMENTO}:
+            diferenca = realizado - item.valor_orcado
+        else:
+            diferenca = item.valor_orcado - realizado
         percentual = Decimal("0.00") if item.valor_orcado == 0 else (realizado / item.valor_orcado) * Decimal("100")
         historico = [
             {

@@ -260,9 +260,9 @@ function ResumoMes({
         />
         <PlanningCard kind="saldo" title="Resultado do mes" planned={saldoPrevisto} actual={saldoAtual} />
       </div>
-      <div className="overflow-x-auto rounded-xl border border-slate-800 text-[12px]">
-        <div className="min-w-[520px]">
-          <div className="grid grid-cols-[1fr_repeat(4,minmax(72px,auto))] gap-2 bg-slate-900 px-3 py-2 text-[11px] font-semibold uppercase text-slate-500">
+      <div className="rounded-xl border border-slate-800 text-[12px] bg-[#111821] overflow-hidden">
+        <div className="w-full">
+          <div className="grid grid-cols-5 gap-1 bg-slate-900 px-3 py-2 text-[11px] font-semibold uppercase text-slate-500">
             <span>Tipo</span>
             <span className="text-right">Planejado</span>
             <span className="text-right">Dentro</span>
@@ -427,8 +427,8 @@ function ExecutionBreakdown({ label, natureza, planned, inside, outside, total }
   total: number;
 }) {
   return (
-    <div className="grid grid-cols-[1fr_repeat(4,minmax(72px,auto))] gap-2 border-t border-slate-800 px-3 py-2">
-      <span className="font-medium text-slate-300">{label}</span>
+    <div className="grid grid-cols-5 gap-1 border-t border-slate-800 px-3 py-2">
+      <span className="font-medium text-slate-300 truncate">{label}</span>
       <Value value={planned} />
       <Value value={inside} />
       <Value value={outside} tone={outsideTone(natureza, outside)} />

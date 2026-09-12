@@ -1,6 +1,8 @@
 import csv
 import hashlib
 import io
+import json
+import logging
 import re
 import unicodedata
 from datetime import date, datetime, timedelta, timezone
@@ -32,7 +34,7 @@ from app.models.conta import Conta
 from app.models.categoria import Categoria
 from app.models.subcategoria import Subcategoria
 from app.schemas.investimento_schema import MovimentoInvestimentoCreate, MovimentoInvestimentoUpdate
-from app.services.dividendo_service import dividendos_recebidos_brl
+from app.services.dividendo_service import dividendos_recebidos_brl, valor_dividendo_brl
 from app.services.exterior_dolar_service import buscar_cotacao_dolar_atual, registrar_movimento_dolar, resumo_dolar, saldo_teorico_usd
 
 
@@ -75,6 +77,17 @@ _TESOURO_CACHE_TTL = timedelta(hours=6)
 _BENCHMARK_CACHE: dict[str, dict] = {}
 _BENCHMARK_CACHE_TTL = timedelta(minutes=15)
 _PERMITE_NULL_QUANTIDADE_CACHE: dict[str, bool] = {}
+logger = logging.getLogger(__name__)
+
+_TESOURO_ALIASES = {
+    "lft": {"selic"},
+    "ltn": {"prefixado"},
+    "ntnb": {"ipca"},
+    "ntnf": {"prefixado", "juros", "semestrais"},
+    "renda": {"renda"},
+    "educa": {"educa"},
+}
+
 # Palavras genericas que nao ajudam a distinguir o titulo do Tesouro.
 _TESOURO_STOPWORDS = {"tesouro", "com", "de", "do", "da", "e"}
 TIPOS_COM_DIVIDENDOS = {TipoAtivo.ACAO_BR, TipoAtivo.FII, TipoAtivo.ETF_BR} | TIPOS_EXTERIOR
@@ -326,7 +339,19 @@ def _tokens_tesouro(texto: str | None) -> set[str]:
     base = unicodedata.normalize("NFKD", texto)
     base = "".join(ch for ch in base if not unicodedata.combining(ch))
     base = re.sub(r"[^a-z0-9]+", " ", base.lower())
-    return {token for token in base.split() if token} - _TESOURO_STOPWORDS
+    raw_tokens = {token for token in base.split() if token}
+    tokens = raw_tokens - _TESOURO_STOPWORDS
+    expanded = set(tokens)
+    for t in tokens:
+        if t in _TESOURO_ALIASES:
+            expanded |= _TESOURO_ALIASES[t]
+        if re.fullmatch(r"(2[4-9]|3\d|4\d|5\d)", t):
+            expanded.add(f"20{t}")
+    if "ntn" in raw_tokens and "b" in raw_tokens:
+        expanded.add("ipca")
+    if "ntn" in raw_tokens and "f" in raw_tokens:
+        expanded.update(["prefixado", "juros", "semestrais"])
+    return expanded
 
 
 def _pu_para_decimal(valor: str | None) -> Decimal | None:
@@ -350,24 +375,80 @@ def _data_base_ordenavel(valor: str | None) -> tuple[int, int, int]:
 def _carregar_tabela_tesouro() -> list[dict]:
     """Baixa a tabela diaria de precos do Tesouro Direto (Tesouro Transparente).
 
-    Retorna apenas os titulos da data-base mais recente. O resultado fica em
-    cache por algumas horas porque o CSV oficial tem o historico completo (~14 MB).
+    Retorna a cotacao mais recente para cada titulo individual. Usa cache em memoria e
+    arquivo em disco para evitar downloads lentos de 15 MB a cada requisicao.
     """
     carregado_em = _TESOURO_CACHE.get("carregado_em")
     itens = _TESOURO_CACHE.get("itens")
     if itens is not None and carregado_em and datetime.now(timezone.utc) - carregado_em < _TESOURO_CACHE_TTL:
         return itens
 
-    response = httpx.get(TESOURO_CSV_URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=60, follow_redirects=True)
-    response.raise_for_status()
-    linhas = list(csv.DictReader(io.StringIO(response.content.decode("latin-1")), delimiter=";"))
+    from app.core.config import settings
+    cache_path = settings.data_dir / "tesouro_cache.json"
+
+    # Se existir cache recente em disco, carregar rapidamente
+    if cache_path.exists():
+        try:
+            mtime = datetime.fromtimestamp(cache_path.stat().st_mtime, tz=timezone.utc)
+            if datetime.now(timezone.utc) - mtime < _TESOURO_CACHE_TTL:
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    dados = json.load(f)
+                itens_disco = [
+                    {
+                        "tipo_tokens": set(d["tipo_tokens"]),
+                        "ano": d["ano"],
+                        "preco": Decimal(str(d["preco"])),
+                    }
+                    for d in dados
+                ]
+                _TESOURO_CACHE["itens"] = itens_disco
+                _TESOURO_CACHE["carregado_em"] = mtime
+                return itens_disco
+        except Exception:
+            pass
+
+    linhas = None
+    try:
+        response = httpx.get(TESOURO_CSV_URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=30, follow_redirects=True)
+        response.raise_for_status()
+        linhas = list(csv.DictReader(io.StringIO(response.content.decode("latin-1")), delimiter=";"))
+    except Exception as exc:
+        logger.warning(f"Erro ao baixar CSV do Tesouro Direto: {exc}")
+        if cache_path.exists():
+            try:
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    dados = json.load(f)
+                itens_disco = [
+                    {
+                        "tipo_tokens": set(d["tipo_tokens"]),
+                        "ano": d["ano"],
+                        "preco": Decimal(str(d["preco"])),
+                    }
+                    for d in dados
+                ]
+                _TESOURO_CACHE["itens"] = itens_disco
+                _TESOURO_CACHE["carregado_em"] = datetime.now(timezone.utc)
+                return itens_disco
+            except Exception:
+                pass
+        raise
+
     if not linhas:
         raise ValueError("CSV do Tesouro Direto veio vazio.")
 
-    data_base_max = max((linha.get("Data Base") or "" for linha in linhas), key=_data_base_ordenavel)
     registros: list[dict] = []
+    vistos: set[tuple[frozenset[str], str]] = set()
+    para_salvar = []
+
     for linha in linhas:
-        if (linha.get("Data Base") or "") != data_base_max:
+        tipo = linha.get("Tipo Titulo") or ""
+        vencimento = linha.get("Data Vencimento") or ""
+        ano = vencimento[-4:] if len(vencimento) >= 4 else ""
+        if not ano:
+            continue
+        tipo_tokens = frozenset(_tokens_tesouro(tipo))
+        chave = (tipo_tokens, ano)
+        if chave in vistos:
             continue
         preco = (
             _pu_para_decimal(linha.get("PU Venda Manha"))
@@ -376,14 +457,28 @@ def _carregar_tabela_tesouro() -> list[dict]:
         )
         if not preco:
             continue
-        vencimento = linha.get("Data Vencimento") or ""
+        vistos.add(chave)
         registros.append(
             {
-                "tipo_tokens": _tokens_tesouro(linha.get("Tipo Titulo")),
-                "ano": vencimento[-4:] if len(vencimento) >= 4 else "",
+                "tipo_tokens": set(tipo_tokens),
+                "ano": ano,
                 "preco": preco,
             }
         )
+        para_salvar.append(
+            {
+                "tipo_tokens": list(tipo_tokens),
+                "ano": ano,
+                "preco": str(preco),
+            }
+        )
+
+    try:
+        settings.data_dir.mkdir(parents=True, exist_ok=True)
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(para_salvar, f)
+    except Exception as exc:
+        logger.warning(f"Nao foi possivel gravar cache do Tesouro em disco: {exc}")
 
     _TESOURO_CACHE["itens"] = registros
     _TESOURO_CACHE["carregado_em"] = datetime.now(timezone.utc)
@@ -665,6 +760,15 @@ def sincronizar_subcategorias_caixinha(session: Session) -> int:
     return corrigidos
 
 
+def _calcular_dividendos_mes_brl(session: Session, ano: int, mes: int) -> Decimal:
+    dividendos = session.exec(select(Dividendo)).all()
+    total = Decimal("0.00")
+    for d in dividendos:
+        if d.data_recebimento.year == ano and d.data_recebimento.month == mes:
+            total += valor_dividendo_brl(session, d)
+    return total
+
+
 def _registrar_snapshot_mensal(session: Session, desempenho: dict, data_referencia: date | None = None) -> HistoricoInvestimentoMensal:
     referencia = data_referencia or date.today()
     snapshot = session.exec(
@@ -678,7 +782,7 @@ def _registrar_snapshot_mensal(session: Session, desempenho: dict, data_referenc
     snapshot.patrimonio_atual_brl = Decimal(str(desempenho.get("patrimonio_atual_brl") or "0"))
     snapshot.total_aportado_brl = Decimal(str(desempenho.get("total_aportado_brl") or "0"))
     snapshot.lucro_prejuizo_brl = Decimal(str(desempenho.get("lucro_prejuizo_brl") or "0"))
-    snapshot.dividendos_brl = Decimal(str(desempenho.get("dividendos_brl") or "0"))
+    snapshot.dividendos_brl = _calcular_dividendos_mes_brl(session, referencia.year, referencia.month)
     snapshot.rentabilidade_percentual = Decimal(str(desempenho.get("rentabilidade_percentual") or "0"))
     snapshot.atualizado_em = datetime.now(timezone.utc)
     session.add(snapshot)
@@ -1533,15 +1637,36 @@ def listar_historico_desempenho(session: Session, modo: str = "mensal") -> list[
     snapshots = session.exec(
         select(HistoricoInvestimentoMensal).order_by(HistoricoInvestimentoMensal.ano, HistoricoInvestimentoMensal.mes)
     ).all()
+
+    # Pre-calcular dividendos por mes e ano para garantir exatidao em qualquer historico
+    dividendos_por_mes: dict[tuple[int, int], Decimal] = {}
+    dividendos_por_ano: dict[int, Decimal] = {}
+    for d in session.exec(select(Dividendo)).all():
+        val = valor_dividendo_brl(session, d)
+        key_mes = (d.data_recebimento.year, d.data_recebimento.month)
+        dividendos_por_mes[key_mes] = dividendos_por_mes.get(key_mes, Decimal("0.00")) + val
+        dividendos_por_ano[d.data_recebimento.year] = dividendos_por_ano.get(d.data_recebimento.year, Decimal("0.00")) + val
+
     if modo_normalizado == "mensal":
-        return [_snapshot_to_dict(snapshot) for snapshot in snapshots]
+        resultado = []
+        for snapshot in snapshots:
+            d_dict = _snapshot_to_dict(snapshot)
+            d_dict["dividendos_brl"] = dividendos_por_mes.get((snapshot.ano, snapshot.mes), Decimal("0.00"))
+            resultado.append(d_dict)
+        return resultado
 
     por_ano: dict[int, HistoricoInvestimentoMensal] = {}
     for snapshot in snapshots:
         atual = por_ano.get(snapshot.ano)
         if atual is None or snapshot.mes >= atual.mes:
             por_ano[snapshot.ano] = snapshot
-    return [_snapshot_to_dict(snapshot, periodo=str(ano)) for ano, snapshot in sorted(por_ano.items())]
+
+    resultado = []
+    for ano, snapshot in sorted(por_ano.items()):
+        d_dict = _snapshot_to_dict(snapshot, periodo=str(ano))
+        d_dict["dividendos_brl"] = dividendos_por_ano.get(ano, Decimal("0.00"))
+        resultado.append(d_dict)
+    return resultado
 
 
 def comprar(session: Session, payload: MovimentoInvestimentoCreate, commit: bool = True) -> MovimentoInvestimento:
@@ -1670,12 +1795,16 @@ def atualizar_cotacao_automatica(session: Session, ativo_id: str) -> Cotacao:
         raise HTTPException(status_code=422, detail="Cotacao automatica disponivel apenas para acoes BR, FIIs, ETFs BR, exterior, criptos e Tesouro Direto.")
     if ativo.tipo_ativo == TipoAtivo.RENDA_FIXA:
         preco = _buscar_preco_tesouro(ativo)
+        fonte = "TESOURO"
+        if not preco:
+            preco = _buscar_preco_yahoo(ativo)
+            fonte = "YAHOO"
         if not preco:
             raise HTTPException(
                 status_code=422,
-                detail="Nao foi possivel encontrar este titulo no Tesouro Direto. Use o nome com o ano de vencimento (ex.: Tesouro Selic 2029).",
+                detail="Nao foi possivel encontrar este titulo no Tesouro Direto nem no Yahoo. Use o nome com o ano de vencimento (ex.: Tesouro Selic 2029) ou informe o valor manualmente.",
             )
-        return registrar_cotacao(session, ativo_id, preco, fonte="TESOURO")
+        return registrar_cotacao(session, ativo_id, preco, fonte=fonte)
     preco = _buscar_preco_cripto_brl(session, ativo) if ativo.tipo_ativo == TipoAtivo.CRIPTO else _buscar_preco_yahoo(ativo)
     if not preco:
         raise HTTPException(status_code=422, detail="Nao foi possivel encontrar cotacao automatica para este ticker.")

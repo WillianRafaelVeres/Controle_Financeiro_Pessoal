@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Bar, BarChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, Area, AreaChart, Legend } from "recharts";
+import { Bar, BarChart, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, Area, AreaChart, Legend } from "recharts";
 import { EmptyState } from "../../components/finance/EmptyState";
 import { SectionCard } from "../../components/finance/SectionCard";
 import { Td, Th, Table } from "../../components/ui/table";
@@ -70,7 +70,7 @@ export function InvestimentosSection({ ano, mes }: InvestimentosSectionProps) {
               <LineChart data={historicoPatrimonio.data || []}>
                 <CartesianGrid stroke="#273343" strokeDasharray="3 3" vertical={false} />
                 <XAxis
-                  dataKey="data"
+                  dataKey="periodo"
                   tick={axisStyle}
                   axisLine={false}
                   tickLine={false}
@@ -80,15 +80,15 @@ export function InvestimentosSection({ ano, mes }: InvestimentosSectionProps) {
                 <Legend />
                 <Line type="monotone" dataKey="patrimonio_atual_brl" stroke="#16A34A" strokeWidth={2} name="Patrimônio" />
                 <Line type="monotone" dataKey="total_aportado_brl" stroke="#2563EB" strokeWidth={2} name="Aportado" strokeDasharray="5 5" />
-                <Line type="monotone" dataKey="resultado_brl" stroke="#f59e0b" strokeWidth={2} name="Resultado" />
+                <Line type="monotone" dataKey="lucro_prejuizo_brl" stroke="#f59e0b" strokeWidth={2} name="Resultado" />
               </LineChart>
             </ResponsiveContainer>
           </div>
         )}
       </SectionCard>
 
-      {/* Seção 4.2: Rentabilidade por Tipo de Ativo */}
-      <SectionCard title="Rentabilidade por tipo de ativo" description="Qual tipo está rendendo mais">
+      {/* Seção 4.2: Rentabilidade por Ativo */}
+      <SectionCard title="Rentabilidade por ativo" description="Rentabilidade acumulada de cada ativo na carteira">
         {rentabilidadeData.length === 0 ? (
           <EmptyState title="Sem dados" description="Nenhum ativo registrado ou sem dados de rentabilidade." />
         ) : (
@@ -102,7 +102,11 @@ export function InvestimentosSection({ ano, mes }: InvestimentosSectionProps) {
                   contentStyle={tooltipStyle}
                   formatter={(value) => formatPercent(value as number)}
                 />
-                <Bar dataKey="rentabilidade" fill="#16A34A" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="rentabilidade" radius={[4, 4, 0, 0]}>
+                  {rentabilidadeData.map((item, idx) => (
+                    <Cell key={`cell-${idx}`} fill={item.rentabilidade >= 0 ? "#16A34A" : "#EF4444"} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -234,6 +238,14 @@ export function InvestimentosSection({ ano, mes }: InvestimentosSectionProps) {
                     strokeWidth={2}
                     name="Valor Projetado"
                   />
+                  <Line
+                    type="monotone"
+                    dataKey="aporte_acumulado"
+                    stroke="#2563EB"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    name="Aporte Acumulado"
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -244,7 +256,11 @@ export function InvestimentosSection({ ano, mes }: InvestimentosSectionProps) {
             <div className="grid gap-2 rounded-md bg-slate-800/50 p-3 sm:grid-cols-3 text-[11px]">
               <div>
                 <p className="text-slate-500">Valor Inicial</p>
-                <p className="font-semibold text-slate-100">{formatMoney(0)}</p>
+                <p className="font-semibold text-slate-100">
+                  {formatMoney(
+                    Math.max(0, (projecao.data[0]?.valor_projetado ?? 0) - (projecao.data[0]?.aporte_acumulado ?? 0))
+                  )}
+                </p>
               </div>
               <div>
                 <p className="text-slate-500">Aporte Total</p>

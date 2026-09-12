@@ -1,9 +1,12 @@
 import { useMemo, useState } from "react";
 import {
-  Area,
-  AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
+  Cell,
+  ComposedChart,
   Legend,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -11,7 +14,7 @@ import {
 } from "recharts";
 
 import { SectionCard } from "../../components/finance/SectionCard";
-import { formatMoney, formatPercent } from "../../lib/formatters";
+import { formatMoney, formatMoneyCompact, formatPercent } from "../../lib/formatters";
 import type { EvolucaoCategoriasResponse } from "../../lib/types";
 import {
   EvolucaoCategoriasFilters,
@@ -51,7 +54,7 @@ export function EvolucaoCategoriasChart({ data, isLoading }: EvolucaoCategoriasC
   }, [data]);
 
   const [filters, setFilters] = useState<EvolucaoCategoriasFiltersState>({
-    modo: "valor",
+    modo: "participacao",
     categoriasSelecionadas: [],
   });
 
@@ -63,7 +66,35 @@ export function EvolucaoCategoriasChart({ data, isLoading }: EvolucaoCategoriasC
     return todasCategorias;
   }, [filters.categoriasSelecionadas, todasCategorias]);
 
-  // Preparar dados do gráfico
+  const isSingleCategory = categoriasAtivas.length === 1;
+  const singleCategoryKey = isSingleCategory ? categoriasAtivas[0] : null;
+
+  // Dados para visão de categoria única (Aporte vs Lucro Real)
+  const singleCatData = useMemo(() => {
+    if (!isSingleCategory || !singleCategoryKey || !data?.periodos) return [];
+    return data.periodos.map((p) => {
+      const cat = p.categorias.find((c) => c.tipo === singleCategoryKey);
+      const patrimonio = cat?.valor_brl ?? 0;
+      const aportado = cat?.aportado_acumulado_brl ?? 0;
+      const lucro = cat?.lucro_brl ?? (patrimonio - aportado);
+      const rentabilidade = cat?.rentabilidade_percentual ?? (aportado > 0 ? (lucro / aportado) * 100 : 0);
+      return {
+        periodo: p.periodo,
+        patrimonio,
+        aportado,
+        lucro,
+        rentabilidade,
+        label: cat?.label || singleCategoryKey,
+      };
+    });
+  }, [isSingleCategory, singleCategoryKey, data]);
+
+  const singleCatSummary = useMemo(() => {
+    if (!singleCatData || singleCatData.length === 0) return null;
+    return singleCatData[singleCatData.length - 1];
+  }, [singleCatData]);
+
+  // Preparar dados do gráfico geral (barra empilhada)
   const chartData = useMemo(() => {
     if (!data?.periodos) return [];
     return data.periodos.map((p) => {
@@ -99,29 +130,160 @@ export function EvolucaoCategoriasChart({ data, isLoading }: EvolucaoCategoriasC
           onChange={(next) => setFilters(next)}
         />
 
+        {/* Resumo da classe quando uma única categoria está selecionada */}
+        {isSingleCategory && singleCatSummary && (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-md border border-slate-800 bg-[#111821] p-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Patrimônio ({singleCatSummary.label})
+              </p>
+              <p className="mt-0.5 text-lg font-bold text-slate-100">
+                {formatMoney(singleCatSummary.patrimonio)}
+              </p>
+            </div>
+            <div className="rounded-md border border-slate-800 bg-[#111821] p-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Total Aportado
+              </p>
+              <p className="mt-0.5 text-lg font-bold text-blue-400">
+                {formatMoney(singleCatSummary.aportado)}
+              </p>
+            </div>
+            <div className="rounded-md border border-slate-800 bg-[#111821] p-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Ganho Real (Lucro)
+              </p>
+              <p
+                className={`mt-0.5 text-lg font-bold ${
+                  singleCatSummary.lucro >= 0 ? "text-emerald-400" : "text-rose-400"
+                }`}
+              >
+                {formatMoney(singleCatSummary.lucro)}
+              </p>
+            </div>
+            <div className="rounded-md border border-slate-800 bg-[#111821] p-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Rentabilidade Real
+              </p>
+              <p
+                className={`mt-0.5 text-lg font-bold ${
+                  singleCatSummary.rentabilidade >= 0 ? "text-emerald-400" : "text-rose-400"
+                }`}
+              >
+                {formatPercent(singleCatSummary.rentabilidade)}
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="h-80 w-full rounded-md border border-slate-800 bg-[#111821] p-3">
           {isLoading ? (
             <div className="flex h-full items-center justify-center text-xs text-slate-500">
               Carregando evolução por categoria...
             </div>
+          ) : isSingleCategory ? (
+            singleCatData.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-xs text-slate-500">
+                Ainda não existem dados para esta categoria.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={singleCatData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#273343" vertical={false} />
+                  <XAxis dataKey="periodo" stroke="#64748b" tick={{ fontSize: 11 }} />
+                  <YAxis
+                    yAxisId="left"
+                    stroke="#64748b"
+                    tick={{ fontSize: 11 }}
+                    tickFormatter={(val) => formatMoneyCompact(val)}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    stroke="#a855f7"
+                    tick={{ fontSize: 11 }}
+                    tickFormatter={(val) => `${val}%`}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#111821",
+                      border: "1px solid #273343",
+                      borderRadius: 6,
+                      color: "#eef2f7",
+                    }}
+                    formatter={(val: any, name?: any) => {
+                      const numVal = Number(val || 0);
+                      const nameStr = String(name || "");
+                      if (nameStr === "Rentabilidade %") return [formatPercent(numVal), nameStr];
+                      return [formatMoney(numVal), nameStr];
+                    }}
+                  />
+                  <Legend wrapperStyle={{ paddingTop: 10, fontSize: 12 }} />
+                  <Bar
+                    yAxisId="left"
+                    dataKey="aportado"
+                    name="Total Aportado"
+                    fill="#3b82f6"
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar
+                    yAxisId="left"
+                    dataKey="lucro"
+                    name="Ganho Real (Lucro)"
+                    radius={[4, 4, 0, 0]}
+                  >
+                    {singleCatData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={entry.lucro >= 0 ? "#10b981" : "#ef4444"}
+                      />
+                    ))}
+                  </Bar>
+                  <Line
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey="patrimonio"
+                    name="Patrimônio Total"
+                    stroke="#f59e0b"
+                    strokeWidth={2.5}
+                    dot={{ r: 3 }}
+                  />
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="rentabilidade"
+                    name="Rentabilidade %"
+                    stroke="#a855f7"
+                    strokeWidth={1.5}
+                    strokeDasharray="3 3"
+                    dot={false}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            )
           ) : chartData.length === 0 ? (
             <div className="flex h-full items-center justify-center text-xs text-slate-500">
               Ainda não existem dados de categorias para exibir.
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+              <BarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#273343" vertical={false} />
                 <XAxis dataKey="periodo" stroke="#64748b" tick={{ fontSize: 11 }} />
                 <YAxis
                   stroke="#64748b"
                   tick={{ fontSize: 11 }}
                   tickFormatter={(val) =>
-                    filters.modo === "valor" ? `R$ ${(val / 1000).toFixed(0)}k` : `${val}%`
+                    filters.modo === "valor" ? formatMoneyCompact(val) : `${val}%`
                   }
                 />
                 <Tooltip
-                  contentStyle={{ backgroundColor: "#111821", border: "1px solid #273343", borderRadius: 6, color: "#eef2f7" }}
+                  contentStyle={{
+                    backgroundColor: "#111821",
+                    border: "1px solid #273343",
+                    borderRadius: 6,
+                    color: "#eef2f7",
+                  }}
                   formatter={(val: any, name?: any, item?: any) => {
                     const p = (item && item.payload) || {};
                     const nameStr = String(name || "");
@@ -143,19 +305,16 @@ export function EvolucaoCategoriasChart({ data, isLoading }: EvolucaoCategoriasC
                   if (!isVisible) return null;
                   const color = CATEGORY_COLORS[catKey] || "#94a3b8";
                   return (
-                    <Area
+                    <Bar
                       key={catKey}
-                      type="monotone"
                       dataKey={catKey}
                       name={catKey}
-                      stackId="1"
-                      stroke={color}
+                      stackId="a"
                       fill={color}
-                      fillOpacity={0.4}
                     />
                   );
                 })}
-              </AreaChart>
+              </BarChart>
             </ResponsiveContainer>
           )}
         </div>

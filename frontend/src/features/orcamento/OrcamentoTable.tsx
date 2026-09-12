@@ -108,7 +108,19 @@ export function OrcamentoTable({ data, natureza }: OrcamentoTableProps) {
   function diferencaClass(item: OrcamentoLinha) {
     const diff = toNumber(item.diferenca);
     if (item.natureza === "GASTO") return diff < 0 ? "text-right font-semibold text-danger-600" : "text-right font-semibold text-brand-400";
-    return diff <= 0 ? "text-right font-semibold text-brand-400" : "text-right font-semibold text-amber-300";
+    return diff >= 0 ? "text-right font-semibold text-brand-400" : "text-right font-semibold text-amber-300";
+  }
+
+  function diferencaFormatada(item: OrcamentoLinha) {
+    const diff = toNumber(item.diferenca);
+    if (item.natureza === "RECEITA" || item.natureza === "INVESTIMENTO") {
+      if (diff > 0) return `+${formatMoney(diff)}`;
+      return formatMoney(diff);
+    }
+    if (diff < 0) {
+      return `-${formatMoney(Math.abs(diff))}`;
+    }
+    return formatMoney(diff);
   }
 
   return (
@@ -174,7 +186,7 @@ export function OrcamentoTable({ data, natureza }: OrcamentoTableProps) {
                         </div>
                       </Td>
                       <Td className={diferencaClass(item)}>
-                        {formatMoney(item.diferenca)}
+                        {diferencaFormatada(item)}
                       </Td>
                       <Td>
                         <HistoricoCell item={item} />
@@ -236,31 +248,46 @@ function HistoricoCell({ item }: { item: OrcamentoLinha }) {
     return <span className="text-[11px] text-slate-500">Sem meses anteriores</span>;
   }
 
-  const maior = Math.max(...historico.map((mes) => toNumber(mes.valor)), 0);
+  const valores = historico.map((mes) => toNumber(mes.valor));
+  const minVal = Math.min(...valores);
+  const maxVal = Math.max(...valores);
+  const range = maxVal - minVal;
+  const n = historico.length;
+
+  const points = historico
+    .map((mes, idx) => {
+      const val = toNumber(mes.valor);
+      const x = n === 1 ? 50 : Math.round((idx / (n - 1)) * 100);
+      const y = range === 0 ? 10 : Math.round(18 - ((val - minVal) / range) * 16);
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  const tooltipText = historico
+    .map((mes) => `${formatMonthShort(mes.ano, mes.mes)}: ${formatMoney(mes.valor)}`)
+    .join(" | ");
 
   return (
-    <div>
-      <div className="flex items-end gap-1">
-        {historico.map((mes) => {
-          const valor = toNumber(mes.valor);
-          const altura = maior > 0 && valor > 0 ? Math.max((valor / maior) * 100, 14) : 4;
-          const rotulo = formatMonthShort(mes.ano, mes.mes);
-          return (
-            <div
-              key={`${mes.ano}-${mes.mes}`}
-              className="flex min-w-0 flex-1 flex-col items-center gap-0.5"
-              title={`${rotulo}: ${formatMoney(valor)}`}
-            >
-              <div className="flex h-7 w-full items-end rounded-sm bg-slate-800/70">
-                <div className="w-full rounded-sm bg-brand-500/70" style={{ height: `${altura}%` }} />
-              </div>
-              <span className="text-[9px] leading-tight text-slate-400">{rotulo}</span>
-              <span className="text-[9px] leading-tight text-slate-500">{formatMoneyCompact(valor)}</span>
-            </div>
-          );
-        })}
+    <div className="flex flex-col items-center justify-center py-0.5" title={tooltipText}>
+      <div className="w-full max-w-[130px] px-1">
+        <svg className="h-5 w-full overflow-visible" viewBox="0 0 100 20" preserveAspectRatio="none">
+          {n === 1 ? (
+            <circle cx="50" cy="10" r="3" fill="#10b981" />
+          ) : (
+            <polyline
+              fill="none"
+              stroke="#10b981"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              points={points}
+            />
+          )}
+        </svg>
       </div>
-      <div className="mt-1 text-[10px] text-slate-500">Media {formatMoney(item.media_historico ?? 0)}</div>
+      <div className="mt-0.5 text-center text-[10px] font-medium text-slate-400">
+        Média {formatMoney(item.media_historico ?? 0)}
+      </div>
     </div>
   );
 }

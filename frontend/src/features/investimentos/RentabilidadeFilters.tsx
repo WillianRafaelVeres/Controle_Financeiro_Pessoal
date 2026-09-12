@@ -6,6 +6,7 @@ import type { EscopoDesempenho, PeriodoDesempenho } from "../../lib/types";
 export interface RentabilidadeFiltersState {
   escopo: EscopoDesempenho;
   periodo: PeriodoDesempenho;
+  ativoId?: string;
   benchmarks: string[];
   incluirProventos: boolean;
   dataInicio?: string;
@@ -14,6 +15,7 @@ export interface RentabilidadeFiltersState {
 
 interface RentabilidadeFiltersProps {
   value: RentabilidadeFiltersState;
+  ativos?: Array<{ id: string; ticker: string; nome: string; tipo_ativo: string; ativo?: boolean }>;
   onChange: (nextState: RentabilidadeFiltersState) => void;
 }
 
@@ -47,7 +49,7 @@ const BENCHMARK_OPTIONS = [
   { id: "SP500_USD", label: "S&P 500 (USD)" },
 ];
 
-export function RentabilidadeFilters({ value, onChange }: RentabilidadeFiltersProps) {
+export function RentabilidadeFilters({ value, ativos = [], onChange }: RentabilidadeFiltersProps) {
   const toggleBenchmark = (bmId: string) => {
     const exists = value.benchmarks.includes(bmId);
     const nextBenchmarks = exists
@@ -56,21 +58,52 @@ export function RentabilidadeFilters({ value, onChange }: RentabilidadeFiltersPr
     onChange({ ...value, benchmarks: nextBenchmarks });
   };
 
+  const ativosFiltrados = ativos.filter((a) => {
+    if (a.ativo === false) return false;
+    if (value.escopo === "CARTEIRA_TOTAL") return true;
+    if (value.escopo === "RENDA_FIXA") {
+      return ["RENDA_FIXA", "CAIXINHA_CDB", "RESERVA_EMERGENCIA"].includes(a.tipo_ativo);
+    }
+    if (value.escopo === "EXTERIOR") {
+      return ["EXTERIOR", "ACAO_EXTERIOR", "ETF_EXTERIOR"].includes(a.tipo_ativo);
+    }
+    return a.tipo_ativo === value.escopo;
+  });
+
   return (
     <div className="space-y-3 rounded-lg border border-slate-800 bg-[#111821] p-3.5">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-emerald-400" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Analisar:</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Escopo:</span>
             <Select
               className="h-8 w-44 border-slate-700 bg-slate-900 text-xs font-medium text-slate-200"
               value={value.escopo}
-              onChange={(e) => onChange({ ...value, escopo: e.target.value as EscopoDesempenho })}
+              onChange={(e) => {
+                const nextEscopo = e.target.value as EscopoDesempenho;
+                onChange({ ...value, escopo: nextEscopo, ativoId: undefined });
+              }}
             >
               {ESCOPO_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Ativo:</span>
+            <Select
+              className="h-8 w-44 border-slate-700 bg-slate-900 text-xs font-medium text-slate-200"
+              value={value.ativoId || ""}
+              onChange={(e) => onChange({ ...value, ativoId: e.target.value || undefined })}
+            >
+              <option value="">Todos do escopo</option>
+              {ativosFiltrados.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.ticker} - {a.nome}
                 </option>
               ))}
             </Select>

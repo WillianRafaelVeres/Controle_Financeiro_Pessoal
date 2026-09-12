@@ -20,6 +20,7 @@ interface RentabilidadeComparadaChartProps {
   data?: RentabilidadeComparadaResponse;
   isLoading: boolean;
   filters: RentabilidadeFiltersState;
+  ativos?: Array<{ id: string; ticker: string; nome: string; tipo_ativo: string; ativo?: boolean }>;
   onFiltersChange: (nextState: RentabilidadeFiltersState) => void;
 }
 
@@ -50,9 +51,17 @@ export function RentabilidadeComparadaChart({
   data,
   isLoading,
   filters,
+  ativos = [],
   onFiltersChange,
 }: RentabilidadeComparadaChartProps) {
-  const escopoLabel = data?.escopo.label || "Carteira total";
+  const ativoSelecionado = useMemo(() => {
+    if (!filters.ativoId || !ativos) return null;
+    return ativos.find((a) => a.id === filters.ativoId);
+  }, [filters.ativoId, ativos]);
+
+  const escopoLabel = ativoSelecionado
+    ? `${ativoSelecionado.ticker} (${ativoSelecionado.nome})`
+    : data?.escopo.label || "Carteira total";
   const cdiResumo = data?.resumo.benchmarks?.CDI;
   const cdiVal = cdiResumo?.rentabilidade_percentual;
   const carteiraVal = data?.resumo.carteira_percentual ?? 0;
@@ -78,7 +87,7 @@ export function RentabilidadeComparadaChart({
       description="Compare a rentabilidade da carteira ou de uma classe de investimentos com índices de referência no mesmo período."
     >
       <div className="space-y-4">
-        <RentabilidadeFilters value={filters} onChange={onFiltersChange} />
+        <RentabilidadeFilters value={filters} ativos={ativos} onChange={onFiltersChange} />
 
         <PerformanceCoverageAlert cobertura={data?.cobertura} />
 

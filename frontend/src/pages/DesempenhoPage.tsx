@@ -129,6 +129,7 @@ export function DesempenhoPage() {
       "rentabilidade-comparada",
       rentabilidadeFilters.escopo,
       rentabilidadeFilters.periodo,
+      rentabilidadeFilters.ativoId,
       rentabilidadeFilters.dataInicio,
       rentabilidadeFilters.dataFim,
       rentabilidadeFilters.benchmarks,
@@ -138,6 +139,7 @@ export function DesempenhoPage() {
       api.rentabilidadeComparadaInvestimentos({
         escopo: rentabilidadeFilters.escopo,
         periodo: rentabilidadeFilters.periodo,
+        ativos_ids: rentabilidadeFilters.ativoId ? [rentabilidadeFilters.ativoId] : undefined,
         data_inicio: rentabilidadeFilters.dataInicio,
         data_fim: rentabilidadeFilters.dataFim,
         benchmarks: rentabilidadeFilters.benchmarks,
@@ -155,7 +157,13 @@ export function DesempenhoPage() {
   const ativos = useQuery({
     queryKey: ["investimentos", "ativos", "desempenho"],
     queryFn: api.ativos,
-    enabled: visao === "proventos",
+    retry: false,
+  });
+  const proventosGeral = useQuery({
+    queryKey: ["investimentos", "desempenho", "proventos", "geral", periodo],
+    queryFn: () => api.historicoProventosInvestimentos(periodo),
+    enabled: visao === "patrimonio",
+    retry: false,
   });
   const proventos = useQuery({
     queryKey: ["investimentos", "desempenho", "proventos", periodo, tipoAtivoFiltro, ativoFiltro, tipoProventoFiltro],
@@ -402,6 +410,7 @@ export function DesempenhoPage() {
             data={rentabilidadeComparada.data}
             isLoading={rentabilidadeComparada.isLoading}
             filters={rentabilidadeFilters}
+            ativos={ativos.data ?? []}
             onFiltersChange={setRentabilidadeFilters}
           />
 
@@ -493,13 +502,47 @@ export function DesempenhoPage() {
             )}
           </SectionCard>
 
-          <SectionCard title="Indicadores atuais" description="Referencias de mercado para contexto.">
-            <div className="space-y-2">
-              <BenchmarkLine label="Dolar" value={data?.benchmarks.dolar.valor ? formatMoney(data.benchmarks.dolar.valor) : "-"} />
-              <BenchmarkLine label="Ibovespa" value={data?.benchmarks.ibovespa.valor ? toNumber(data.benchmarks.ibovespa.valor).toLocaleString("pt-BR", { maximumFractionDigits: 0 }) : "-"} />
-              <BenchmarkLine label="CDI diario" value={data?.benchmarks.cdi.valor ? formatPercent(data.benchmarks.cdi.valor) : "-"} />
-            </div>
-          </SectionCard>
+          <div className="space-y-2">
+            <SectionCard title="Indicadores atuais" description="Referencias de mercado para contexto.">
+              <div className="space-y-2">
+                <BenchmarkLine label="Dolar" value={data?.benchmarks.dolar.valor ? formatMoney(data.benchmarks.dolar.valor) : "-"} />
+                <BenchmarkLine label="Ibovespa" value={data?.benchmarks.ibovespa.valor ? toNumber(data.benchmarks.ibovespa.valor).toLocaleString("pt-BR", { maximumFractionDigits: 0 }) : "-"} />
+                <BenchmarkLine label="CDI diario" value={data?.benchmarks.cdi.valor ? formatPercent(data.benchmarks.cdi.valor) : "-"} />
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Proventos por classe"
+              description={`Total no período: ${formatMoney(proventosGeral.data?.total_brl ?? 0)}`}
+            >
+              {(proventosGeral.data?.por_classe ?? []).length === 0 ? (
+                <p className="text-xs text-slate-500">Nenhum provento registrado no período.</p>
+              ) : (
+                <div className="space-y-2">
+                  {(proventosGeral.data?.por_classe ?? []).slice(0, 5).map((item) => {
+                    const total = toNumber(proventosGeral.data?.total_brl) || 1;
+                    const pct = Math.round((toNumber(item.total_brl) / total) * 100);
+                    return (
+                      <div key={item.tipo_ativo} className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="font-medium text-slate-300">{item.tipo_label}</span>
+                          <span className="font-semibold text-amber-300">
+                            {formatMoney(item.total_brl)} ({pct}%)
+                          </span>
+                        </div>
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+                          <div
+                            className="h-full bg-amber-400 rounded-full transition-all"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </SectionCard>
+          </div>
         </div>
       ) : (
         <div className="grid gap-2 xl:grid-cols-[1fr_380px]">

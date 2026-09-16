@@ -10,12 +10,12 @@ from app.models.dividendo import Dividendo
 from app.models.investimento import Ativo
 from app.schemas.dividendo_schema import DividendoCreate, DividendoUpdate
 from app.services.dividendo_service import (
-    buscar_lancamento_juros_conta,
+    buscar_lancamento_dividendo,
     calcular_conversao_provento,
-    desativar_lancamento_juros_conta,
+    desativar_lancamento_dividendo,
     desativar_movimentos_dolar_dividendo,
     registrar_movimento_dolar_dividendo,
-    sincronizar_lancamento_juros_conta,
+    sincronizar_lancamento_dividendo,
 )
 from app.services.investimento_service import ativos_para_dividendos
 
@@ -76,7 +76,7 @@ def criar(payload: DividendoCreate, session: Session = Depends(get_session)) -> 
     session.add(dividendo)
     session.flush()
     registrar_movimento_dolar_dividendo(session, dividendo, ativo)
-    sincronizar_lancamento_juros_conta(session, dividendo)
+    sincronizar_lancamento_dividendo(session, dividendo)
     session.commit()
     session.refresh(dividendo)
     return dividendo
@@ -87,7 +87,7 @@ def atualizar(dividendo_id: str, payload: DividendoUpdate, session: Session = De
     dividendo = session.get(Dividendo, dividendo_id)
     if not dividendo:
         raise HTTPException(status_code=404, detail="Dividendo nao encontrado.")
-    lancamento_juros = buscar_lancamento_juros_conta(session, dividendo.id)
+    lancamento_dividendo = buscar_lancamento_dividendo(session, dividendo.id)
     # Guardado antes das alteracoes: se a cotacao da nova data nao puder ser
     # consultada, a edicao continua valendo com a cotacao que ja estava gravada.
     cotacao_anterior = dividendo.cotacao_brl
@@ -114,7 +114,7 @@ def atualizar(dividendo_id: str, payload: DividendoUpdate, session: Session = De
     desativar_movimentos_dolar_dividendo(session, dividendo.id)
     ativo = session.get(Ativo, dividendo.ativo_id) if dividendo.ativo_id else None
     registrar_movimento_dolar_dividendo(session, dividendo, ativo)
-    sincronizar_lancamento_juros_conta(session, dividendo, lancamento_juros)
+    sincronizar_lancamento_dividendo(session, dividendo, lancamento_dividendo)
     session.commit()
     session.refresh(dividendo)
     return dividendo
@@ -126,6 +126,6 @@ def excluir(dividendo_id: str, session: Session = Depends(get_session)) -> None:
     if not dividendo:
         raise HTTPException(status_code=404, detail="Dividendo nao encontrado.")
     desativar_movimentos_dolar_dividendo(session, dividendo.id)
-    desativar_lancamento_juros_conta(session, dividendo.id)
+    desativar_lancamento_dividendo(session, dividendo.id)
     session.delete(dividendo)
     session.commit()

@@ -81,6 +81,28 @@ describe("DividendosPage", () => {
     expect(within(row!).getByRole("button", { name: /excluir dividendo/i })).toBeInTheDocument();
   });
 
+  it("registra dividendo de ativo com conta destino, pra contar no saldo", async () => {
+    renderPage();
+
+    fireEvent.focus(await screen.findByRole("combobox", { name: "Ativo em carteira" }));
+    fireEvent.click(await screen.findByText("IVV - iShares Core S&P 500"));
+    expect(await screen.findByRole("combobox", { name: "Ativo em carteira" })).toHaveValue("IVV - iShares Core S&P 500");
+    fireEvent.change(await screen.findByLabelText("Conta"), { target: { value: "conta-1" } });
+    fireEvent.change(await screen.findByLabelText(/^Valor/), { target: { value: "0,01" } });
+    fireEvent.change(await screen.findByLabelText(/Cotacao do dolar/), { target: { value: "5,00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Registrar" }));
+
+    await waitFor(() => {
+      expect(api.criarDividendo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ativo_id: "ativo-1",
+          conta_destino_id: "conta-1",
+        }),
+        expect.anything(),
+      );
+    });
+  });
+
   it("registra juros da conta sem ativo", async () => {
     renderPage();
 

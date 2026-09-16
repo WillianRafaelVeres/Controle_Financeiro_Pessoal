@@ -99,6 +99,11 @@ export function DividendosPage() {
                     <Td>
                       <div className="font-semibold text-slate-100">{jurosConta ? "Juros da conta" : ativo?.ticker ?? "-"}</div>
                       <div className="text-[11px] text-slate-500">{jurosConta ? conta?.nome ?? "Sem conta vinculada" : ativo?.nome ?? "Ativo removido"}</div>
+                      {!jurosConta && (
+                        <div className={`text-[11px] ${conta ? "text-brand-400" : "text-slate-600"}`}>
+                          {conta ? `Conta: ${conta.nome}` : "Sem conta -- nao entra no saldo"}
+                        </div>
+                      )}
                     </Td>
                     <Td>{jurosConta ? "Conta" : ativo ? INVESTMENT_TYPE_LABELS[ativo.tipo_ativo] : "-"}</Td>
                     <Td>
@@ -295,19 +300,17 @@ function DividendoDialog({
           </Select>
           </label>
         )}
-        {jurosConta && (
-          <label className="space-y-1 sm:col-span-2">
-            <span className="text-xs font-medium text-slate-500">Conta</span>
-            <Select value={form.conta_destino_id} onChange={(event) => setForm({ ...form, conta_destino_id: event.target.value })}>
-              <option value="">Sem conta vinculada</option>
-              {contasAtivas.map((conta) => (
-                <option key={conta.id} value={conta.id}>
-                  {conta.nome}
-                </option>
-              ))}
-            </Select>
-          </label>
-        )}
+        <label className="space-y-1 sm:col-span-2">
+          <span className="text-xs font-medium text-slate-500">Conta</span>
+          <Select value={form.conta_destino_id} onChange={(event) => setForm({ ...form, conta_destino_id: event.target.value })}>
+            <option value="">Sem conta vinculada</option>
+            {contasAtivas.map((conta) => (
+              <option key={conta.id} value={conta.id}>
+                {conta.nome}
+              </option>
+            ))}
+          </Select>
+        </label>
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-500">Valor</span>
           <MoneyInput currency={jurosConta ? "BRL" : form.moeda} value={form.valor} onChange={(event) => setForm({ ...form, valor: event.target.value })} required />

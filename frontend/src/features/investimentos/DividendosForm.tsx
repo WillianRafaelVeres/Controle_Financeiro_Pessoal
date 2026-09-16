@@ -132,12 +132,14 @@ export function DividendosForm({
         tipo_provento: ativo?.moeda === "USD" && tipo === "DIVIDENDO" ? "DIVIDENDO_EXTERIOR" : tipo,
         moeda: ativo?.moeda ?? "BRL",
         data_recebimento: dataRecebimento,
+        conta_destino_id: contaDestinoId || null,
         observacao: observacao.trim() || null,
         // So envia quando o usuario digitou: sem isso o backend resolve sozinho
         // e registra a origem real da cotacao.
         cotacao_brl: emDolar && toNumber(cotacao.manual) > 0 ? toNumber(cotacao.manual) : null,
       });
       setAtivoId("");
+      setContaDestinoId("");
       setValor("");
       setObservacao("");
       cotacao.limpar();
@@ -165,7 +167,7 @@ export function DividendosForm({
           </Select>
         </label>
 
-        {origem === "ATIVO" ? (
+        {origem === "ATIVO" && (
           <>
             <label className="space-y-1">
               <span className="text-xs font-medium text-slate-500">Tipo de ativo</span>
@@ -186,19 +188,19 @@ export function DividendosForm({
               onSelect={(option) => setAtivoId(option?.id ?? "")}
             />
           </>
-        ) : (
-          <label className="space-y-1 sm:col-span-2">
-            <span className="text-xs font-medium text-slate-500">Conta</span>
-            <Select value={contaDestinoId} onChange={(event) => setContaDestinoId(event.target.value)}>
-              <option value="">Sem conta vinculada</option>
-              {contasAtivas.map((conta) => (
-                <option key={conta.id} value={conta.id}>
-                  {conta.nome}
-                </option>
-              ))}
-            </Select>
-          </label>
         )}
+
+        <label className={origem === "ATIVO" ? "space-y-1" : "space-y-1 sm:col-span-2"}>
+          <span className="text-xs font-medium text-slate-500">Conta</span>
+          <Select value={contaDestinoId} onChange={(event) => setContaDestinoId(event.target.value)}>
+            <option value="">Sem conta vinculada</option>
+            {contasAtivas.map((conta) => (
+              <option key={conta.id} value={conta.id}>
+                {conta.nome}
+              </option>
+            ))}
+          </Select>
+        </label>
 
         <label className="space-y-1">
           <span className="text-xs font-medium text-slate-500">Provento</span>

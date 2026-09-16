@@ -1189,6 +1189,78 @@ def test_dividendo_normal_de_ativo_nao_afeta_saldo_livre(session: Session):
     )
 
 
+def test_dividendo_de_ativo_com_conta_destino_aumenta_saldo_livre_e_concilia(session: Session):
+    """O mesmo mecanismo de "juros da conta" (conta_destino_id -> lancamento)
+    agora vale pra dividendo de ativo tambem -- e' o que faz um provento
+    contar no saldo livre/conciliacao quando o usuario diz pra qual conta o
+    dinheiro foi."""
+    conta = Conta(nome="Conta corretora", saldo_inicial=Decimal("1000.00"), saldo_atual_informado=Decimal("1020.00"))
+    session.add(conta)
+    ativo = Ativo(ticker="MXRF11", nome="Maxi Renda", tipo_ativo=TipoAtivo.FII)
+    session.add(ativo)
+    session.commit()
+    session.refresh(conta)
+    session.refresh(ativo)
+    comprar(session, MovimentoInvestimentoCreate(ativo_id=ativo.id, quantidade=Decimal("100.00"), preco_unitario=Decimal("10.00")))
+    saldo_antes = calcular_saldo_livre(session)
+
+    dividendo = criar_dividendo_route(
+        DividendoCreate(
+            ativo_id=ativo.id,
+            tipo_provento=TipoProvento.RENDIMENTO_FII,
+            data_recebimento=date(2026, 7, 3),
+            valor=Decimal("20.00"),
+            moeda=Moeda.BRL,
+            conta_destino_id=conta.id,
+        ),
+        session,
+    )
+
+    assert calcular_saldo_livre(session) == saldo_antes + Decimal("20.00")
+    lancamento = session.exec(
+        select(Lancamento).where(Lancamento.referencia_id == dividendo.id, Lancamento.origem_sistema == "DIVIDENDO_JUROS_CONTA")
+    ).one()
+    assert lancamento.conta_id == conta.id
+    assert lancamento.tipo == TipoLancamento.DIVIDENDO
+    assert lancamento.valor == Decimal("20.00")
+    assert lancamento.observacao == "Dividendo MXRF11"
+
+
+def test_editar_dividendo_de_ativo_ja_lancado_pra_vincular_conta_passa_a_contar(session: Session):
+    """Reflete o caso real de migracao: dividendos ja lancados antes dessa
+    funcionalidade existir ficam de fora do calculo, porque nenhum deles tem
+    conta_destino_id -- exatamente como ja ficavam. Editando um deles pra
+    escolher a conta, so ele passa a contar; nao precisa de nenhuma migracao
+    nem afeta os outros que continuarem sem conta vinculada."""
+    conta = Conta(nome="Conta corretora", saldo_inicial=Decimal("0.00"), saldo_atual_informado=Decimal("50.00"))
+    session.add(conta)
+    ativo = Ativo(ticker="MXRF11", nome="Maxi Renda", tipo_ativo=TipoAtivo.FII)
+    session.add(ativo)
+    session.commit()
+    session.refresh(conta)
+    session.refresh(ativo)
+    comprar(session, MovimentoInvestimentoCreate(ativo_id=ativo.id, quantidade=Decimal("100.00"), preco_unitario=Decimal("1.00")))
+
+    dividendo = criar_dividendo_route(
+        DividendoCreate(
+            ativo_id=ativo.id,
+            tipo_provento=TipoProvento.RENDIMENTO_FII,
+            data_recebimento=date(2026, 7, 3),
+            valor=Decimal("50.00"),
+            moeda=Moeda.BRL,
+        ),
+        session,
+    )
+    saldo_sem_conta = calcular_saldo_livre(session)
+
+    atualizar_dividendo_route(dividendo.id, DividendoUpdate(conta_destino_id=conta.id), session)
+
+    assert calcular_saldo_livre(session) == saldo_sem_conta + Decimal("50.00")
+
+    excluir_dividendo_route(dividendo.id, session)
+    assert calcular_saldo_livre(session) == saldo_sem_conta
+
+
 def test_editar_e_excluir_juros_de_conta_sincroniza_lancamento(session: Session):
     conta_a = Conta(nome="Conta A", saldo_inicial=Decimal("0.00"), saldo_atual_informado=Decimal("0.00"))
     conta_b = Conta(nome="Conta B", saldo_inicial=Decimal("0.00"), saldo_atual_informado=Decimal("0.00"))

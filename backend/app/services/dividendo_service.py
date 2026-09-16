@@ -127,32 +127,48 @@ def sincronizar_movimentos_dolar_dividendos_pendentes(session: Session) -> int:
     return sincronizados
 
 
-LANCAMENTO_JUROS_CONTA_ORIGEM = "DIVIDENDO_JUROS_CONTA"
+# Nome historico do valor (vem de quando so "juros da conta" gerava
+# lancamento) -- mantido igual de proposito: e' o que já identifica os
+# lancamentos de juros ja existentes em producao, e nao ha necessidade
+# nenhuma de duas origens diferentes pra tecnicamente a mesma coisa.
+LANCAMENTO_DIVIDENDO_ORIGEM = "DIVIDENDO_JUROS_CONTA"
 
 
-def _elegivel_lancamento_juros_conta(dividendo: Dividendo) -> bool:
-    return (
-        dividendo.ativo_id is None
-        and dividendo.tipo_provento == TipoProvento.JUROS_RENDA_FIXA
-        and bool(dividendo.conta_destino_id)
-    )
+def _elegivel_lancamento_dividendo(dividendo: Dividendo) -> bool:
+    """Todo provento -- de ativo (acao, FII, ETF...) ou "juros da conta" --
+    vira lancamento quando o usuario escolhe pra qual conta o dinheiro foi.
+    Sem conta escolhida, o provento fica so no historico e nao mexe em saldo
+    livre/conciliacao -- e' o que garante que os proventos ja lancados antes
+    dessa funcionalidade existir continuam de fora do calculo sem precisar de
+    nenhuma migracao: nenhum deles tem conta_destino_id preenchido. Passam a
+    contar so os que o usuario vincular a uma conta daqui pra frente (editando
+    ou lancando de novo)."""
+    return bool(dividendo.conta_destino_id)
 
 
-def buscar_lancamento_juros_conta(session: Session, dividendo_id: str) -> Lancamento | None:
+def _descricao_padrao_lancamento_dividendo(session: Session, dividendo: Dividendo) -> str:
+    if dividendo.ativo_id:
+        ativo = session.get(Ativo, dividendo.ativo_id)
+        if ativo:
+            return f"Dividendo {ativo.ticker}"
+    return JUROS_CONTA_NOME
+
+
+def buscar_lancamento_dividendo(session: Session, dividendo_id: str) -> Lancamento | None:
     return session.exec(
         select(Lancamento).where(
             Lancamento.referencia_id == dividendo_id,
-            Lancamento.origem_sistema == LANCAMENTO_JUROS_CONTA_ORIGEM,
+            Lancamento.origem_sistema == LANCAMENTO_DIVIDENDO_ORIGEM,
         )
     ).first()
 
 
-def sincronizar_lancamento_juros_conta(
+def sincronizar_lancamento_dividendo(
     session: Session,
     dividendo: Dividendo,
     lancamento_existente: Lancamento | None = None,
 ) -> None:
-    if not _elegivel_lancamento_juros_conta(dividendo):
+    if not _elegivel_lancamento_dividendo(dividendo):
         if lancamento_existente and lancamento_existente.ativo:
             lancamento_existente.ativo = False
             lancamento_existente.atualizado_em = now_utc()
@@ -160,7 +176,7 @@ def sincronizar_lancamento_juros_conta(
         return
 
     valor = valor_dividendo_brl(session, dividendo)
-    descricao = dividendo.observacao or JUROS_CONTA_NOME
+    descricao = dividendo.observacao or _descricao_padrao_lancamento_dividendo(session, dividendo)
     if not lancamento_existente:
         lancamento_existente = Lancamento(
             data_lancamento=dividendo.data_recebimento,
@@ -169,7 +185,7 @@ def sincronizar_lancamento_juros_conta(
             valor_original=valor,
             conta_id=dividendo.conta_destino_id,
             observacao=descricao,
-            origem_sistema=LANCAMENTO_JUROS_CONTA_ORIGEM,
+            origem_sistema=LANCAMENTO_DIVIDENDO_ORIGEM,
             referencia_id=dividendo.id,
             afeta_saldo_livre=True,
             afeta_orcamento=False,
@@ -187,8 +203,8 @@ def sincronizar_lancamento_juros_conta(
     session.add(lancamento_existente)
 
 
-def desativar_lancamento_juros_conta(session: Session, dividendo_id: str) -> None:
-    lancamento = buscar_lancamento_juros_conta(session, dividendo_id)
+def desativar_lancamento_dividendo(session: Session, dividendo_id: str) -> None:
+    lancamento = buscar_lancamento_dividendo(session, dividendo_id)
     if lancamento and lancamento.ativo:
         lancamento.ativo = False
         lancamento.atualizado_em = now_utc()

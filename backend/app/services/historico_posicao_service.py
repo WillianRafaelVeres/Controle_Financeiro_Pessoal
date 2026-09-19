@@ -29,6 +29,12 @@ from app.services.investimento_service import (
 logger = logging.getLogger(__name__)
 
 
+def _cotacao_dolar_brl(session: Session, data_referencia: date) -> Decimal:
+    """Extrai o valor numerico do retorno rico do servico de cambio."""
+    resultado = buscar_cotacao_dolar_data(session, data_referencia)
+    return Decimal(str(resultado.get("cotacao_brl") or "0"))
+
+
 def reconstruir_posicao_ativo_na_data(
     session: Session,
     ativo: Ativo,
@@ -56,7 +62,7 @@ def reconstruir_posicao_ativo_na_data(
         for mov in movimentos:
             valor = mov.valor_total
             if mov.moeda == Moeda.USD:
-                tx = buscar_cotacao_dolar_data(session, mov.data_movimento)
+                tx = _cotacao_dolar_brl(session, mov.data_movimento)
                 valor = valor * (tx if tx > 0 else Decimal("1.00"))
             
             if mov.tipo_movimento in {TipoMovimentoInvestimento.COMPRA, TipoMovimentoInvestimento.APORTE}:
@@ -78,7 +84,7 @@ def reconstruir_posicao_ativo_na_data(
         qtd = _decimal(mov.quantidade)
         valor_mov = mov.valor_total
         if mov.moeda == Moeda.USD:
-            tx = buscar_cotacao_dolar_data(session, mov.data_movimento)
+            tx = _cotacao_dolar_brl(session, mov.data_movimento)
             valor_mov = valor_mov * (tx if tx > 0 else Decimal("1.00"))
 
         if mov.tipo_movimento in {TipoMovimentoInvestimento.COMPRA, TipoMovimentoInvestimento.APORTE}:
@@ -132,7 +138,7 @@ def reconstruir_posicao_ativo_na_data(
     # Câmbio USD se ativo for em USD
     tx_usd = Decimal("1.00")
     if ativo.moeda == Moeda.USD or ativo.tipo_ativo in TIPOS_EXTERIOR:
-        tx_usd = buscar_cotacao_dolar_data(session, data_referencia)
+        tx_usd = _cotacao_dolar_brl(session, data_referencia)
         if tx_usd <= 0:
             tx_usd = Decimal("1.00")
             qualidade = "PARCIAL"
@@ -196,7 +202,7 @@ def garantir_backfill_historico_posicoes(session: Session) -> None:
             for m in movs_mes:
                 val = m.valor_total
                 if m.moeda == Moeda.USD:
-                    tx = buscar_cotacao_dolar_data(session, m.data_movimento)
+                    tx = _cotacao_dolar_brl(session, m.data_movimento)
                     val = val * (tx if tx > 0 else Decimal("1.00"))
                 
                 if m.tipo_movimento in {TipoMovimentoInvestimento.COMPRA, TipoMovimentoInvestimento.APORTE}:

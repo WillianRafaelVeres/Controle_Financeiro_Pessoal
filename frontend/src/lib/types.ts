@@ -245,6 +245,56 @@ export interface PlanejamentoResumo {
   receitas_executadas_total_com_nao_planejado?: string | number;
 }
 
+export interface RelatorioFinanceiroTotal {
+  receita: number;
+  gasto: number;
+  investimento: number;
+  saldo_livre: number;
+}
+
+export interface RelatorioPlanejamentoGrupo {
+  planejado: number;
+  realizado: number;
+  nao_planejado?: number;
+}
+
+export interface RelatorioAnaliseFinanceira {
+  periodo: {
+    ano_inicio: number;
+    mes_inicio: number;
+    ano_fim: number;
+    mes_fim: number;
+    quantidade_meses: number;
+  };
+  totais: RelatorioFinanceiroTotal;
+  taxas: {
+    economia_percentual: number;
+    investimento_percentual: number;
+    comprometimento_percentual: number;
+  };
+  comparacao: {
+    periodo_anterior: { ano_inicio: number; mes_inicio: number; ano_fim: number; mes_fim: number };
+    totais: RelatorioFinanceiroTotal;
+    variacoes_percentuais: Record<keyof RelatorioFinanceiroTotal, number | null>;
+  };
+  planejamento: {
+    receitas: RelatorioPlanejamentoGrupo;
+    gastos: RelatorioPlanejamentoGrupo;
+    investimentos: RelatorioPlanejamentoGrupo;
+  };
+  categorias_gasto: Array<{ categoria: string; valor: number; percentual: number }>;
+  diagnostico_orcamento: Array<{
+    natureza: NaturezaCategoria;
+    item: string;
+    planejado: number;
+    realizado: number;
+    desvio: number;
+    favoravel: boolean;
+  }>;
+  insights: Array<{ tipo: "CRITICO" | "ATENCAO" | "BOM" | "INSIGHT"; titulo: string; mensagem: string }>;
+  evolucao: Array<{ ano: number; mes: number; receita: number; gasto: number; investimento: number; saldo: number }>;
+}
+
 export interface Ativo {
   id: string;
   ticker: string;
@@ -537,6 +587,10 @@ export interface RentabilidadeComparadaPonto {
   data: string;
   retorno_periodo_carteira: number;
   carteira: number;
+  patrimonio_brl?: number;
+  aporte_liquido_brl?: number;
+  proventos_brl?: number;
+  resultado_brl?: number;
   CDI?: number;
   IBOVESPA?: number;
   IFIX?: number;
@@ -565,6 +619,13 @@ export interface RentabilidadeComparadaResponse {
   };
   resumo: {
     carteira_percentual: number;
+    resultado_brl?: number;
+    aportes_liquidos_brl?: number;
+    proventos_brl?: number;
+    patrimonio_final_brl?: number;
+    meses_positivos?: number;
+    meses_analisados?: number;
+    max_drawdown_percentual?: number;
     benchmarks: Record<string, BenchmarkResumoItem>;
   };
   serie: RentabilidadeComparadaPonto[];

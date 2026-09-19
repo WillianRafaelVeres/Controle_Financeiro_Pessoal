@@ -53,6 +53,11 @@ def _resolver_tipos_ativo_escopo(codigo_escopo: str, tipos_solicitados: list[Tip
     return ESCOPO_MAPA_TIPOS.get(codigo_escopo.upper(), None)
 
 
+def _inicio_janela_mensal(ancora: date, quantidade_meses: int) -> date:
+    indice = ancora.year * 12 + ancora.month - 1 - (quantidade_meses - 1)
+    return date(indice // 12, indice % 12 + 1, 1)
+
+
 def obter_data_inicio_escopo(session: Session, tipos_escopo: set[TipoAtivo] | None, ativos_ids: list[str] | None = None) -> date:
     """Encontra a data do primeiro movimento dos ativos pertencentes ao escopo."""
     query = select(MovimentoInvestimento.data_movimento).join(Ativo, MovimentoInvestimento.ativo_id == Ativo.id)
@@ -85,19 +90,20 @@ def calcular_rentabilidade_comparada(
 
     # 2. Definir datas da janela
     hoje = date.today()
+    dt_fim_efetiva = min(data_fim_custom or hoje, hoje)
     dt_inicio_efetiva = obter_data_inicio_escopo(session, tipos_escopo, ativos_ids_custom)
-    dt_fim_efetiva = data_fim_custom or hoje
+    ancora_periodo = dt_fim_efetiva
 
     if periodo_codigo == "ano_atual":
-        dt_inicio_efetiva = max(dt_inicio_efetiva, date(hoje.year, 1, 1))
+        dt_inicio_efetiva = max(dt_inicio_efetiva, date(ancora_periodo.year, 1, 1))
     elif periodo_codigo == "12m":
-        dt_inicio_efetiva = max(dt_inicio_efetiva, hoje - timedelta(days=365))
+        dt_inicio_efetiva = max(dt_inicio_efetiva, _inicio_janela_mensal(ancora_periodo, 12))
     elif periodo_codigo == "24m":
-        dt_inicio_efetiva = max(dt_inicio_efetiva, hoje - timedelta(days=730))
+        dt_inicio_efetiva = max(dt_inicio_efetiva, _inicio_janela_mensal(ancora_periodo, 24))
     elif periodo_codigo == "36m":
-        dt_inicio_efetiva = max(dt_inicio_efetiva, hoje - timedelta(days=1095))
+        dt_inicio_efetiva = max(dt_inicio_efetiva, _inicio_janela_mensal(ancora_periodo, 36))
     elif periodo_codigo == "personalizado" and data_inicio_custom:
-        dt_inicio_efetiva = data_inicio_custom
+        dt_inicio_efetiva = date(data_inicio_custom.year, data_inicio_custom.month, 1)
 
     if dt_inicio_efetiva > dt_fim_efetiva:
         dt_inicio_efetiva = dt_fim_efetiva
@@ -138,7 +144,17 @@ def calcular_rentabilidade_comparada(
             "metodologia": "MODIFIED_DIETZ_MENSAL_ENCADEADO",
             "incluir_proventos": incluir_proventos,
             "cobertura": {"completa": True, "avisos": ["Ainda não existem movimentações neste escopo para analisar."]},
-            "resumo": {"carteira_percentual": 0.0, "benchmarks": {}},
+            "resumo": {
+                "carteira_percentual": 0.0,
+                "resultado_brl": 0.0,
+                "aportes_liquidos_brl": 0.0,
+                "proventos_brl": 0.0,
+                "patrimonio_final_brl": 0.0,
+                "meses_positivos": 0,
+                "meses_analisados": 0,
+                "max_drawdown_percentual": 0.0,
+                "benchmarks": {},
+            },
             "serie": [],
         }
 
@@ -153,10 +169,29 @@ def calcular_rentabilidade_comparada(
     for s in snaps_todos:
         snaps_map[(s.ano, s.mes, s.ativo_id)] = s
 
+    movimentos_periodo = session.exec(
+        select(MovimentoInvestimento).where(
+            MovimentoInvestimento.ativo_id.in_(ativos_ids_escopo),
+            MovimentoInvestimento.data_movimento >= dt_inicio_efetiva,
+            MovimentoInvestimento.data_movimento <= dt_fim_efetiva,
+        )
+    ).all()
+    movimentos_por_mes: dict[tuple[int, int], list[MovimentoInvestimento]] = {}
+    for movimento in movimentos_periodo:
+        movimentos_por_mes.setdefault(
+            (movimento.data_movimento.year, movimento.data_movimento.month), []
+        ).append(movimento)
+
     # 6. Calcular rentabilidade mensal Modified Dietz por mês
     serie_resultado = []
     avisos_cobertura = set()
     cum_factor_carteira = 1.0
+    pico_factor_carteira = 1.0
+    max_drawdown = 0.0
+    resultado_total = Decimal("0.00")
+    aportes_liquidos_total = Decimal("0.00")
+    proventos_total = Decimal("0.00")
+    meses_positivos = 0
 
     # Dicionários de fatores acumulados para benchmarks
     benchmarks_lista = benchmarks_solicitados or []
@@ -201,20 +236,59 @@ def calcular_rentabilidade_comparada(
         val_inicio_mes = max(Decimal("0.00"), val_inicio_mes)
         val_inicio_anterior = val_fim_mes
 
-        # Net flow = Aportes - Retiradas
+        # Net flow = Aportes - Retiradas. No denominador do Modified Dietz,
+        # ponderamos cada fluxo pelo tempo em que ficou investido no periodo.
+        # Assim um aporte no fim do mes nao recebe o mesmo peso de um aporte no
+        # primeiro dia, e em nenhum dos casos o aporte vira lucro.
         cf_liquido = aportes_mes - retiradas_mes
-        w = Decimal("1.0") if val_inicio_mes == 0 else Decimal("0.5")
+        fluxo_ponderado = Decimal("0.00")
+        movimentos_mes = movimentos_por_mes.get((ano, mes), [])
+        dias_periodo = max((d_fim - d_ini).days, 1)
+        for movimento in movimentos_mes:
+            if movimento.tipo_movimento not in {
+                TipoMovimentoInvestimento.COMPRA,
+                TipoMovimentoInvestimento.APORTE,
+                TipoMovimentoInvestimento.VENDA,
+                TipoMovimentoInvestimento.RESGATE,
+            }:
+                continue
+            valor_fluxo = Decimal(str(movimento.valor_total or "0"))
+            if movimento.moeda == Moeda.USD:
+                cambio = buscar_cotacao_dolar_data(session, movimento.data_movimento)
+                taxa_cambio = Decimal(str(cambio.get("cotacao_brl") or "0"))
+                valor_fluxo *= taxa_cambio if taxa_cambio > 0 else Decimal("1")
+            if movimento.tipo_movimento in {
+                TipoMovimentoInvestimento.VENDA,
+                TipoMovimentoInvestimento.RESGATE,
+            }:
+                valor_fluxo = -valor_fluxo
+            peso = Decimal(str(max((d_fim - movimento.data_movimento).days, 0))) / Decimal(str(dias_periodo))
+            fluxo_ponderado += valor_fluxo * peso
+        if not movimentos_mes and cf_liquido != 0:
+            # Compatibilidade com snapshots importados que nao possuem o
+            # detalhamento diario do fluxo original.
+            fluxo_ponderado = cf_liquido * Decimal("0.5")
 
         ve_ajustado = val_fim_mes + (proventos_mes if incluir_proventos else Decimal("0.00"))
-        denominador = val_inicio_mes + (w * cf_liquido)
+        denominador = val_inicio_mes + fluxo_ponderado
 
         if denominador > 0:
             r_mensal = float((ve_ajustado - val_inicio_mes - cf_liquido) / denominador)
         else:
             r_mensal = 0.0
 
+        resultado_mes = ve_ajustado - val_inicio_mes - cf_liquido
+        resultado_total += resultado_mes
+        aportes_liquidos_total += cf_liquido
+        proventos_total += proventos_mes
+        if r_mensal > 0:
+            meses_positivos += 1
+
         # Encadeamento geométrico
         cum_factor_carteira *= (1.0 + r_mensal)
+        pico_factor_carteira = max(pico_factor_carteira, cum_factor_carteira)
+        drawdown_atual = ((cum_factor_carteira / pico_factor_carteira) - 1.0) * 100.0
+        max_drawdown = min(max_drawdown, drawdown_atual)
         carteira_cum_pct = round((cum_factor_carteira - 1.0) * 100.0, 2)
 
         ponto = {
@@ -222,6 +296,10 @@ def calcular_rentabilidade_comparada(
             "data": d_fim.isoformat(),
             "retorno_periodo_carteira": round(r_mensal * 100.0, 2),
             "carteira": carteira_cum_pct,
+            "patrimonio_brl": float(val_fim_mes),
+            "aporte_liquido_brl": float(cf_liquido),
+            "proventos_brl": float(proventos_mes),
+            "resultado_brl": float(resultado_mes),
         }
 
         # Adicionar benchmarks acumulados ao ponto da série
@@ -271,6 +349,13 @@ def calcular_rentabilidade_comparada(
         },
         "resumo": {
             "carteira_percentual": rentabilidade_final_carteira,
+            "resultado_brl": float(resultado_total),
+            "aportes_liquidos_brl": float(aportes_liquidos_total),
+            "proventos_brl": float(proventos_total),
+            "patrimonio_final_brl": float(val_inicio_anterior or Decimal("0.00")),
+            "meses_positivos": meses_positivos,
+            "meses_analisados": len(serie_resultado),
+            "max_drawdown_percentual": round(max_drawdown, 2),
             "benchmarks": resumo_benchmarks,
         },
         "serie": serie_resultado,

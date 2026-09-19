@@ -13,6 +13,7 @@ from app.services.performance_investimento_service import (
     calcular_evolucao_categorias,
     calcular_rentabilidade_comparada,
 )
+from app.services.benchmark_service import calcular_rentabilidades_benchmarks_mensais
 
 
 @pytest.fixture()
@@ -170,3 +171,24 @@ def test_evolucao_categorias_soma(session: Session):
     assert total_patrimonio == pytest.approx(4600.0, 0.1)
     assert soma_cats == pytest.approx(total_patrimonio, 0.1)
     assert soma_pcts == pytest.approx(100.0, 0.5)
+
+
+def test_sp500_em_brl_extrai_valor_da_resposta_de_cambio(session: Session, monkeypatch):
+    serie = {
+        date(2026, 1, 2): Decimal("100"),
+        date(2026, 1, 30): Decimal("110"),
+    }
+    monkeypatch.setattr("app.services.benchmark_service.obter_serie_sp500", lambda *args: serie)
+    monkeypatch.setattr(
+        "app.services.benchmark_service.buscar_cotacao_dolar_data",
+        lambda _session, data_ref: {"cotacao_brl": Decimal("5.00") if data_ref.day < 15 else Decimal("5.50")},
+    )
+
+    rentabilidades, status = calcular_rentabilidades_benchmarks_mensais(
+        session,
+        ["SP500_BRL"],
+        [(2026, 1, date(2026, 1, 1), date(2026, 1, 31))],
+    )
+
+    assert status["SP500_BRL"]["disponivel"] is True
+    assert rentabilidades["SP500_BRL"]["01/2026"] == pytest.approx(21.0, 0.01)

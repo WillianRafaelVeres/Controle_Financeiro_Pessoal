@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 
 from app.core.database import get_session
@@ -9,6 +9,7 @@ from app.services.relatorio_service import (
     evolucao_mensal,
     projetar_patrimonio,
     gerar_insights,
+    analise_financeira,
 )
 
 router = APIRouter(prefix="/relatorios", tags=["relatorios"])
@@ -57,4 +58,18 @@ def rel_dividendos() -> list[dict]:
 @router.get("/insights")
 def rel_insights(ano: int, mes: int, session: Session = Depends(get_session)) -> list[dict]:
     return gerar_insights(session, ano, mes)
+
+
+@router.get("/analise-financeira")
+def rel_analise_financeira(
+    ano_inicio: int,
+    mes_inicio: int,
+    ano_fim: int,
+    mes_fim: int,
+    session: Session = Depends(get_session),
+) -> dict:
+    try:
+        return analise_financeira(session, ano_inicio, mes_inicio, ano_fim, mes_fim)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 

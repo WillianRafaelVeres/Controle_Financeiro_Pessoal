@@ -11,7 +11,7 @@ import {
 } from "recharts";
 
 import { SectionCard } from "../../components/finance/SectionCard";
-import { formatPercent } from "../../lib/formatters";
+import { formatMoney, formatPercent } from "../../lib/formatters";
 import type { RentabilidadeComparadaResponse } from "../../lib/types";
 import { PerformanceCoverageAlert } from "./PerformanceCoverageAlert";
 import { RentabilidadeFilters, type RentabilidadeFiltersState } from "./RentabilidadeFilters";
@@ -19,6 +19,7 @@ import { RentabilidadeFilters, type RentabilidadeFiltersState } from "./Rentabil
 interface RentabilidadeComparadaChartProps {
   data?: RentabilidadeComparadaResponse;
   isLoading: boolean;
+  errorMessage?: string;
   filters: RentabilidadeFiltersState;
   ativos?: Array<{ id: string; ticker: string; nome: string; tipo_ativo: string; ativo?: boolean }>;
   onFiltersChange: (nextState: RentabilidadeFiltersState) => void;
@@ -50,6 +51,7 @@ function formatDataLegivel(isoStr?: string) {
 export function RentabilidadeComparadaChart({
   data,
   isLoading,
+  errorMessage,
   filters,
   ativos = [],
   onFiltersChange,
@@ -62,24 +64,10 @@ export function RentabilidadeComparadaChart({
   const escopoLabel = ativoSelecionado
     ? `${ativoSelecionado.ticker} (${ativoSelecionado.nome})`
     : data?.escopo.label || "Carteira total";
-  const cdiResumo = data?.resumo.benchmarks?.CDI;
-  const cdiVal = cdiResumo?.rentabilidade_percentual;
   const carteiraVal = data?.resumo.carteira_percentual ?? 0;
-  const difCdi = cdiResumo?.diferenca_pp;
-
-  // Encontrar o melhor benchmark
-  const melhorBenchmark = useMemo<{ label: string; val: number } | null>(() => {
-    if (!data?.resumo.benchmarks) return null;
-    let melhor: { label: string; val: number } | null = null;
-    Object.values(data.resumo.benchmarks).forEach((item) => {
-      if (item.disponivel !== false && item.rentabilidade_percentual !== undefined) {
-        if (!melhor || item.rentabilidade_percentual > melhor.val) {
-          melhor = { label: item.label, val: item.rentabilidade_percentual };
-        }
-      }
-    });
-    return melhor;
-  }, [data]);
+  const benchmarkPrincipal = filters.benchmarks
+    .map((codigo) => ({ codigo, item: data?.resumo.benchmarks?.[codigo] }))
+    .find(({ item }) => item?.disponivel !== false && item?.rentabilidade_percentual !== undefined);
 
   return (
     <SectionCard
@@ -95,7 +83,7 @@ export function RentabilidadeComparadaChart({
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-md border border-slate-800 bg-[#111821] p-2.5">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              Retorno ({escopoLabel})
+              Retorno sem aportes
             </p>
             <p className={`mt-0.5 text-lg font-bold ${carteiraVal >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
               {formatPercent(carteiraVal)}
@@ -103,23 +91,25 @@ export function RentabilidadeComparadaChart({
           </div>
 
           <div className="rounded-md border border-slate-800 bg-[#111821] p-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">CDI no período</p>
-            <p className="mt-0.5 text-lg font-bold text-blue-400">
-              {cdiVal !== undefined ? formatPercent(cdiVal) : "--"}
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Resultado dos ativos</p>
+            <p className={`mt-0.5 text-lg font-bold ${(data?.resumo.resultado_brl ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+              {formatMoney(data?.resumo.resultado_brl ?? 0)}
             </p>
           </div>
 
           <div className="rounded-md border border-slate-800 bg-[#111821] p-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Resultado vs CDI</p>
-            <p className={`mt-0.5 text-lg font-bold ${difCdi !== undefined && difCdi >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-              {difCdi !== undefined ? formatPP(difCdi) : "--"}
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Proventos no período</p>
+            <p className="mt-0.5 text-lg font-bold text-amber-400">
+              {formatMoney(data?.resumo.proventos_brl ?? 0)}
             </p>
           </div>
 
           <div className="rounded-md border border-slate-800 bg-[#111821] p-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Melhor benchmark</p>
-            <p className="mt-0.5 truncate text-sm font-bold text-amber-400">
-              {melhorBenchmark ? `${melhorBenchmark.label} ${formatPercent(melhorBenchmark.val)}` : "--"}
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              {benchmarkPrincipal ? `Vs ${benchmarkPrincipal.item?.label}` : "Comparação"}
+            </p>
+            <p className={`mt-0.5 text-lg font-bold ${(benchmarkPrincipal?.item?.diferenca_pp ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+              {benchmarkPrincipal?.item?.diferenca_pp !== undefined ? formatPP(benchmarkPrincipal.item.diferenca_pp) : "--"}
             </p>
           </div>
         </div>
@@ -144,9 +134,13 @@ export function RentabilidadeComparadaChart({
             <div className="flex h-full items-center justify-center text-xs text-slate-500">
               Carregando rentabilidade comparada...
             </div>
+          ) : errorMessage ? (
+            <div className="flex h-full items-center justify-center px-6 text-center text-xs text-rose-300">
+              Não foi possível calcular a comparação: {errorMessage}
+            </div>
           ) : !data?.serie || data.serie.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-xs text-slate-500">
-              Ainda não existem movimentações neste escopo para analisar.
+            <div className="flex h-full items-center justify-center px-6 text-center text-xs text-slate-500">
+              {data?.cobertura.avisos[0] || "Ainda não existem movimentações neste escopo para analisar."}
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
@@ -156,7 +150,7 @@ export function RentabilidadeComparadaChart({
                 <YAxis stroke="#64748b" tick={{ fontSize: 11 }} tickFormatter={(val) => `${val}%`} />
                 <Tooltip
                   contentStyle={{ backgroundColor: "#111821", border: "1px solid #273343", borderRadius: 6, color: "#eef2f7" }}
-                  formatter={(val: any, name?: any) => {
+                  formatter={(val: any, name?: any, item?: any) => {
                     const numVal = Number(val || 0);
                     const formatted = formatPercent(numVal);
                     const nameStr = String(name || "");
@@ -165,8 +159,7 @@ export function RentabilidadeComparadaChart({
                     }
                     const bmInfo = data.resumo.benchmarks?.[nameStr];
                     const label = bmInfo?.label || nameStr;
-                    const cVal = data.resumo.carteira_percentual;
-                    const diff = cVal - numVal;
+                    const diff = Number(item?.payload?.carteira ?? 0) - numVal;
                     return [`${formatted} (${formatPP(diff)} vs ${escopoLabel})`, label];
                   }}
                 />
@@ -198,6 +191,16 @@ export function RentabilidadeComparadaChart({
               </LineChart>
             </ResponsiveContainer>
           )}
+        </div>
+        <div className="grid gap-2 text-[11px] text-slate-500 sm:grid-cols-3">
+          <span>Metodologia: retorno mensal encadeado (Modified Dietz).</span>
+          <span>Aportes líquidos: {formatMoney(data?.resumo.aportes_liquidos_brl ?? 0)} — não contam como lucro.</span>
+          <span>
+            Meses positivos: {data?.resumo.meses_positivos ?? 0}/{data?.resumo.meses_analisados ?? 0}
+            {data?.resumo.max_drawdown_percentual !== undefined
+              ? ` · maior queda ${formatPercent(data.resumo.max_drawdown_percentual)}`
+              : ""}
+          </span>
         </div>
       </div>
     </SectionCard>

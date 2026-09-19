@@ -1,5 +1,4 @@
 import { Check, Filter } from "lucide-react";
-import { Button } from "../../components/ui/button";
 import { Select } from "../../components/ui/select";
 import type { EscopoDesempenho, PeriodoDesempenho } from "../../lib/types";
 
@@ -49,6 +48,16 @@ const BENCHMARK_OPTIONS = [
   { id: "SP500_USD", label: "S&P 500 (USD)" },
 ];
 
+const BENCHMARKS_RECOMENDADOS: Partial<Record<EscopoDesempenho, string[]>> = {
+  CARTEIRA_TOTAL: ["CDI", "IBOVESPA", "IFIX", "SP500_BRL"],
+  ACAO_BR: ["IBOVESPA"],
+  FII: ["IFIX"],
+  ETF_BR: ["IBOVESPA"],
+  RENDA_FIXA: ["CDI"],
+  EXTERIOR: ["SP500_BRL"],
+  PREVIDENCIA: ["CDI"],
+};
+
 export function RentabilidadeFilters({ value, ativos = [], onChange }: RentabilidadeFiltersProps) {
   const toggleBenchmark = (bmId: string) => {
     const exists = value.benchmarks.includes(bmId);
@@ -82,7 +91,12 @@ export function RentabilidadeFilters({ value, ativos = [], onChange }: Rentabili
               value={value.escopo}
               onChange={(e) => {
                 const nextEscopo = e.target.value as EscopoDesempenho;
-                onChange({ ...value, escopo: nextEscopo, ativoId: undefined });
+                onChange({
+                  ...value,
+                  escopo: nextEscopo,
+                  ativoId: undefined,
+                  benchmarks: BENCHMARKS_RECOMENDADOS[nextEscopo] ?? value.benchmarks,
+                });
               }}
             >
               {ESCOPO_OPTIONS.map((opt) => (
@@ -151,7 +165,7 @@ export function RentabilidadeFilters({ value, ativos = [], onChange }: Rentabili
               checked={value.incluirProventos}
               onChange={(e) => onChange({ ...value, incluirProventos: e.target.checked })}
             />
-            Considerar proventos
+            Incluir proventos no retorno
           </label>
         </div>
       </div>
@@ -177,6 +191,9 @@ export function RentabilidadeFilters({ value, ativos = [], onChange }: Rentabili
           );
         })}
       </div>
+      <p className="text-[11px] leading-relaxed text-slate-500">
+        Aportes e retiradas são neutralizados no cálculo. O seletor de proventos muda apenas se dividendos e juros entram no retorno.
+      </p>
     </div>
   );
 }

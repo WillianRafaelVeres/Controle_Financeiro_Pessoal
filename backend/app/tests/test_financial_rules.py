@@ -60,6 +60,7 @@ from app.services.investimento_service import (
     TIPOS_COTACAO_AUTOMATICA,
     TIPOS_COTACAO_AUTOMATICA_BR,
     _TESOURO_CACHE,
+    _carregar_tabela_tesouro,
     _buscar_preco_tesouro,
     _tokens_tesouro,
     ativos_para_dividendos,
@@ -79,7 +80,7 @@ from app.services.investimento_service import (
 )
 from app.services.lancamento_service import atualizar_lancamento, criar_lancamento
 from app.services.financeiro_service import resumo_painel, resumo_planejamento
-from app.services.relatorio_service import gastos_por_metodo
+from app.services.relatorio_service import analise_financeira, gastos_por_metodo
 from app.services.orcamento_service import (
     adicionar_item_orcamento,
     alterar_orcamento,
@@ -2903,6 +2904,86 @@ def test_buscar_preco_tesouro_casa_titulo_por_tipo_e_ano():
     finally:
         _TESOURO_CACHE["itens"] = None
         _TESOURO_CACHE["carregado_em"] = None
+
+
+def test_carregar_tabela_tesouro_usa_configuracao_atual_e_escolhe_data_mais_recente(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    csv_content = (
+        "Tipo Titulo;Data Vencimento;Data Base;Taxa Compra Manha;Taxa Venda Manha;PU Compra Manha;PU Venda Manha;PU Base Manha\n"
+        "Tesouro IPCA+;15/05/2045;17/09/2026;6,00;6,10;1200,00;1190,00;1190,00\n"
+        "Tesouro IPCA+;15/05/2045;18/09/2026;5,90;6,00;1270,00;1263,84;1263,84\n"
+    ).encode("latin-1")
+
+    class FakeResponse:
+        content = csv_content
+
+        @staticmethod
+        def raise_for_status():
+            return None
+
+    monkeypatch.setattr("app.core.config.get_settings", lambda: SimpleNamespace(data_dir=tmp_path))
+    monkeypatch.setattr("app.services.investimento_service.httpx.get", lambda *args, **kwargs: FakeResponse())
+    _TESOURO_CACHE["itens"] = None
+    _TESOURO_CACHE["carregado_em"] = None
+
+    itens = _carregar_tabela_tesouro()
+
+    assert len(itens) == 1
+    assert itens[0]["ano"] == "2045"
+    assert itens[0]["preco"] == Decimal("1263.84")
+
+
+def test_analise_financeira_diferencia_gasto_e_investimento_acima_do_plano(session: Session):
+    receita = Categoria(nome="Salario", natureza=NaturezaCategoria.RECEITA)
+    gasto = Categoria(nome="Casa", natureza=NaturezaCategoria.GASTO)
+    investimento = Categoria(nome="Investimentos", natureza=NaturezaCategoria.INVESTIMENTO)
+    session.add_all([receita, gasto, investimento])
+    session.flush()
+    session.add_all(
+        [
+            OrcamentoItem(
+                ano=2026,
+                mes=6,
+                tipo_item=TipoItemOrcamento.CATEGORIA,
+                natureza=NaturezaCategoria.RECEITA,
+                categoria_id=receita.id,
+                categoria_nome_snapshot=receita.nome,
+                valor_orcado=Decimal("10000"),
+            ),
+            OrcamentoItem(
+                ano=2026,
+                mes=6,
+                tipo_item=TipoItemOrcamento.CATEGORIA,
+                natureza=NaturezaCategoria.GASTO,
+                categoria_id=gasto.id,
+                categoria_nome_snapshot=gasto.nome,
+                valor_orcado=Decimal("6000"),
+            ),
+            OrcamentoItem(
+                ano=2026,
+                mes=6,
+                tipo_item=TipoItemOrcamento.CATEGORIA,
+                natureza=NaturezaCategoria.INVESTIMENTO,
+                categoria_id=investimento.id,
+                categoria_nome_snapshot=investimento.nome,
+                valor_orcado=Decimal("2000"),
+            ),
+            Lancamento(data_lancamento=date(2026, 6, 5), tipo=TipoLancamento.RECEITA, valor=Decimal("10000"), categoria_id=receita.id),
+            Lancamento(data_lancamento=date(2026, 6, 10), tipo=TipoLancamento.GASTO, valor=Decimal("6500"), categoria_id=gasto.id),
+            Lancamento(data_lancamento=date(2026, 6, 15), tipo=TipoLancamento.INVESTIMENTO, valor=Decimal("2500"), categoria_id=investimento.id),
+        ]
+    )
+    session.commit()
+
+    resultado = analise_financeira(session, 2026, 6, 2026, 6)
+
+    assert resultado["totais"]["saldo_livre"] == Decimal("1000")
+    assert resultado["planejamento"]["gastos"]["realizado"] == Decimal("6500")
+    assert resultado["planejamento"]["investimentos"]["realizado"] == Decimal("2500")
+    titulos = {item["titulo"] for item in resultado["insights"]}
+    assert "Orcamento de gastos ultrapassado" in titulos
+    assert "Meta de investimentos superada" in titulos
 
 
 def test_cotacao_historica_indisponivel_nao_derruba_edicao_de_provento(session: Session, monkeypatch):

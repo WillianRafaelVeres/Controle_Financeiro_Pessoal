@@ -79,7 +79,7 @@ describe("OrcamentoPage", () => {
     });
   });
 
-  it("mostra saidas como gastos mais investimentos e calcula falta planejada", async () => {
+  it("separa gastos de investimentos e mostra o resultado do mes", async () => {
     renderPage();
 
     const saidasCard = (await screen.findByText("Saidas totais")).closest("section");
@@ -87,10 +87,14 @@ describe("OrcamentoPage", () => {
     expect(within(saidasCard as HTMLElement).getByText("R$ 6.300,00")).toBeInTheDocument();
     expect(within(saidasCard as HTMLElement).getByText("Planejado: R$ 10.000,00")).toBeInTheDocument();
 
-    const faltaCard = screen.getByText("Falta planejada").closest("section");
-    expect(faltaCard).not.toBeNull();
-    expect(within(faltaCard as HTMLElement).getByText("R$ 4.500,00")).toBeInTheDocument();
-    expect(within(faltaCard as HTMLElement).getByText("Executado do planejado: R$ 5.500,00")).toBeInTheDocument();
+    const gastosCard = screen.getByText("Gastos", { selector: "p" }).closest("section");
+    expect(gastosCard).not.toBeNull();
+    expect(within(gastosCard as HTMLElement).getByText("R$ 4.500,00")).toBeInTheDocument();
+
+    const investimentosCard = screen.getByText("Meta em andamento").closest("section");
+    expect(investimentosCard).not.toBeNull();
+    expect(within(investimentosCard as HTMLElement).getByText("R$ 1.800,00")).toBeInTheDocument();
+    expect(within(investimentosCard as HTMLElement).getByText("Meta em andamento")).toBeInTheDocument();
 
     const resultadoCard = screen.getByText("Resultado do mes").closest("section");
     expect(resultadoCard).not.toBeNull();

@@ -25,7 +25,8 @@ export function PeriodSelector({
 
   const handleCustomSubmit = () => {
     if (startDate && endDate && onDateRangeChange) {
-      onDateRangeChange(new Date(startDate), new Date(endDate));
+      onDateRangeChange(new Date(`${startDate}T12:00:00`), new Date(`${endDate}T12:00:00`));
+      onPeriodChange("custom");
       setShowCustom(false);
     }
   };

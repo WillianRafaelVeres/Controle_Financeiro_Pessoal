@@ -24,6 +24,7 @@ import type {
   PlanejamentoResumo,
   Posicao,
   RentabilidadeComparadaResponse,
+  RelatorioAnaliseFinanceira,
   ExtratoDolar,
   ResumoDolar,
   Diagnostico,
@@ -229,6 +230,13 @@ export const api = {
     apiFetch<Array<{ ano: number; mes: number; receita: number; gasto: number; investimento: number; saldo: number }>>("/relatorios/evolucao-mensal", {}, { ano_inicio: anoInicio, mes_inicio: mesInicio, ano_fim: anoFim, mes_fim: mesFim }),
   relInsights: (ano: number, mes: number) =>
     apiFetch<Array<{ tipo: "CRITICO" | "ATENCAO" | "BOM" | "INSIGHT"; prioridade: number; mensagem: string; acao?: string }>>("/relatorios/insights", {}, { ano, mes }),
+  relAnaliseFinanceira: (anoInicio: number, mesInicio: number, anoFim: number, mesFim: number) =>
+    apiFetch<RelatorioAnaliseFinanceira>("/relatorios/analise-financeira", {}, {
+      ano_inicio: anoInicio,
+      mes_inicio: mesInicio,
+      ano_fim: anoFim,
+      mes_fim: mesFim,
+    }),
 
   exportarBackup: () => apiFetch<{ arquivo: string }>("/configuracoes/backup/exportar", { method: "POST" }),
   diagnostico: () => apiFetch<Diagnostico>("/configuracoes/diagnostico"),

@@ -383,7 +383,9 @@ def _carregar_tabela_tesouro() -> list[dict]:
     if itens is not None and carregado_em and datetime.now(timezone.utc) - carregado_em < _TESOURO_CACHE_TTL:
         return itens
 
-    from app.core.config import settings
+    from app.core.config import get_settings
+
+    settings = get_settings()
     cache_path = settings.data_dir / "tesouro_cache.json"
 
     # Se existir cache recente em disco, carregar rapidamente
@@ -436,9 +438,11 @@ def _carregar_tabela_tesouro() -> list[dict]:
     if not linhas:
         raise ValueError("CSV do Tesouro Direto veio vazio.")
 
-    registros: list[dict] = []
-    vistos: set[tuple[frozenset[str], str]] = set()
-    para_salvar = []
+    # O CSV oficial normalmente vem do dia mais novo para o mais antigo, mas
+    # essa ordem nao faz parte do contrato do arquivo. Selecionar explicitamente
+    # a maior Data Base evita gravar uma cotacao antiga quando a fonte muda a
+    # ordenacao (ou quando concatena lotes historicos de outra forma).
+    mais_recentes: dict[tuple[frozenset[str], str], tuple[tuple[int, int, int], Decimal]] = {}
 
     for linha in linhas:
         tipo = linha.get("Tipo Titulo") or ""
@@ -448,8 +452,6 @@ def _carregar_tabela_tesouro() -> list[dict]:
             continue
         tipo_tokens = frozenset(_tokens_tesouro(tipo))
         chave = (tipo_tokens, ano)
-        if chave in vistos:
-            continue
         preco = (
             _pu_para_decimal(linha.get("PU Venda Manha"))
             or _pu_para_decimal(linha.get("PU Base Manha"))
@@ -457,7 +459,14 @@ def _carregar_tabela_tesouro() -> list[dict]:
         )
         if not preco:
             continue
-        vistos.add(chave)
+        data_base = _data_base_ordenavel(linha.get("Data Base"))
+        atual = mais_recentes.get(chave)
+        if atual is None or data_base > atual[0]:
+            mais_recentes[chave] = (data_base, preco)
+
+    registros: list[dict] = []
+    para_salvar = []
+    for (tipo_tokens, ano), (_, preco) in mais_recentes.items():
         registros.append(
             {
                 "tipo_tokens": set(tipo_tokens),

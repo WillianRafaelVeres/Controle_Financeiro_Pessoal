@@ -143,4 +143,13 @@ describe("DesempenhoPage", () => {
     expect(await screen.findByText("Proventos recebidos por mes")).toBeInTheDocument();
     expect(await screen.findByText("Filtros de proventos")).toBeInTheDocument();
   });
+
+  it("mostra erro de calculo sem confundir com carteira vazia", async () => {
+    vi.mocked(api.rentabilidadeComparadaInvestimentos).mockRejectedValueOnce(new Error("Falha ao converter benchmark"));
+
+    renderPage();
+
+    expect(await screen.findByText(/Não foi possível calcular a comparação: Falha ao converter benchmark/)).toBeInTheDocument();
+    expect(screen.queryByText("Ainda não existem movimentações neste escopo para analisar.")).not.toBeInTheDocument();
+  });
 });

@@ -233,17 +233,24 @@ function ResumoMes({
   const saidasRealizadas = gastosRealizados + investimentosRealizados;
   const saldoPrevisto = receitasPlanejadas - saidasPlanejadas;
   const saldoAtual = receitasRealizadas - saidasRealizadas;
-  const gastosPlanejadosRestantes = Math.max(gastosPlanejados - gastosPlanejadosRealizados, 0);
   const investimentosPlanejadosRestantes = Math.max(investimentosPlanejados - investimentosPlanejadosRealizados, 0);
-  const saidasPlanejadasRestantes = gastosPlanejadosRestantes + investimentosPlanejadosRestantes;
-  const saidasPlanejadasCumpridas =
-    Math.min(gastosPlanejados, gastosPlanejadosRealizados) +
-    Math.min(investimentosPlanejados, investimentosPlanejadosRealizados);
 
   return (
-    <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_460px]">
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid min-w-0 gap-2 2xl:grid-cols-[minmax(0,1fr)_minmax(440px,0.7fr)]">
+      <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-5 2xl:grid-cols-3">
         <PlanningCard kind="receita" title="Entradas" planned={receitasPlanejadas} actual={receitasRealizadas} />
+        <PlanningCard kind="gasto" title="Gastos" planned={gastosPlanejados} actual={gastosRealizados} />
+        <PlanningCard
+          kind="investimento"
+          title="Investimentos"
+          planned={investimentosPlanejados}
+          actual={investimentosRealizados}
+          detail={
+            investimentosPlanejados > investimentosPlanejadosRealizados
+              ? `${formatMoney(investimentosPlanejadosRestantes)} do plano ainda nao aportados`
+              : undefined
+          }
+        />
         <PlanningCard
           kind="saida"
           title="Saidas totais"
@@ -251,18 +258,11 @@ function ResumoMes({
           actual={saidasRealizadas}
           detail={`${formatMoney(gastosRealizados)} gastos + ${formatMoney(investimentosRealizados)} investimentos`}
         />
-        <RemainingPlanCard
-          planned={saidasPlanejadas}
-          executed={saidasPlanejadasCumpridas}
-          remaining={saidasPlanejadasRestantes}
-          expensesRemaining={gastosPlanejadosRestantes}
-          investmentsRemaining={investimentosPlanejadosRestantes}
-        />
         <PlanningCard kind="saldo" title="Resultado do mes" planned={saldoPrevisto} actual={saldoAtual} />
       </div>
-      <div className="rounded-xl border border-slate-800 text-[12px] bg-[#111821] overflow-hidden">
-        <div className="w-full">
-          <div className="grid grid-cols-5 gap-1 bg-slate-900 px-3 py-2 text-[11px] font-semibold uppercase text-slate-500">
+      <div className="min-w-0 overflow-x-auto rounded-xl border border-slate-800 bg-[#111821] text-[12px]">
+        <div className="min-w-[560px]">
+          <div className="grid grid-cols-[minmax(110px,1.25fr)_repeat(4,minmax(88px,1fr))] gap-2 bg-slate-900 px-3 py-2 text-[11px] font-semibold uppercase text-slate-500">
             <span>Tipo</span>
             <span className="text-right">Planejado</span>
             <span className="text-right">Dentro</span>
@@ -307,7 +307,7 @@ function ResumoMes({
   );
 }
 
-type PlanningKind = "receita" | "saida" | "saldo";
+type PlanningKind = "receita" | "gasto" | "investimento" | "saida" | "saldo";
 
 function PlanningCard({
   kind,
@@ -325,7 +325,7 @@ function PlanningCard({
   const status = planningStatus(kind, planned, actual);
   const progressBase = Math.abs(planned);
   const progress = progressBase > 0 ? Math.min(Math.abs(actual) / progressBase * 100, 100) : actual !== 0 ? 100 : 0;
-  const Icon = status.good ? CheckCircle2 : status.bad ? AlertTriangle : kind === "saida" ? TrendingDown : TrendingUp;
+  const Icon = status.good ? CheckCircle2 : status.bad ? AlertTriangle : kind === "saida" || kind === "gasto" ? TrendingDown : TrendingUp;
   const toneClass = status.bad
     ? "border-danger-600/35 bg-danger-600/10 text-danger-600"
     : status.good
@@ -334,67 +334,22 @@ function PlanningCard({
   const barClass = status.bad ? "bg-danger-600" : status.good ? "bg-brand-500" : "bg-amber-500";
 
   return (
-    <section className={`rounded-xl border p-3 ${toneClass}`}>
+    <section className={`min-w-0 rounded-xl border p-3 ${toneClass}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase text-slate-500">{title}</p>
-          <p className="mt-1 text-xl font-semibold text-slate-100">{formatMoney(actual)}</p>
-          <p className="mt-0.5 text-xs text-slate-500">Planejado: {formatMoney(planned)}</p>
-          {detail ? <p className="mt-1 truncate text-[11px] text-slate-500">{detail}</p> : null}
+          <p className="mt-1 break-words text-lg font-semibold leading-tight text-slate-100 xl:text-xl">{formatMoney(actual)}</p>
+          <p className="mt-1 break-words text-xs text-slate-500">Planejado: {formatMoney(planned)}</p>
+          {detail ? <p className="mt-1 break-words text-[11px] leading-snug text-slate-500">{detail}</p> : null}
         </div>
         <Icon className="h-5 w-5 shrink-0" />
       </div>
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
         <div className={`h-full rounded-full ${barClass}`} style={{ width: `${progress}%` }} />
       </div>
-      <div className="mt-2 flex items-center justify-between gap-2 text-xs">
-        <span className="font-medium">{status.label}</span>
-        <span className="text-slate-400">{status.deltaLabel}</span>
-      </div>
-    </section>
-  );
-}
-
-function RemainingPlanCard({
-  planned,
-  executed,
-  remaining,
-  expensesRemaining,
-  investmentsRemaining,
-}: {
-  planned: number;
-  executed: number;
-  remaining: number;
-  expensesRemaining: number;
-  investmentsRemaining: number;
-}) {
-  const progress = planned > 0 ? Math.min((executed / planned) * 100, 100) : remaining > 0 ? 100 : 0;
-  const completed = remaining <= 0 && planned > 0;
-  const toneClass = completed
-    ? "border-brand-500/25 bg-brand-500/10 text-brand-400"
-    : "border-amber-500/25 bg-amber-500/10 text-amber-300";
-  const barClass = completed ? "bg-brand-500" : "bg-amber-500";
-  const statusLabel = planned <= 0 ? "Sem saidas planejadas" : completed ? "Planejado executado" : "Ainda falta executar";
-
-  return (
-    <section className={`rounded-xl border p-3 ${toneClass}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase text-slate-500">Falta planejada</p>
-          <p className="mt-1 text-xl font-semibold text-slate-100">{formatMoney(remaining)}</p>
-          <p className="mt-0.5 text-xs text-slate-500">Executado do planejado: {formatMoney(executed)}</p>
-          <p className="mt-1 truncate text-[11px] text-slate-500">
-            Gastos {formatMoney(expensesRemaining)} + investimentos {formatMoney(investmentsRemaining)}
-          </p>
-        </div>
-        <Target className="h-5 w-5 shrink-0" />
-      </div>
-      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
-        <div className={`h-full rounded-full ${barClass}`} style={{ width: `${progress}%` }} />
-      </div>
-      <div className="mt-2 flex items-center justify-between gap-2 text-xs">
-        <span className="font-medium">{statusLabel}</span>
-        <span className="text-slate-400">Planejado {formatMoney(planned)}</span>
+      <div className="mt-2 flex min-w-0 flex-wrap items-start justify-between gap-x-2 gap-y-1 text-xs">
+        <span className="min-w-0 font-medium leading-snug">{status.label}</span>
+        <span className="break-words text-right leading-snug text-slate-400">{status.deltaLabel}</span>
       </div>
     </section>
   );
@@ -407,11 +362,18 @@ function planningStatus(kind: PlanningKind, planned: number, actual: number) {
     if (actual >= planned) return { good: true, bad: false, label: "Acima do planejado", deltaLabel: `+${formatMoney(delta)}` };
     return { good: false, bad: true, label: "Abaixo do planejado", deltaLabel: formatMoney(delta) };
   }
-  if (kind === "saida") {
+  if (kind === "gasto" || kind === "saida") {
     const sobra = planned - actual;
-    if (planned <= 0 && actual > 0) return { good: false, bad: true, label: "Saida sem planejamento", deltaLabel: formatMoney(-actual) };
+    if (planned <= 0 && actual > 0) return { good: false, bad: true, label: kind === "gasto" ? "Gasto sem planejamento" : "Saida sem planejamento", deltaLabel: formatMoney(-actual) };
     if (actual <= planned) return { good: true, bad: false, label: "Dentro do planejado", deltaLabel: `Sobra ${formatMoney(sobra)}` };
-    return { good: false, bad: true, label: "Acima do planejado", deltaLabel: formatMoney(sobra) };
+    return { good: false, bad: true, label: "Acima do planejado", deltaLabel: `${formatMoney(actual - planned)} a mais` };
+  }
+  if (kind === "investimento") {
+    const delta = actual - planned;
+    if (planned <= 0 && actual > 0) return { good: true, bad: false, label: "Aporte extra", deltaLabel: `+${formatMoney(actual)}` };
+    if (actual >= planned) return { good: true, bad: false, label: "Meta superada", deltaLabel: `+${formatMoney(delta)}` };
+    if (actual > 0) return { good: false, bad: false, label: "Meta em andamento", deltaLabel: `Faltam ${formatMoney(-delta)}` };
+    return { good: false, bad: true, label: "Meta ainda nao iniciada", deltaLabel: `Faltam ${formatMoney(planned)}` };
   }
   const delta = actual - planned;
   if (actual >= planned) return { good: true, bad: false, label: "Melhor que o previsto", deltaLabel: `+${formatMoney(delta)}` };
@@ -427,7 +389,7 @@ function ExecutionBreakdown({ label, natureza, planned, inside, outside, total }
   total: number;
 }) {
   return (
-    <div className="grid grid-cols-5 gap-1 border-t border-slate-800 px-3 py-2">
+    <div className="grid grid-cols-[minmax(110px,1.25fr)_repeat(4,minmax(88px,1fr))] gap-2 border-t border-slate-800 px-3 py-2">
       <span className="font-medium text-slate-300 truncate">{label}</span>
       <Value value={planned} />
       <Value value={inside} />
@@ -439,7 +401,7 @@ function ExecutionBreakdown({ label, natureza, planned, inside, outside, total }
 
 function outsideTone(natureza: NaturezaCategoria | "SAIDA", value: number): "green" | "red" | "yellow" | undefined {
   if (value <= 0) return undefined;
-  if (natureza === "RECEITA") return "green";
+  if (natureza === "RECEITA" || natureza === "INVESTIMENTO") return "green";
   return "red";
 }
 

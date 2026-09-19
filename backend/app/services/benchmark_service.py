@@ -229,7 +229,8 @@ def calcular_rentabilidades_benchmarks_mensais(
                 # Converte série USD em BRL multiplicando pelo câmbio do dia
                 serie_brl = {}
                 for d, val_usd in serie_usd.items():
-                    tx_usd = buscar_cotacao_dolar_data(session, d)
+                    cambio = buscar_cotacao_dolar_data(session, d)
+                    tx_usd = Decimal(str(cambio.get("cotacao_brl") or "0"))
                     if tx_usd > 0:
                         serie_brl[d] = val_usd * tx_usd
                 

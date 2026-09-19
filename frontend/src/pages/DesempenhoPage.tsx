@@ -409,6 +409,7 @@ export function DesempenhoPage() {
           <RentabilidadeComparadaChart
             data={rentabilidadeComparada.data}
             isLoading={rentabilidadeComparada.isLoading}
+            errorMessage={rentabilidadeComparada.error instanceof Error ? rentabilidadeComparada.error.message : undefined}
             filters={rentabilidadeFilters}
             ativos={ativos.data ?? []}
             onFiltersChange={setRentabilidadeFilters}

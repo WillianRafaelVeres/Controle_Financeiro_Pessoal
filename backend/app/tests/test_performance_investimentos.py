@@ -5,7 +5,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from sqlalchemy.pool import StaticPool
 
 from app import models  # noqa: F401
-from app.models.base import Moeda, TipoAtivo, TipoMovimentoInvestimento, TipoProvento
+from app.models.base import FinalidadeAtivo, Moeda, TipoAtivo, TipoMovimentoInvestimento, TipoProvento
 from app.models.dividendo import Dividendo
 from app.models.historico_benchmark import HistoricoBenchmark
 from app.models.investimento import Ativo, MovimentoInvestimento
@@ -95,6 +95,50 @@ def test_rentabilidade_neutraliza_aporte_intermediario(session: Session):
 
     # O aporte de 10.000 nao pode virar rentabilidade de +1000%
     assert res["serie"][0]["carteira"] < 5.0
+
+
+def test_rentabilidade_entrega_metricas_de_risco_e_exclui_dinheiro_guardado(session: Session):
+    investimento = Ativo(ticker="CDB", nome="CDB investimento", tipo_ativo=TipoAtivo.RENDA_FIXA, moeda=Moeda.BRL)
+    guardado = Ativo(
+        ticker="VIAGEM",
+        nome="Dinheiro da viagem",
+        tipo_ativo=TipoAtivo.CAIXINHA_CDB,
+        moeda=Moeda.BRL,
+        finalidade=FinalidadeAtivo.GUARDADO,
+    )
+    session.add_all([investimento, guardado])
+    session.flush()
+    session.add_all([
+        MovimentoInvestimento(
+            ativo_id=investimento.id,
+            tipo_movimento=TipoMovimentoInvestimento.APORTE,
+            data_movimento=date(2026, 1, 5),
+            quantidade=Decimal("1"),
+            preco_unitario=Decimal("1000.00"),
+            valor_total=Decimal("1000.00"),
+        ),
+        MovimentoInvestimento(
+            ativo_id=guardado.id,
+            tipo_movimento=TipoMovimentoInvestimento.APORTE,
+            data_movimento=date(2025, 1, 5),
+            quantidade=Decimal("1"),
+            preco_unitario=Decimal("5000.00"),
+            valor_total=Decimal("5000.00"),
+        ),
+    ])
+    session.commit()
+
+    resultado = calcular_rentabilidade_comparada(
+        session,
+        escopo_codigo="CARTEIRA_TOTAL",
+        periodo_codigo="desde_inicio",
+        data_fim_custom=date(2026, 1, 31),
+    )
+
+    assert resultado["data_inicio_efetiva"] == "2026-01-05"
+    assert resultado["resumo"]["patrimonio_final_brl"] == pytest.approx(1000.0)
+    assert "volatilidade_anualizada_percentual" in resultado["resumo"]
+    assert resultado["resumo"]["melhor_mes"]["periodo"] == "01/2026"
 
 
 def test_rentabilidade_considera_proventos(session: Session):

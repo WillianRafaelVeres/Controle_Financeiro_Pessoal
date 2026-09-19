@@ -1,9 +1,11 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 import logging
+import math
+import statistics
 from sqlmodel import Session, select
 
-from app.models.base import Moeda, TipoAtivo, TipoMovimentoInvestimento, month_bounds
+from app.models.base import FinalidadeAtivo, Moeda, TipoAtivo, TipoMovimentoInvestimento, month_bounds
 from app.models.dividendo import Dividendo
 from app.models.historico_posicao import HistoricoPosicaoInvestimentoMensal
 from app.models.investimento import Ativo, MovimentoInvestimento
@@ -46,6 +48,20 @@ CATEGORIA_LABELS = {
     TipoAtivo.OUTRO: "Outros",
 }
 
+ESCOPO_LABELS = {
+    "CARTEIRA_TOTAL": "Carteira total",
+    "ACAO_BR": "Acoes brasileiras",
+    "FII": "Fundos imobiliarios",
+    "ETF_BR": "ETFs Brasil",
+    "RENDA_FIXA": "Renda fixa",
+    "EXTERIOR": "Investimentos no exterior",
+    "CRIPTO": "Criptomoedas",
+    "PREVIDENCIA": "Previdencia",
+    "DOLAR_CAIXA": "Dolar em caixa",
+    "OUTRO": "Outros",
+    "PERSONALIZADO": "Selecao personalizada",
+}
+
 
 def _resolver_tipos_ativo_escopo(codigo_escopo: str, tipos_solicitados: list[TipoAtivo] | None = None) -> set[TipoAtivo] | None:
     if codigo_escopo == "PERSONALIZADO" and tipos_solicitados:
@@ -60,7 +76,11 @@ def _inicio_janela_mensal(ancora: date, quantidade_meses: int) -> date:
 
 def obter_data_inicio_escopo(session: Session, tipos_escopo: set[TipoAtivo] | None, ativos_ids: list[str] | None = None) -> date:
     """Encontra a data do primeiro movimento dos ativos pertencentes ao escopo."""
-    query = select(MovimentoInvestimento.data_movimento).join(Ativo, MovimentoInvestimento.ativo_id == Ativo.id)
+    query = (
+        select(MovimentoInvestimento.data_movimento)
+        .join(Ativo, MovimentoInvestimento.ativo_id == Ativo.id)
+        .where(Ativo.finalidade == FinalidadeAtivo.INVESTIMENTO)
+    )
 
     if ativos_ids:
         query = query.where(Ativo.id.in_(ativos_ids))
@@ -125,7 +145,7 @@ def calcular_rentabilidade_comparada(
             curr_mes += 1
 
     # 4. Obter ativos elegíveis do escopo (incluindo posições encerradas no passado)
-    query_ativos = select(Ativo)
+    query_ativos = select(Ativo).where(Ativo.finalidade == FinalidadeAtivo.INVESTIMENTO)
     if ativos_ids_custom:
         query_ativos = query_ativos.where(Ativo.id.in_(ativos_ids_custom))
     elif tipos_escopo:
@@ -137,7 +157,7 @@ def calcular_rentabilidade_comparada(
     # Se não houver ativos/movimentações no escopo
     if not ativos_escopo or not meses_datas:
         return {
-            "escopo": {"codigo": escopo_codigo, "label": CATEGORIA_LABELS.get(TipoAtivo(escopo_codigo), escopo_codigo) if escopo_codigo in CATEGORIA_LABELS else escopo_codigo},
+            "escopo": {"codigo": escopo_codigo, "label": ESCOPO_LABELS.get(escopo_codigo, escopo_codigo)},
             "data_inicio_efetiva": dt_inicio_efetiva.isoformat(),
             "data_fim": dt_fim_efetiva.isoformat(),
             "moeda_base": "BRL",
@@ -153,6 +173,11 @@ def calcular_rentabilidade_comparada(
                 "meses_positivos": 0,
                 "meses_analisados": 0,
                 "max_drawdown_percentual": 0.0,
+                "drawdown_atual_percentual": 0.0,
+                "volatilidade_anualizada_percentual": 0.0,
+                "rentabilidade_anualizada_percentual": 0.0,
+                "melhor_mes": None,
+                "pior_mes": None,
                 "benchmarks": {},
             },
             "serie": [],
@@ -188,6 +213,7 @@ def calcular_rentabilidade_comparada(
     cum_factor_carteira = 1.0
     pico_factor_carteira = 1.0
     max_drawdown = 0.0
+    drawdown_atual = 0.0
     resultado_total = Decimal("0.00")
     aportes_liquidos_total = Decimal("0.00")
     proventos_total = Decimal("0.00")
@@ -312,6 +338,19 @@ def calcular_rentabilidade_comparada(
 
     # Resumo final
     rentabilidade_final_carteira = serie_resultado[-1]["carteira"] if serie_resultado else 0.0
+    retornos_mensais = [float(item["retorno_periodo_carteira"]) for item in serie_resultado]
+    volatilidade_anualizada = (
+        statistics.pstdev(retornos_mensais) * math.sqrt(12)
+        if len(retornos_mensais) >= 2
+        else 0.0
+    )
+    rentabilidade_anualizada = (
+        ((cum_factor_carteira ** (12 / len(serie_resultado))) - 1.0) * 100.0
+        if serie_resultado and cum_factor_carteira > 0
+        else 0.0
+    )
+    melhor_mes = max(serie_resultado, key=lambda item: item["retorno_periodo_carteira"]) if serie_resultado else None
+    pior_mes = min(serie_resultado, key=lambda item: item["retorno_periodo_carteira"]) if serie_resultado else None
     resumo_benchmarks = {}
 
     for bm_code, status in status_bm.items():
@@ -333,7 +372,7 @@ def calcular_rentabilidade_comparada(
     return {
         "escopo": {
             "codigo": escopo_codigo,
-            "label": CATEGORIA_LABELS.get(TipoAtivo(escopo_codigo), escopo_codigo) if escopo_codigo in CATEGORIA_LABELS else (escopo_codigo.replace("_", " ").capitalize()),
+            "label": ESCOPO_LABELS.get(escopo_codigo, escopo_codigo.replace("_", " ").capitalize()),
             "tipos_ativo": list(tipos_escopo) if tipos_escopo else [],
             "ativos_ids": ativos_ids_custom or [],
         },
@@ -356,6 +395,17 @@ def calcular_rentabilidade_comparada(
             "meses_positivos": meses_positivos,
             "meses_analisados": len(serie_resultado),
             "max_drawdown_percentual": round(max_drawdown, 2),
+            "drawdown_atual_percentual": round(drawdown_atual, 2),
+            "volatilidade_anualizada_percentual": round(volatilidade_anualizada, 2),
+            "rentabilidade_anualizada_percentual": round(rentabilidade_anualizada, 2),
+            "melhor_mes": {
+                "periodo": melhor_mes["periodo"],
+                "rentabilidade_percentual": melhor_mes["retorno_periodo_carteira"],
+            } if melhor_mes else None,
+            "pior_mes": {
+                "periodo": pior_mes["periodo"],
+                "rentabilidade_percentual": pior_mes["retorno_periodo_carteira"],
+            } if pior_mes else None,
             "benchmarks": resumo_benchmarks,
         },
         "serie": serie_resultado,

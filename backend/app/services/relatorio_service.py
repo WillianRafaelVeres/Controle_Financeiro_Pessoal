@@ -4,12 +4,15 @@ from sqlmodel import Session, select
 
 from app.models.base import NaturezaCategoria, TipoLancamento, TipoMetodo, month_bounds
 from app.models.cartao import Cartao
+from app.models.categoria import Categoria
 from app.models.lancamento import Lancamento
 from app.models.metodo_pagamento import MetodoPagamento
+from app.models.subcategoria import Subcategoria
 from app.services.dashboard_service import graficos_dashboard
 from app.services.financeiro_service import totais_lancamentos_mes, totais_lancamentos_periodo
 from app.services.investimento_service import listar_historico_desempenho
 from app.services.orcamento_service import listar_nao_planejados_mes, listar_orcamento_mes
+from app.services.saldo_service import ids_categorias_cartao_genericas
 
 
 def _decimal(value: object) -> Decimal:
@@ -139,6 +142,68 @@ def _variacao_percentual(atual: Decimal, anterior: Decimal) -> float | None:
     return round(float((atual - anterior) / abs(anterior) * Decimal("100")), 2)
 
 
+def _percentual(parte: Decimal, total: Decimal) -> Decimal:
+    return Decimal("0") if total <= 0 else (parte / total) * Decimal("100")
+
+
+def _media(valores: list[Decimal]) -> Decimal:
+    return Decimal("0") if not valores else sum(valores, Decimal("0")) / Decimal(len(valores))
+
+
+def _gastos_por_subcategoria_periodo(
+    session: Session,
+    ano_inicio: int,
+    mes_inicio: int,
+    ano_fim: int,
+    mes_fim: int,
+    gasto_total: Decimal,
+) -> list[dict]:
+    """Agrupa gastos reais do periodo preservando os nomes gravados no lancamento."""
+    inicio, _ = month_bounds(ano_inicio, mes_inicio)
+    _, fim = month_bounds(ano_fim, mes_fim)
+    categorias_genericas = set(ids_categorias_cartao_genericas(session))
+    lancamentos = session.exec(
+        select(Lancamento).where(
+            Lancamento.ativo.is_(True),
+            Lancamento.transferencia_interna.is_(False),
+            Lancamento.afeta_orcamento.is_(True),
+            Lancamento.tipo.in_([TipoLancamento.GASTO, TipoLancamento.SEPARAR]),
+            Lancamento.data_lancamento >= inicio,
+            Lancamento.data_lancamento < fim,
+        )
+    ).all()
+
+    categoria_ids = {item.categoria_id for item in lancamentos if item.categoria_id}
+    subcategoria_ids = {item.subcategoria_id for item in lancamentos if item.subcategoria_id}
+    categorias = {
+        item.id: item.nome
+        for item in session.exec(select(Categoria).where(Categoria.id.in_(categoria_ids))).all()
+    } if categoria_ids else {}
+    subcategorias = {
+        item.id: item.nome
+        for item in session.exec(select(Subcategoria).where(Subcategoria.id.in_(subcategoria_ids))).all()
+    } if subcategoria_ids else {}
+
+    totais: dict[tuple[str, str], Decimal] = {}
+    for item in lancamentos:
+        if item.cartao_id and item.categoria_id in categorias_genericas:
+            continue
+        categoria = item.categoria_nome_snapshot or categorias.get(item.categoria_id or "") or "Sem categoria"
+        subcategoria = item.subcategoria_nome_snapshot or subcategorias.get(item.subcategoria_id or "") or "Sem subcategoria"
+        chave = (categoria, subcategoria)
+        totais[chave] = totais.get(chave, Decimal("0")) + item.valor
+
+    return [
+        {
+            "categoria": categoria,
+            "subcategoria": subcategoria,
+            "valor": valor,
+            "percentual": _percentual(valor, gasto_total),
+        }
+        for (categoria, subcategoria), valor in sorted(totais.items(), key=lambda linha: linha[1], reverse=True)
+    ]
+
+
 def analise_financeira(
     session: Session,
     ano_inicio: int,
@@ -240,21 +305,93 @@ def analise_financeira(
         {
             "categoria": label,
             "valor": valor,
-            "percentual": (valor / gasto_total * Decimal("100")) if gasto_total > 0 else Decimal("0"),
+            "percentual": _percentual(valor, gasto_total),
+            "media_mensal": valor / Decimal(len(meses)),
         }
         for label, valor in sorted(categorias_gasto.items(), key=lambda item: item[1], reverse=True)
     ]
+    subcategorias = _gastos_por_subcategoria_periodo(
+        session,
+        ano_inicio,
+        mes_inicio,
+        ano_fim,
+        mes_fim,
+        gasto_total,
+    )
 
     receita = totais["receita"]
-    taxa_economia = ((receita - totais["gasto"]) / receita * Decimal("100")) if receita > 0 else Decimal("0")
-    taxa_investimento = (totais["investimento"] / receita * Decimal("100")) if receita > 0 else Decimal("0")
-    comprometimento = (totais["gasto"] / receita * Decimal("100")) if receita > 0 else Decimal("0")
+    taxa_economia = _percentual(receita - totais["gasto"], receita)
+    taxa_investimento = _percentual(totais["investimento"], receita)
+    comprometimento = _percentual(totais["gasto"], receita)
+
+    evolucao_detalhada = []
+    taxas_investimento_mensais: list[Decimal] = []
+    meses_com_receita = 0
+    meses_com_investimento = 0
+    meses_saldo_positivo = 0
+    for item in evolucao:
+        receita_mes = _decimal(item["receita"])
+        gasto_mes = _decimal(item["gasto"])
+        investimento_mes = _decimal(item["investimento"])
+        saldo_mes = _decimal(item["saldo"])
+        taxa_mes = _percentual(investimento_mes, receita_mes)
+        if receita_mes > 0:
+            meses_com_receita += 1
+            taxas_investimento_mensais.append(taxa_mes)
+        if investimento_mes > 0:
+            meses_com_investimento += 1
+        if saldo_mes >= 0 and receita_mes > 0:
+            meses_saldo_positivo += 1
+        evolucao_detalhada.append({
+            **item,
+            "gasto_percentual": _percentual(gasto_mes, receita_mes),
+            "investimento_percentual": taxa_mes,
+            "saldo_percentual": _percentual(saldo_mes, receita_mes),
+        })
+
+    medias_mensais = {
+        "receita": totais["receita"] / Decimal(len(meses)),
+        "gasto": totais["gasto"] / Decimal(len(meses)),
+        "investimento": totais["investimento"] / Decimal(len(meses)),
+        "saldo_livre": totais["saldo_livre"] / Decimal(len(meses)),
+        "investimento_percentual": _media(taxas_investimento_mensais),
+    }
 
     gasto_planejado_total = planejado[NaturezaCategoria.GASTO]
     gasto_real_planejado = realizado_planejado[NaturezaCategoria.GASTO]
     gasto_real_total_orcamento = gasto_real_planejado + nao_planejado[NaturezaCategoria.GASTO]
     investimento_planejado = planejado[NaturezaCategoria.INVESTIMENTO]
     investimento_real = realizado_planejado[NaturezaCategoria.INVESTIMENTO] + nao_planejado[NaturezaCategoria.INVESTIMENTO]
+
+    aderencia_orcamento = (
+        Decimal("100")
+        if gasto_planejado_total > 0 and gasto_real_total_orcamento <= gasto_planejado_total
+        else _percentual(gasto_planejado_total, gasto_real_total_orcamento)
+        if gasto_planejado_total > 0 and gasto_real_total_orcamento > 0
+        else Decimal("50")
+    )
+    controle_planejamento = (
+        Decimal("100") - _percentual(nao_planejado[NaturezaCategoria.GASTO], gasto_real_total_orcamento)
+        if gasto_real_total_orcamento > 0
+        else Decimal("100")
+    )
+    regularidade_fluxo = (
+        Decimal(meses_saldo_positivo) / Decimal(meses_com_receita) * Decimal("100")
+        if meses_com_receita > 0
+        else Decimal("0")
+    )
+    regularidade_investimento = Decimal(meses_com_investimento) / Decimal(len(meses)) * Decimal("100")
+    disciplina_investimento = min(Decimal("100"), taxa_investimento / Decimal("20") * Decimal("100"))
+    score = round(
+        float(
+            disciplina_investimento * Decimal("0.35")
+            + aderencia_orcamento * Decimal("0.25")
+            + regularidade_fluxo * Decimal("0.25")
+            + controle_planejamento * Decimal("0.15")
+        )
+    )
+    score = max(0, min(100, score))
+    nivel_score = "SOLIDA" if score >= 80 else "EM_EVOLUCAO" if score >= 60 else "ATENCAO" if score >= 40 else "CRITICA"
 
     insights: list[dict] = []
     if gasto_planejado_total > 0 and gasto_real_total_orcamento > gasto_planejado_total:
@@ -306,6 +443,27 @@ def analise_financeira(
             "mensagem": f"Esse item ficou R$ {pior_item['desvio']:.2f} acima do valor planejado.",
         })
 
+    if taxa_investimento < Decimal("10") and receita > 0:
+        insights.append({
+            "tipo": "ATENCAO",
+            "titulo": "Taxa de investimento abaixo de 10%",
+            "mensagem": "Revise as maiores categorias de gasto e defina um aporte automatico possivel para o proximo mes.",
+        })
+    elif taxa_investimento >= Decimal("20"):
+        insights.append({
+            "tipo": "BOM",
+            "titulo": "Boa capacidade de investir",
+            "mensagem": f"{taxa_investimento:.1f}% da receita virou investimento no periodo.",
+        })
+
+    if categorias:
+        maior_categoria = categorias[0]
+        insights.append({
+            "tipo": "INSIGHT",
+            "titulo": f"Maior destino de gasto: {maior_categoria['categoria']}",
+            "mensagem": f"Concentra {maior_categoria['percentual']:.1f}% dos gastos, em media R$ {maior_categoria['media_mensal']:.2f} por mes.",
+        })
+
     return {
         "periodo": {
             "ano_inicio": ano_inicio,
@@ -319,6 +477,31 @@ def analise_financeira(
             "economia_percentual": taxa_economia,
             "investimento_percentual": taxa_investimento,
             "comprometimento_percentual": comprometimento,
+            "saldo_livre_percentual": _percentual(totais["saldo_livre"], receita),
+        },
+        "medias_mensais": medias_mensais,
+        "destino_receita": {
+            "gastos_percentual": comprometimento,
+            "investimentos_percentual": taxa_investimento,
+            "livre_percentual": _percentual(totais["saldo_livre"], receita),
+        },
+        "consistencia": {
+            "meses_com_receita": meses_com_receita,
+            "meses_com_investimento": meses_com_investimento,
+            "meses_saldo_positivo": meses_saldo_positivo,
+            "regularidade_investimento_percentual": regularidade_investimento,
+            "regularidade_fluxo_percentual": regularidade_fluxo,
+        },
+        "saude_financeira": {
+            "score": score,
+            "nivel": nivel_score,
+            "componentes": {
+                "taxa_investimento": disciplina_investimento,
+                "orcamento": aderencia_orcamento,
+                "fluxo_caixa": regularidade_fluxo,
+                "planejamento": controle_planejamento,
+            },
+            "metodologia": "Indicador diagnostico de 0 a 100: taxa investida (35%), orcamento (25%), meses no azul (25%) e gastos planejados (15%).",
         },
         "comparacao": {
             "periodo_anterior": {
@@ -350,9 +533,10 @@ def analise_financeira(
             },
         },
         "categorias_gasto": categorias,
+        "subcategorias_gasto": subcategorias,
         "diagnostico_orcamento": diagnostico_lista,
-        "insights": insights[:5],
-        "evolucao": evolucao,
+        "insights": insights[:7],
+        "evolucao": evolucao_detalhada,
     }
 
 

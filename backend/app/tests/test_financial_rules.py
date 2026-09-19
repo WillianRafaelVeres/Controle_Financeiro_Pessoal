@@ -2981,6 +2981,11 @@ def test_analise_financeira_diferencia_gasto_e_investimento_acima_do_plano(sessi
     assert resultado["totais"]["saldo_livre"] == Decimal("1000")
     assert resultado["planejamento"]["gastos"]["realizado"] == Decimal("6500")
     assert resultado["planejamento"]["investimentos"]["realizado"] == Decimal("2500")
+    assert resultado["medias_mensais"]["investimento"] == Decimal("2500")
+    assert resultado["evolucao"][0]["investimento_percentual"] == Decimal("25")
+    assert resultado["consistencia"]["meses_com_investimento"] == 1
+    assert 0 <= resultado["saude_financeira"]["score"] <= 100
+    assert resultado["categorias_gasto"][0]["media_mensal"] == Decimal("6500")
     titulos = {item["titulo"] for item in resultado["insights"]}
     assert "Orcamento de gastos ultrapassado" in titulos
     assert "Meta de investimentos superada" in titulos

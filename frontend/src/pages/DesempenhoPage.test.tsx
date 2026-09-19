@@ -29,8 +29,22 @@ describe("DesempenhoPage", () => {
       lucro_prejuizo_brl: 300,
       rentabilidade_percentual: 25,
       exterior_brl: 500,
-      alocacao_por_tipo: [],
-      alocacao_por_ativo: [],
+      alocacao_por_tipo: [{ tipo_ativo: "ACAO_BR", tipo_label: "Ações brasileiras", valor_atual_brl: 1500, percentual: 100, quantidade_posicoes: 1 }],
+      alocacao_por_ativo: [{
+        ativo_id: "ativo-1",
+        ticker: "BBAS3",
+        nome: "Banco do Brasil",
+        tipo_ativo: "ACAO_BR",
+        tipo_label: "Ações brasileiras",
+        moeda: "BRL",
+        valor_atual_brl: 1500,
+        valor_atual_original: 1500,
+        total_aportado_brl: 1200,
+        resultado_brl: 300,
+        rentabilidade_percentual: 25,
+        percentual: 100,
+        cotacao_automatica: true,
+      }],
       top_ativos: [],
       maiores_ganhos: [],
       maiores_perdas: [],
@@ -125,23 +139,21 @@ describe("DesempenhoPage", () => {
     });
   });
 
-  it("renderiza evolucao temporal, rentabilidade comparada e evolucao por categoria", async () => {
+  it("renderiza retorno comparado, alocacao e posicoes para decisao", async () => {
     renderPage();
 
-    expect(await screen.findByText("Evolucao mensal do patrimonio")).toBeInTheDocument();
-    expect(await screen.findByText("Rentabilidade comparada")).toBeInTheDocument();
-    expect(await screen.findByText("Evolução por categoria")).toBeInTheDocument();
-    expect(await screen.findByText("Historico consolidado")).toBeInTheDocument();
-    expect(await screen.findByText("05/2026")).toBeInTheDocument();
+    expect(await screen.findByText("Carteira x referências")).toBeInTheDocument();
+    expect(await screen.findByText("Alocação atual")).toBeInTheDocument();
+    expect(await screen.findByText("Posições que explicam o resultado")).toBeInTheDocument();
+    expect(await screen.findByText("BBAS3")).toBeInTheDocument();
   });
 
-  it("alterna para acompanhamento de proventos com filtros", async () => {
+  it("adapta os benchmarks quando o escopo muda", async () => {
     renderPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: /proventos/i }));
+    fireEvent.change(await screen.findByLabelText("Parte da carteira"), { target: { value: "RENDA_FIXA" } });
 
-    expect(await screen.findByText("Proventos recebidos por mes")).toBeInTheDocument();
-    expect(await screen.findByText("Filtros de proventos")).toBeInTheDocument();
+    expect(await screen.findByText("Retorno · Renda fixa")).toBeInTheDocument();
   });
 
   it("mostra erro de calculo sem confundir com carteira vazia", async () => {
@@ -149,7 +161,7 @@ describe("DesempenhoPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText(/Não foi possível calcular a comparação: Falha ao converter benchmark/)).toBeInTheDocument();
-    expect(screen.queryByText("Ainda não existem movimentações neste escopo para analisar.")).not.toBeInTheDocument();
+    expect(await screen.findByText(/a comparação histórica falhou: Falha ao converter benchmark/)).toBeInTheDocument();
+    expect(screen.getByText("Patrimônio investido")).toBeInTheDocument();
   });
 });

@@ -271,6 +271,31 @@ export interface RelatorioAnaliseFinanceira {
     economia_percentual: number;
     investimento_percentual: number;
     comprometimento_percentual: number;
+    saldo_livre_percentual: number;
+  };
+  medias_mensais: RelatorioFinanceiroTotal & { investimento_percentual: number };
+  destino_receita: {
+    gastos_percentual: number;
+    investimentos_percentual: number;
+    livre_percentual: number;
+  };
+  consistencia: {
+    meses_com_receita: number;
+    meses_com_investimento: number;
+    meses_saldo_positivo: number;
+    regularidade_investimento_percentual: number;
+    regularidade_fluxo_percentual: number;
+  };
+  saude_financeira: {
+    score: number;
+    nivel: "SOLIDA" | "EM_EVOLUCAO" | "ATENCAO" | "CRITICA";
+    componentes: {
+      taxa_investimento: number;
+      orcamento: number;
+      fluxo_caixa: number;
+      planejamento: number;
+    };
+    metodologia: string;
   };
   comparacao: {
     periodo_anterior: { ano_inicio: number; mes_inicio: number; ano_fim: number; mes_fim: number };
@@ -282,7 +307,8 @@ export interface RelatorioAnaliseFinanceira {
     gastos: RelatorioPlanejamentoGrupo;
     investimentos: RelatorioPlanejamentoGrupo;
   };
-  categorias_gasto: Array<{ categoria: string; valor: number; percentual: number }>;
+  categorias_gasto: Array<{ categoria: string; valor: number; percentual: number; media_mensal: number }>;
+  subcategorias_gasto: Array<{ categoria: string; subcategoria: string; valor: number; percentual: number }>;
   diagnostico_orcamento: Array<{
     natureza: NaturezaCategoria;
     item: string;
@@ -292,7 +318,17 @@ export interface RelatorioAnaliseFinanceira {
     favoravel: boolean;
   }>;
   insights: Array<{ tipo: "CRITICO" | "ATENCAO" | "BOM" | "INSIGHT"; titulo: string; mensagem: string }>;
-  evolucao: Array<{ ano: number; mes: number; receita: number; gasto: number; investimento: number; saldo: number }>;
+  evolucao: Array<{
+    ano: number;
+    mes: number;
+    receita: number;
+    gasto: number;
+    investimento: number;
+    saldo: number;
+    gasto_percentual: number;
+    investimento_percentual: number;
+    saldo_percentual: number;
+  }>;
 }
 
 export interface Ativo {
@@ -626,6 +662,11 @@ export interface RentabilidadeComparadaResponse {
     meses_positivos?: number;
     meses_analisados?: number;
     max_drawdown_percentual?: number;
+    drawdown_atual_percentual?: number;
+    volatilidade_anualizada_percentual?: number;
+    rentabilidade_anualizada_percentual?: number;
+    melhor_mes?: { periodo: string; rentabilidade_percentual: number } | null;
+    pior_mes?: { periodo: string; rentabilidade_percentual: number } | null;
     benchmarks: Record<string, BenchmarkResumoItem>;
   };
   serie: RentabilidadeComparadaPonto[];
